@@ -69,3 +69,13 @@ deploy/runner/iron_stall_log.txt
 
 # world checkpoints of the survival stand (2 GB each, see deploy/runner/checkpoint.py)
 deploy/runner/checkpoints/
+
+# 26.2 port: mapping tables and jars are fetched/built by scripts/port, not committed
+scripts/port/maps/*/maps.json
+scripts/port/maps/*/vermap.json
+scripts/port/maps/*/composed.json
+scripts/port/maps/*/hierarchy.json
+scripts/port/maps/*/*.jar
+scripts/port/maps/*/client.txt
+scripts/port/maps/hierarchy-26.2.json
+port26/src/
