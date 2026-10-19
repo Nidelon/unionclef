@@ -1,0 +1,10 @@
+[
+ {
+  "class": "FluidHandling",
+  "new": "Fluid"
+ },
+ {
+  "class": "ShapeType",
+  "new": "Block"
+ }
+]
