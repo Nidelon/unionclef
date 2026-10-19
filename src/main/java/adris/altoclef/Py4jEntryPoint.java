@@ -176,75 +176,35 @@ public class Py4jEntryPoint {
     }
 
     public byte[] getScreenshot() {
-        //#if MC >= 12111
-        //$$ // 1.21.11: takeScreenshot is async (Consumer<NativeImage>) and NativeImage.getBytes() is gone.
-        //$$ // Encode PNG via NativeImage.writeTo(Path) (MC's native encoder) into a temp file, read it back, delete.
-        //$$ CompletableFuture<byte[]> future = new CompletableFuture<>();
-        //$$ MinecraftClient.getInstance().execute(() -> {
-        //$$     try {
-        //$$         Framebuffer buffer = MinecraftClient.getInstance().getFramebuffer();
-        //$$         ScreenshotRecorder.takeScreenshot(buffer, (img) -> {
-        //$$             try {
-        //$$                 java.nio.file.Path tmp = java.nio.file.Files.createTempFile("uclef_shot", ".png");
-        //$$                 img.writeTo(tmp);
-        //$$                 byte[] data = java.nio.file.Files.readAllBytes(tmp);
-        //$$                 java.nio.file.Files.deleteIfExists(tmp);
-        //$$                 future.complete(data);
-        //$$             } catch (Exception e) {
-        //$$                 future.completeExceptionally(e);
-        //$$             } finally {
-        //$$                 img.close();
-        //$$             }
-        //$$         });
-        //$$     } catch (Exception e) {
-        //$$         future.completeExceptionally(e);
-        //$$     }
-        //$$ });
-        //$$ try {
-        //$$     return future.get(5, TimeUnit.SECONDS);
-        //$$ } catch (Exception e) {
-        //$$     Debug.logInternal("Error taking screenshot: " + e.getMessage());
-        //$$     return null;
-        //$$ }
-        //#else
-        try {
-            AtomicReference<NativeImage> screenshot = new AtomicReference<>();
-            CompletableFuture<Void> future = new CompletableFuture<>();
-
-            MinecraftClient.getInstance().execute(() -> {
-                try {
-                    Framebuffer buffer = MinecraftClient.getInstance().getFramebuffer();
-                    screenshot.set(ScreenshotRecorder.takeScreenshot(buffer));
-                    future.complete(null);
-                } catch (Exception e) {
-                    future.completeExceptionally(e);
-                    Debug.logInternal("Error taking screenshot: " + e.getMessage());
-                }
-            });
-
+        // 1.21.11: takeScreenshot is async (Consumer<NativeImage>) and NativeImage.getBytes() is gone.
+        // Encode PNG via NativeImage.writeTo(Path) (MC's native encoder) into a temp file, read it back, delete.
+        CompletableFuture<byte[]> future = new CompletableFuture<>();
+        MinecraftClient.getInstance().execute(() -> {
             try {
-                future.get(5, TimeUnit.SECONDS);
+                Framebuffer buffer = MinecraftClient.getInstance().getFramebuffer();
+                ScreenshotRecorder.takeScreenshot(buffer, (img) -> {
+                    try {
+                        java.nio.file.Path tmp = java.nio.file.Files.createTempFile("uclef_shot", ".png");
+                        img.writeTo(tmp);
+                        byte[] data = java.nio.file.Files.readAllBytes(tmp);
+                        java.nio.file.Files.deleteIfExists(tmp);
+                        future.complete(data);
+                    } catch (Exception e) {
+                        future.completeExceptionally(e);
+                    } finally {
+                        img.close();
+                    }
+                });
             } catch (Exception e) {
-                Debug.logInternal("Timeout or error waiting for screenshot: " + e.getMessage());
-                return null;
+                future.completeExceptionally(e);
             }
-
-            if (screenshot.get() == null) {
-                Debug.logInternal("Screenshot is null");
-                return null;
-            }
-
-            NativeImage img = screenshot.get();
-            try {
-                return img.getBytes();
-            } finally {
-                img.close();
-            }
+        });
+        try {
+            return future.get(5, TimeUnit.SECONDS);
         } catch (Exception e) {
             Debug.logInternal("Error taking screenshot: " + e.getMessage());
+            return null;
         }
-        return null;
-        //#endif
     }
 
     public String getPipelineDescription() {
@@ -449,14 +409,9 @@ public class Py4jEntryPoint {
     }
 
     public String getHeldItem() {
-        //#if MC >= 12111
-        //$$ if (AltoClef.inGame() && _mod.getPlayer() != null) {
-        //$$     java.util.List<ItemStack> handItems = java.util.List.of(_mod.getPlayer().getMainHandStack(), _mod.getPlayer().getOffHandStack());
-        //$$     for (ItemStack item : handItems) {
-        //#else
-        if (AltoClef.inGame() && _mod.getPlayer() != null && _mod.getPlayer().getHandItems() != null) {
-            for (ItemStack item : _mod.getPlayer().getHandItems()) {
-        //#endif
+        if (AltoClef.inGame() && _mod.getPlayer() != null) {
+            java.util.List<ItemStack> handItems = java.util.List.of(_mod.getPlayer().getMainHandStack(), _mod.getPlayer().getOffHandStack());
+            for (ItemStack item : handItems) {
                 if (item.getItem() != null) {
                     String itemName = item.getItem().getName().getString().toLowerCase();
                     if (!itemName.equals("air")) {
@@ -4733,7 +4688,19 @@ public class Py4jEntryPoint {
     public Map<String, Object> gotoXYZ(int x, int y, int z) {
         _gotoGoal = new int[]{x, y, z};
         String p = kaptainwutax.tungsten.TungstenMod.getCommandPrefix();
-        ChatMessage(p + "goto " + x + " " + y + " " + z);   // tungsten intercepts chat send
+        // 26.2: the sendChat hook that used to swallow ";" commands does not fire,
+        // so dispatch straight into tungsten's executor and keep chat as a fallback
+        boolean dispatched = false;
+        try {
+            kaptainwutax.tungsten.commandsystem.CommandExecutor.dispatch(
+                    "goto " + x + " " + y + " " + z);
+            dispatched = true;
+        } catch (Throwable t) {
+            Debug.logWarning("direct goto dispatch failed: " + t);
+        }
+        if (!dispatched) {
+            ChatMessage(p + "goto " + x + " " + y + " " + z);
+        }
         Map<String, Object> out = new HashMap<>();
         out.put("ok", true);
         out.put("goal", x + "," + y + "," + z);

@@ -20,11 +20,6 @@ public interface PersistentProjectileEntityAccessor {
     // targets a FIELD (there is no plain `inGround` field any more); `@Invoker` targets a METHOD,
     // which is what's needed now. Kept the interface method's own name identical to the old branch
     // (`isInGround()`) so no call site has to change -- only the annotation and its import do.
-    //#if MC < 12111
-    @Accessor("inGround")
+    @Invoker("isInGround")
     boolean isInGround();
-    //#else
-    //$$ @Invoker("isInGround")
-    //$$ boolean isInGround();
-    //#endif
 }

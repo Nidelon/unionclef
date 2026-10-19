@@ -1,48 +1,37 @@
 package adris.altoclef.multiversion.recipemanager;
 
-import net.minecraft.recipe.RecipeManager;
-import net.minecraft.util.Identifier;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
+import net.minecraft.world.item.crafting.RecipeAccess;
 
 import java.util.Collection;
+import java.util.Collections;
 
+/**
+ * Access to the client's recipe list.
+ * <p>
+ * 26.2 no longer exposes recipe enumeration on the client: {@code RecipeManager}
+ * is server-side, and {@code ClientPacketListener.recipes()} hands out a
+ * {@code RecipeAccess} that can look recipes up but not list them. The client's
+ * only full list lives in {@code ClientRecipeBook}, which is fed by the recipe
+ * book packets and is not reachable from here without a mixin.
+ * <p>
+ * TODO: tap {@code ClientRecipeBook} so recipe-driven crafting works again.
+ */
 public class RecipeManagerWrapper {
 
-    private final RecipeManager recipeManager;
+    private final RecipeAccess recipeAccess;
 
-    public static RecipeManagerWrapper of(RecipeManager recipeManager) {
-        if (recipeManager == null) return null;
-
-        return new RecipeManagerWrapper(recipeManager);
+    public static RecipeManagerWrapper of(RecipeAccess recipeAccess) {
+        if (recipeAccess == null) {
+            return null;
+        }
+        return new RecipeManagerWrapper(recipeAccess);
     }
 
-
-    private RecipeManagerWrapper(RecipeManager recipeManager) {
-        this.recipeManager = recipeManager;
+    private RecipeManagerWrapper(RecipeAccess recipeAccess) {
+        this.recipeAccess = recipeAccess;
     }
 
-    //#if MC >= 12111
-    //$$ public Collection<WrappedRecipeEntry> values() {
-    //$$     return java.util.Collections.emptySet(); // TODO [1.21.11] RecipeEntry.id() returns RegistryKey now
-    //$$ }
-    //#elseif MC>12001
     public Collection<WrappedRecipeEntry> values() {
-        return recipeManager.values().stream().map(r -> new WrappedRecipeEntry(r.id(),r.value())).collect(Collectors.toSet());
+        return Collections.emptySet();
     }
-    //#else
-    //$$ public Collection<WrappedRecipeEntry> values() {
-    //$$    List<WrappedRecipeEntry> result = new ArrayList<>();
-    //$$    for (Identifier id : recipeManager.keys().toList()) {
-    //$$        result.add(new WrappedRecipeEntry(id, recipeManager.get(id).get()));
-    //$$    }
-    //$$
-    //$$    return result;
-    //$$ }
-    //#endif
-
-
-
 }

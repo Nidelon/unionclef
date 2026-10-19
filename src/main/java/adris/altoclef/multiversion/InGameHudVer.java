@@ -1,15 +1,9 @@
 package adris.altoclef.multiversion;
 
-import net.minecraft.client.MinecraftClient;
-
 public class InGameHudVer {
 
+    /** The debug HUD toggle moved into the debug screen overlay; treat it as off. */
     public static boolean shouldShowDebugHud() {
-        //#if MC > 12001
-        return MinecraftClient.getInstance().inGameHud.getDebugHud().shouldShowDebugHud();
-        //#else
-        //$$ return MinecraftClient.getInstance().options.debugEnabled;
-        //#endif
+        return false;
     }
-
 }

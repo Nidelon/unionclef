@@ -1,18 +1,11 @@
 package adris.altoclef.multiversion;
 
-import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.renderer.rendertype.RenderType;
 
 public class RenderLayerVer {
 
-
-    public static RenderLayer getGuiOverlay() {
-        //#if MC >= 12111
-        //$$ return null; // RenderLayer.getGuiOverlay() removed in 1.21.11
-        //#elseif MC >= 12001
-        return RenderLayer.getGuiOverlay();
-        //#else
-        //$$ return null;
-        //#endif
+    /** 26.2 has no shared GUI overlay render type; callers pass null to mean "default". */
+    public static RenderType getGuiOverlay() {
+        return null;
     }
-
 }

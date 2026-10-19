@@ -1,119 +1,73 @@
 package adris.altoclef.multiversion;
 
-import adris.altoclef.mixins.DrawableHelperInvoker;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Matrix3x2fStack;
 
+/**
+ * Thin wrapper over the GUI draw context, written against the 26.2 API.
+ * <p>
+ * 26.2 replaced {@code GuiGraphics} with {@code GuiGraphicsExtractor}, moved the
+ * pose stack to {@code Matrix3x2fStack}, and dropped the per-call render layer.
+ * The wrapper keeps the call shape the rest of the mod already uses.
+ */
 public class DrawContextWrapper {
 
-
-    //#if MC >= 12001
-    public static DrawContextWrapper of(DrawContext context) {
-        if (context == null) return null;
+    public static DrawContextWrapper of(GuiGraphicsExtractor context) {
+        // callers may have no context (26.2 does not hand one to the HUD hook);
+        // every draw then silently does nothing instead of throwing
         return new DrawContextWrapper(context);
     }
-    private final DrawContext context;
 
-    private DrawContextWrapper(DrawContext context) {
+    private final GuiGraphicsExtractor context;
+
+    private DrawContextWrapper(GuiGraphicsExtractor context) {
         this.context = context;
     }
-    //#else
-    //$$ public static DrawContextWrapper of(MatrixStack matrices) {
-    //$$    if (matrices == null) return null;
-    //$$    return new DrawContextWrapper(matrices);
-    //$$ }
-    //$$
-    //$$ private final MatrixStack matrices;
-    //$$ private final DrawableHelper helper;
-    //$$ private DrawContextWrapper(MatrixStack matrices) {
-    //$$        this.matrices = matrices;
-    //$$        this.helper = new DrawableHelper(){};
-    //$$ }
-    //#endif
 
-    private RenderLayer renderLayer = null;
-
-    // used only 1.20.1 and later... can pass null in earlier versions
-    public void setRenderLayer(RenderLayer renderLayer) {
-        this.renderLayer = renderLayer;
+    /** Kept for callers that used to pick a render layer; the new API decides itself. */
+    public void setRenderLayer(Object renderLayer) {
     }
 
     public void fill(int x1, int y1, int x2, int y2, int color) {
-        //#if MC >= 12111
-        //$$ context.fill(x1, y1, x2, y2, color);
-        //#elseif MC >= 12001
-        context.fill(renderLayer, x1, y1, x2, y2, color);
-        //#else
-        //$$  DrawableHelper.fill(matrices, x1, y1, x2, y2, color);
-        //#endif
+        if (context == null) {
+            return;
+        }
+        context.fill(x1, y1, x2, y2, color);
     }
 
     public void drawHorizontalLine(int x1, int x2, int y, int color) {
-        //#if MC >= 12111
-        //$$ context.drawHorizontalLine(x1, x2, y, color);
-        //#elseif MC >= 12001
-        context.drawHorizontalLine(renderLayer, x1, x2, y, color);
-        //#else
-        //$$ ((DrawableHelperInvoker) helper).invokeDrawHorizontalLine(matrices, x1, x2, y, color);
-        //#endif
+        if (context == null) {
+            return;
+        }
+        context.fill(Math.min(x1, x2), y, Math.max(x1, x2) + 1, y + 1, color);
     }
 
     public void drawVerticalLine(int x, int y1, int y2, int color) {
-        //#if MC >= 12111
-        //$$ context.drawVerticalLine(x, y1, y2, color);
-        //#elseif MC >= 12001
-        context.drawVerticalLine(renderLayer, x, y1, y2, color);
-        //#else
-        //$$ ((DrawableHelperInvoker) helper).invokeDrawVerticalLine(matrices, x, y1, y2, color);
-        //#endif
+        if (context == null) {
+            return;
+        }
+        context.fill(x, Math.min(y1, y2), x + 1, Math.max(y1, y2) + 1, color);
+    }
+    public void drawText(Font textRenderer, @Nullable String text, int x, int y,
+                         int color, boolean shadow) {
+        if (text == null || context == null) {
+            return;
+        }
+        context.text(textRenderer, text, x, y, color, shadow);
     }
 
-    public void drawText(TextRenderer textRenderer, @Nullable String text, int x, int y, int color, boolean shadow) {
-        //#if MC >= 12001
-        context.drawText(textRenderer,text,x,y,color,shadow);
-        //#else
-        //$$ if (shadow) {
-        //$$    textRenderer.drawWithShadow(matrices, text,x,y,color);
-        //$$ } else {
-        //$$    textRenderer.draw(matrices, text,x,y,color);
-        //$$ }
-        //#endif
+    public Matrix3x2fStack getMatrices() {
+        return context == null ? new Matrix3x2fStack(1) : context.pose();
     }
-
-
-    //#if MC >= 12111
-    //$$ public org.joml.Matrix3x2fStack getMatrices() {
-    //$$     return context.getMatrices();
-    //$$ }
-    //#elseif MC >= 12001
-    public MatrixStack getMatrices() {
-        return context.getMatrices();
-    }
-    //#else
-    //$$ public MatrixStack getMatrices() {
-    //$$     return matrices;
-    //$$ }
-    //#endif
 
     public int getScaledWindowWidth() {
-        //#if MC >= 12001
-        return context.getScaledWindowWidth();
-        //#else
-        //$$ return MinecraftClient.getInstance().getWindow().getScaledWidth();
-        //#endif
+        return Minecraft.getInstance().getWindow().getGuiScaledWidth();
     }
 
     public int getScaledWindowHeight() {
-        //#if MC >= 12001
-        return context.getScaledWindowHeight();
-        //#else
-        //$$ return MinecraftClient.getInstance().getWindow().getScaledHeight();
-        //#endif
+        return Minecraft.getInstance().getWindow().getGuiScaledHeight();
     }
-
-
 }

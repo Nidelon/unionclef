@@ -1,23 +1,13 @@
 package adris.altoclef.multiversion;
 
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.recipe.Recipe;
-import net.minecraft.world.World;
+import adris.altoclef.multiversion.recipemanager.RecipeCompat;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.level.Level;
 
 public class RecipeVer {
 
-
-
-    public static ItemStack getOutput(Recipe<?> recipe, World world) {
-        //#if MC >= 12111
-        //$$ return ItemStack.EMPTY; // Recipe.getResult() removed in 1.21.11 — needs new recipe lookup
-        //#elseif MC >= 11904
-        return recipe.getResult(world.getRegistryManager());
-        //#else
-        //$$ return recipe.getOutput();
-        //#endif
+    public static ItemStack getOutput(Recipe<?> recipe, Level world) {
+        return RecipeCompat.resultOf(recipe);
     }
-
-
 }

@@ -13,11 +13,7 @@ public class BlockPosVer {
 
 
     public static double getSquaredDistance(BlockPos pos, Position obj) {
-        //#if MC >= 11802
-        return pos.getSquaredDistance(obj);
-        //#else
-        //$$ return pos.getSquaredDistance(obj.getX(), obj.getY(), obj.getZ(), true);
-        //#endif
+        return pos.distToCenterSqr(obj.x(), obj.y(), obj.z());
     }
 
     @Pattern

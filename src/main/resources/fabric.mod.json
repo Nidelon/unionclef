@@ -24,6 +24,9 @@
     ],
     "voicechat": [
       "adris.altoclef.AltoclefVoicechat"
+    ],
+    "client": [
+      "kaptainwutax.tungsten.TungstenMod"
     ]
   },
   "suggests": {
