@@ -3,11 +3,11 @@ package kaptainwutax.tungsten.task;
 import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.TungstenModDataContainer;
 import kaptainwutax.tungsten.combat.CombatController;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * PvP task: hunt a player by name.
@@ -166,15 +166,15 @@ public class PunkPlayerTask {
 
     /** Name of the player currently being fought (null if none acquired). */
     public static String getCurrentTarget() {
-        if (targetEntity instanceof PlayerEntity && targetEntity.isAlive() && !targetEntity.isRemoved())
-            return ((PlayerEntity) targetEntity).getName().getString();
+        if (targetEntity instanceof Player && targetEntity.isAlive() && !targetEntity.isRemoved())
+            return ((Player) targetEntity).getName().getString();
         return null;
     }
 
     /** May we engage this entity under the current allow/avoid policy? */
     private static boolean isAcceptable(Entity e) {
-        if (!(e instanceof PlayerEntity) || !e.isAlive() || e.isRemoved()) return false;
-        String n = ((PlayerEntity) e).getName().getString().toLowerCase();
+        if (!(e instanceof Player) || !e.isAlive() || e.isRemoved()) return false;
+        String n = ((Player) e).getName().getString().toLowerCase();
         if (avoidTargets.contains(n)) return false;
         if (!allowTargets.isEmpty() && !allowTargets.contains(n)) return false;
         return true;
@@ -199,7 +199,7 @@ public class PunkPlayerTask {
     /** Close enough that the fight is about to start, so the sword should already be out. */
     private static final double APPROACH_ARM_RANGE_SQ = 8.0 * 8.0;
 
-    public static void tick(WorldView world, ClientPlayerEntity player) {
+    public static void tick(LevelReader world, LocalPlayer player) {
         pCalled++;
         if (!active) { pInactive++; return; }
 
@@ -313,22 +313,22 @@ public class PunkPlayerTask {
         boolean execDriving = TungstenModDataContainer.isExecutorRunning();
         if (execDriving) pEdgeSkipExec++;   // counts how often the old code switched itself off
         {
-            double vx = player.getVelocity().x, vz = player.getVelocity().z;
+            double vx = player.getDeltaMovement().x, vz = player.getDeltaMovement().z;
             double look = Math.max(1.4, Math.sqrt(vx * vx + vz * vz) * 10.0);
             // While the executor drives, only a bottomless column overrides it.
             int guardFall = execDriving ? 20 : 3;
             boolean nearEdge = kaptainwutax.tungsten.combat.VoidDetector.edgeAhead(
-                    player.getEntityPos(), vx, vz, world, guardFall, look);
-            if (player.isOnGround() && (vx * vx + vz * vz) > 0.0016 && nearEdge) {
+                    player.position(), vx, vz, world, guardFall, look);
+            if (player.onGround() && (vx * vx + vz * vz) > 0.0016 && nearEdge) {
                 pEdgeSneak++;
-                MinecraftClient.getInstance().options.sneakKey.setPressed(true);
+                Minecraft.getInstance().options.keyShift.setDown(true);
             }
             // pEdgeAir used to be read through edgeAhead, which opens with "already over a drop ->
             // not my problem" (VoidDetector.java:93) — so it could never see the fall it was added
             // to catch. Ask the world directly instead.
-            if (!player.isOnGround()
+            if (!player.onGround()
                     && kaptainwutax.tungsten.combat.VoidDetector.fallHeight(
-                            player.getEntityPos(), world) > 20) {
+                            player.position(), world) > 20) {
                 pEdgeAir++;
             }
         }
@@ -357,13 +357,13 @@ public class PunkPlayerTask {
             // forward-toward-the-enemy press would coast us off the rim before we
             // re-acquire. Release the drive keys now; the tick guard above keeps
             // sneak on if we're still sliding toward a drop.
-            MinecraftClient mc = MinecraftClient.getInstance();
-            mc.options.forwardKey.setPressed(false);
-            mc.options.backKey.setPressed(false);
-            mc.options.leftKey.setPressed(false);
-            mc.options.rightKey.setPressed(false);
-            mc.options.sprintKey.setPressed(false);
-            mc.options.jumpKey.setPressed(false);
+            Minecraft mc = Minecraft.getInstance();
+            mc.options.keyUp.setDown(false);
+            mc.options.keyDown.setDown(false);
+            mc.options.keyLeft.setDown(false);
+            mc.options.keyRight.setDown(false);
+            mc.options.keySprint.setDown(false);
+            mc.options.keyJump.setDown(false);
             return;
         }
 
@@ -372,9 +372,9 @@ public class PunkPlayerTask {
         // the bot ends up in the void too, and A* toward a void cell just spams
         // "Ran out of nodes". Hold position — immediate-respawn (and most maps)
         // put the target back up top within a second, and we re-engage then.
-        double targetDrop = player.getY() - targetEntity.getEntityPos().y;
+        double targetDrop = player.getY() - targetEntity.position().y;
         int targetFall = kaptainwutax.tungsten.combat.VoidDetector.fallHeight(
-                targetEntity.getEntityPos(), world);
+                targetEntity.position(), world);
         // NB the fall bound must mean "there is no ground down there at all", not
         // merely "it is a way down". On generated terrain a fleeing target running
         // downhill is routinely 3+ blocks below with a 6-block drop under it, and
@@ -389,20 +389,20 @@ public class PunkPlayerTask {
             // our residual momentum from the knockback kill can't coast us into
             // the void while we wait for the target to respawn. releaseKeys()
             // just cleared sneak — re-assert it (and kill any forward carry).
-            net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
-            mc.options.forwardKey.setPressed(false);
-            mc.options.sprintKey.setPressed(false);
-            mc.options.jumpKey.setPressed(false);
-            mc.options.sneakKey.setPressed(true);
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            mc.options.keyUp.setDown(false);
+            mc.options.keySprint.setDown(false);
+            mc.options.keyJump.setDown(false);
+            mc.options.keyShift.setDown(true);
             mode = Mode.APPROACH;
             return;
         }
 
-        double dist = player.getEntityPos().distanceTo(targetEntity.getEntityPos());
+        double dist = player.position().distanceTo(targetEntity.position());
         // raycast to body center — the feet point clips terrain right at the
         // target's feet and spuriously blocked combat entry on flat ground
         boolean hasLOS = FollowEntityTask.hasLineOfSight(player,
-                targetEntity.getEntityPos().add(0, targetEntity.getHeight() * 0.5, 0));
+                targetEntity.position().add(0, targetEntity.getBbHeight() * 0.5, 0));
 
         // ── mode switching ───────────────────────────────────────────────
         if (mode == Mode.APPROACH && dist < COMBAT_RANGE && hasLOS) {
@@ -436,7 +436,7 @@ public class PunkPlayerTask {
         // contact is, because then no swing is ever near a switch.
         if (kaptainwutax.tungsten.TungstenConfig.get().equipMeleeOnApproach
                 && mode != Mode.COMBAT && targetEntity != null
-                && player.squaredDistanceTo(targetEntity) <= APPROACH_ARM_RANGE_SQ) {
+                && player.distanceToSqr(targetEntity) <= APPROACH_ARM_RANGE_SQ) {
             if (kaptainwutax.tungsten.combat.WeaponSelector.equipBestMelee(player)) pArmedEarly++;
         }
 
@@ -484,24 +484,24 @@ public class PunkPlayerTask {
     // ── target discovery ─────────────────────────────────────────────────────
 
     private static void tryRediscover() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.world == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
 
         // keep the current target if it's still valid under the policy
         if (targetEntity != null && !targetEntity.isRemoved()
-                && mc.world.getEntityById(targetEntity.getId()) == targetEntity
+                && mc.level.getEntity(targetEntity.getId()) == targetEntity
                 && (anyMode ? isAcceptable(targetEntity) : targetEntity.isAlive())) {
             return;
         }
 
         if (anyMode) {
             // pick the NEAREST acceptable player (allow/avoid policy)
-            PlayerEntity self = mc.player;
-            PlayerEntity best = null;
+            Player self = mc.player;
+            Player best = null;
             double bestD = Double.MAX_VALUE;
-            for (PlayerEntity p : mc.world.getPlayers()) {
+            for (Player p : mc.level.players()) {
                 if (p == self || !isAcceptable(p)) continue;
-                double d = self.getEntityPos().distanceTo(p.getEntityPos());
+                double d = self.position().distanceTo(p.position());
                 if (d < bestD) { bestD = d; best = p; }
             }
             targetEntity = best;
@@ -511,7 +511,7 @@ public class PunkPlayerTask {
 
         // fixed single-name mode
         if (targetName == null) { targetEntity = null; return; }
-        for (PlayerEntity p : mc.world.getPlayers()) {
+        for (Player p : mc.level.players()) {
             if (p.getName().getString().equalsIgnoreCase(targetName)) {
                 targetEntity = p;
                 if (mode == Mode.APPROACH) FollowEntityTask.start(targetEntity, 1.0);

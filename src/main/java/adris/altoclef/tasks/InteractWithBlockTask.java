@@ -18,15 +18,19 @@ import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Rotation;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.*;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.FlowerBlock;
+import net.minecraft.client.Minecraft;
 import adris.altoclef.multiversion.versionedfields.Blocks;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3i;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -156,14 +160,14 @@ public class InteractWithBlockTask extends Task {
 
     private static BlockPos[] generateSides(BlockPos pos) {
         return new BlockPos[]{
-                pos.add(1,0,0),
-                pos.add(-1,0,0),
-                pos.add(0,0,1),
-                pos.add(0,0,-1),
-                pos.add(1,0,-1),
-                pos.add(1,0,1),
-                pos.add(-1,0,-1),
-                pos.add(-1,0,1)
+                pos.offset(1,0,0),
+                pos.offset(-1,0,0),
+                pos.offset(0,0,1),
+                pos.offset(0,0,-1),
+                pos.offset(1,0,-1),
+                pos.offset(1,0,1),
+                pos.offset(-1,0,-1),
+                pos.offset(-1,0,1)
         };
     }
 
@@ -191,16 +195,16 @@ public class InteractWithBlockTask extends Task {
 
     // This happens all the time in mineshafts and swamps/jungles
     private BlockPos stuckInBlock(AltoClef mod) {
-        BlockPos p = mod.getPlayer().getBlockPos();
+        BlockPos p = mod.getPlayer().blockPosition();
         if (isAnnoying(mod, p)) return p;
-        if (isAnnoying(mod, p.up())) return p.up();
+        if (isAnnoying(mod, p.above())) return p.above();
         BlockPos[] toCheck = generateSides(p);
         for (BlockPos check : toCheck) {
             if (isAnnoying(mod, check)) {
                 return check;
             }
         }
-        BlockPos[] toCheckHigh = generateSides(p.up());
+        BlockPos[] toCheckHigh = generateSides(p.above());
         for (BlockPos check : toCheckHigh) {
             if (isAnnoying(mod, check)) {
                 return check;
@@ -448,20 +452,20 @@ public class InteractWithBlockTask extends Task {
             if (!cursorStack.isEmpty()) {
                 Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
                 if (moveTo.isPresent()) {
-                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                     return ClickResponse.WAIT_FOR_CLICK;
                 }
                 if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                     return ClickResponse.WAIT_FOR_CLICK;
                 }
                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
                 // Try throwing away cursor slot if it's garbage
                 if (garbage.isPresent()) {
-                    mod.getSlotHandler().clickSlot(garbage.get(), 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                     return ClickResponse.WAIT_FOR_CLICK;
                 }
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 return ClickResponse.WAIT_FOR_CLICK;
             } else {
                 StorageHelper.closeScreen();
@@ -475,7 +479,7 @@ public class InteractWithBlockTask extends Task {
             adris.altoclef.tasks.movement.CustomBaritoneGoalTask.stopOrphanRoute();
             if (Task.diagnosticEvents != null) Task.noteDiagnostic("interaction-reachable " + target.toShortString());
             // Check if an entity (hologram, armor stand, etc.) is blocking our click
-            if (MinecraftClient.getInstance().targetedEntity != null) {
+            if (Minecraft.getInstance().crosshairPickEntity != null) {
                 // Entity in the way — need to get closer or find another angle
                 entityBlockingTicks++;
                 if (entityBlockingTicks > 20) {

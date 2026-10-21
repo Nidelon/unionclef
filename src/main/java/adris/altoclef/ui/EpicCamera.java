@@ -1,9 +1,9 @@
 package adris.altoclef.ui;
 
 import adris.altoclef.util.time.TimerReal;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 import kaptainwutax.tungsten.path.movements.Rotation;
 
 /*
@@ -54,7 +54,7 @@ public class EpicCamera {
     private static final float PITCH_INFLUENCE = 0.8f; // How much pitch affects position
 
     // Current state
-    private Vec3d lastPos = Vec3d.ZERO;
+    private Vec3 lastPos = Vec3.ZERO;
     private float lastYaw = 0;
     private float lastPitch = 0;
     private float orbitRadius = BASE_BACK;
@@ -82,14 +82,14 @@ public class EpicCamera {
     }
 
     public void adjustZoom(float scrollAmount) {
-        targetRadius = MathHelper.clamp(
+        targetRadius = Mth.clamp(
             targetRadius - scrollAmount * ZOOM_STEP,
             MIN_BACK,
             MAX_BACK
         );
     }
 
-    public CameraUpdate getUpdate(Entity focusedEntity, float tickDelta, Rotation modifierRotation, Vec3d modifierPos) {
+    public CameraUpdate getUpdate(Entity focusedEntity, float tickDelta, Rotation modifierRotation, Vec3 modifierPos) {
         if (focusedEntity == null) {
             reset();
             return null;
@@ -102,27 +102,27 @@ public class EpicCamera {
         lastUpdateTime = currentTime;
 
         // Get head position
-        Vec3d headPos = new Vec3d(
-            interpolate(focusedEntity.prevX, focusedEntity.getX(), tickDelta),
-            interpolate(focusedEntity.prevY, focusedEntity.getY(), tickDelta) + focusedEntity.getStandingEyeHeight(),
-            interpolate(focusedEntity.prevZ, focusedEntity.getZ(), tickDelta)
+        Vec3 headPos = new Vec3(
+            interpolate(focusedEntity.xo, focusedEntity.getX(), tickDelta),
+            interpolate(focusedEntity.yo, focusedEntity.getY(), tickDelta) + focusedEntity.getEyeHeight(),
+            interpolate(focusedEntity.zo, focusedEntity.getZ(), tickDelta)
         );
 
         // Get rotation angles
-        float yaw = focusedEntity.getYaw();
-        float pitch = focusedEntity.getPitch();
+        float yaw = focusedEntity.getYRot(1.0f);
+        float pitch = focusedEntity.getXRot(1.0f);
         if (modifierRotation != null) {
             if (modifierRotation.getYaw() != -500) yaw = modifierRotation.getYaw();
             if (modifierRotation.getPitch() != -500) pitch = modifierRotation.getPitch();
         }
         if (modifierPos != null) {
             // Sanity check: don't teleport camera more than 50 blocks from player
-            if (modifierPos.squaredDistanceTo(headPos) < 50 * 50) {
+            if (modifierPos.distanceToSqr(headPos) < 50 * 50) {
                 headPos = modifierPos;
             }
         }
         // Smooth orbit radius
-        orbitRadius = MathHelper.lerp(smoothFactor, orbitRadius, targetRadius);
+        orbitRadius = Mth.lerp(smoothFactor, orbitRadius, targetRadius);
 
         // Calculate orbital position
         float pitchRad = (float) Math.toRadians(pitch);
@@ -150,22 +150,22 @@ public class EpicCamera {
             heightOffset = BASE_UP + (orbitRadius * 0.1f * pitchFactor);
         }
         // Calculate the final position with corrected xOffset
-        Vec3d orbitPos = new Vec3d(
+        Vec3 orbitPos = new Vec3(
             Math.sin(yawRad) * xOffset,
             heightOffset,
             -Math.cos(yawRad) * xOffset
         );
 
         // Add right shoulder offset
-        Vec3d rightOffset = new Vec3d(
+        Vec3 rightOffset = new Vec3(
             Math.cos(yawRad) * BASE_RIGHT,
             0,
             Math.sin(yawRad) * BASE_RIGHT
         );
 
         // Combine all offsets
-        Vec3d targetPos;
-        if (_lastPosTimer.elapsed() || lastPos == null || lastPos == Vec3d.ZERO) {
+        Vec3 targetPos;
+        if (_lastPosTimer.elapsed() || lastPos == null || lastPos == Vec3.ZERO) {
             targetPos = headPos.add(orbitPos).add(rightOffset);
         } else {
             yaw = lastYaw;
@@ -174,7 +174,7 @@ public class EpicCamera {
         }
 
         // Initialize or apply smooth transitions
-        if (lastPos == Vec3d.ZERO) {
+        if (lastPos == Vec3.ZERO) {
             lastPos = targetPos;
             lastYaw = yaw;
             lastPitch = pitch;
@@ -182,10 +182,10 @@ public class EpicCamera {
         }
 
         // Smooth position
-        Vec3d smoothedPos = new Vec3d(
-            MathHelper.lerp(smoothFactor, lastPos.x, targetPos.x),
-            MathHelper.lerp(smoothFactor, lastPos.y, targetPos.y),
-            MathHelper.lerp(smoothFactor, lastPos.z, targetPos.z)
+        Vec3 smoothedPos = new Vec3(
+            Mth.lerp(smoothFactor, lastPos.x, targetPos.x),
+            Mth.lerp(smoothFactor, lastPos.y, targetPos.y),
+            Mth.lerp(smoothFactor, lastPos.z, targetPos.z)
         );
 
         // Smooth rotation
@@ -194,7 +194,7 @@ public class EpicCamera {
         while (deltaYaw < -180.0f) deltaYaw += 360.0f;
 
         float smoothedYaw = lastYaw + deltaYaw * smoothFactor;
-        float smoothedPitch = MathHelper.lerp(smoothFactor, lastPitch, pitch);
+        float smoothedPitch = Mth.lerp(smoothFactor, lastPitch, pitch);
 
         // Update state
         lastPos = smoothedPos;
@@ -204,7 +204,7 @@ public class EpicCamera {
         return new CameraUpdate(smoothedPos, smoothedYaw, smoothedPitch);
     }
 
-    public static Vec3d getRelativePosition(Vec3d pos, float pitch, float yaw, Vec3d offset) {
+    public static Vec3 getRelativePosition(Vec3 pos, float pitch, float yaw, Vec3 offset) {
         float pitchRad = (float) Math.toRadians(pitch);
         float yawRad = (float) Math.toRadians(yaw);
 
@@ -212,7 +212,7 @@ public class EpicCamera {
         double y = pos.y + offset.y * Math.cos(pitchRad) - offset.x * Math.sin(pitchRad);
         double z = pos.z + offset.x * Math.sin(yawRad) * Math.cos(pitchRad) + offset.z * Math.cos(yawRad);
 
-        return new Vec3d(x, y, z);
+        return new Vec3(x, y, z);
     }
 
     private double interpolate(double prev, double current, float tickDelta) {
@@ -220,23 +220,23 @@ public class EpicCamera {
     }
 
     public void reset() {
-        lastPos = Vec3d.ZERO;
+        lastPos = Vec3.ZERO;
         lastUpdateTime = System.currentTimeMillis();
         orbitRadius = targetRadius;
     }
 
     public static class CameraUpdate {
-        private final Vec3d position;
+        private final Vec3 position;
         private final float yaw;
         private final float pitch;
 
-        public CameraUpdate(Vec3d position, float yaw, float pitch) {
+        public CameraUpdate(Vec3 position, float yaw, float pitch) {
             this.position = position;
             this.yaw = yaw;
             this.pitch = pitch;
         }
 
-        public Vec3d getPosition() { return position; }
+        public Vec3 getPosition() { return position; }
         public float getYaw() { return yaw; }
         public float getPitch() { return pitch; }
     }

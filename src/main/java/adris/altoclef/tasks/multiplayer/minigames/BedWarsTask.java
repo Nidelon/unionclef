@@ -21,19 +21,19 @@ import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerReal;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.component.type.DyedColorComponent;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.passive.VillagerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.item.component.DyedItemColor;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.core.BlockPos;
 import adris.altoclef.multiversion.ColorHelperVer;
 import java.util.*;
 
@@ -224,7 +224,7 @@ public class BedWarsTask extends Task {
                 }
             } else if (!ownBedDestroyed) {
                 Optional<BlockPos> bedPosOpt = mod.getBlockScanner().getNearestBlock(ourBedBlock);
-                if (bedPosOpt.isEmpty() && mod.getPlayer().getPos().distanceTo(bedPos.toCenterPos()) < 25) {
+                if (bedPosOpt.isEmpty() && mod.getPlayer().position().distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(bedPos)) < 25) {
                     ownBedDestroyed = true;
                 }
             }
@@ -233,10 +233,10 @@ public class BedWarsTask extends Task {
         // --- ALWAYS allowed: bed protection (enemy near our bed) ---
         if (bedPos != null && !ownBedDestroyed) {
             Optional<Entity> closestEnemyNearBed = mod.getEntityTracker().getClosestEntity(
-                    bedPos.toCenterPos(),
+                    net.minecraft.world.phys.Vec3.atCenterOf(bedPos),
                     toPunk -> isValidEnemy(toPunk)
-                            && toPunk.getPos().isInRange(bedPos.toCenterPos(), BED_PROTECT_RADIUS),
-                    PlayerEntity.class);
+                            && toPunk.position().closerThan(net.minecraft.world.phys.Vec3.atCenterOf(bedPos), BED_PROTECT_RADIUS),
+                    Player.class);
             if (closestEnemyNearBed.isPresent()) {
                 Entity enemy = closestEnemyNearBed.get();
                 setDebugState("PROTECTING BED FROM " + enemy.getName().getString());
@@ -246,12 +246,12 @@ public class BedWarsTask extends Task {
 
         // --- ALWAYS allowed: self-defense (enemy within 5 blocks) ---
         Optional<Entity> closestEnemy = mod.getEntityTracker().getClosestEntity(
-                mod.getPlayer().getPos(),
+                mod.getPlayer().position(),
                 toPunk -> isValidEnemy(toPunk),
-                PlayerEntity.class);
+                Player.class);
         if (closestEnemy.isPresent()) {
             Entity enemy = closestEnemy.get();
-            double range = mod.getPlayer().getPos().distanceTo(enemy.getPos());
+            double range = mod.getPlayer().position().distanceTo(enemy.position());
             if (range <= 5) {
                 setDebugState("Self-defense: " + enemy.getName().getString());
                 return new TungstenPunkTask(enemy.getName().getString());
@@ -275,7 +275,7 @@ public class BedWarsTask extends Task {
             if (!toBuy.isEmpty()) {
                 Slot slot = getSlotShopBW(mod, false, toBuy.toArray(Item[]::new));
                 if (slot != null) {
-                    mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP);
                     return null;
                 } else {
                     shopCooldown.reset();
@@ -310,7 +310,7 @@ public class BedWarsTask extends Task {
             if (mod.getEntityTracker().itemDropped(check)) {
                 Optional<ItemEntity> closestEnt = mod.getEntityTracker().getClosestItemDrop(
                         ent -> mod.getEntityTracker().isEntityReachable(ent)
-                                && mod.getPlayer().getPos().isInRange(ent.getEyePos(), lootRadius),
+                                && mod.getPlayer().position().closerThan(ent.getEyePosition(), lootRadius),
                         check);
                 if (closestEnt.isPresent()) {
                     setDebugState("Resource collecting" + (hasMinGear ? " (nearby)" : ""));
@@ -337,8 +337,8 @@ public class BedWarsTask extends Task {
         // --- Enemy bed destruction (expanded radius) ---
         if (teamDetermined) {
             Optional<BlockPos> enemyBedPosOpt = mod.getBlockScanner().getNearestBlock(
-                    mod.getPlayer().getPos(),
-                    to -> to.isWithinDistance(mod.getPlayer().getBlockPos(), ENEMY_BED_SEARCH_RADIUS),
+                    mod.getPlayer().position(),
+                    to -> to.closerThan(mod.getPlayer().blockPosition(), ENEMY_BED_SEARCH_RADIUS),
                     enemyBedBlocks != null ? enemyBedBlocks.toArray(Block[]::new) : new Block[0]);
             if (enemyBedPosOpt.isPresent()) {
                 BlockPos enemyBedPos = enemyBedPosOpt.get();
@@ -350,7 +350,7 @@ public class BedWarsTask extends Task {
         // --- Combat (full range) ---
         if (closestEnemy.isPresent()) {
             Entity enemy = closestEnemy.get();
-            double range = mod.getPlayer().getPos().distanceTo(enemy.getPos());
+            double range = mod.getPlayer().position().distanceTo(enemy.position());
             if (range <= 20) {
                 setDebugState("Attacking enemy: " + enemy.getName().getString());
                 return new TungstenPunkTask(enemy.getName().getString());
@@ -405,10 +405,10 @@ public class BedWarsTask extends Task {
         for (Item resource : new Item[]{Items.IRON_INGOT, Items.GOLD_INGOT, Items.DIAMOND, Items.EMERALD}) {
             if (mod.getEntityTracker().itemDropped(resource)) {
                 Optional<ItemEntity> drop = mod.getEntityTracker().getClosestItemDrop(
-                        ent -> mod.getPlayer().getPos().isInRange(ent.getPos(), 30),
+                        ent -> mod.getPlayer().position().closerThan(ent.position(), 30),
                         resource);
                 if (drop.isPresent()) {
-                    BlockPos dropPos = drop.get().getBlockPos();
+                    BlockPos dropPos = drop.get().blockPosition();
                     // Merge with nearby known spawns
                     BlockPos mergedPos = findNearbySpawn(dropPos);
                     if (mergedPos != null) {
@@ -428,7 +428,7 @@ public class BedWarsTask extends Task {
 
     private BlockPos findNearbySpawn(BlockPos pos) {
         for (BlockPos known : resourceSpawnCounts.keySet()) {
-            if (known.isWithinDistance(pos, RESOURCE_SPAWN_MERGE_RADIUS)) {
+            if (known.closerThan(pos, RESOURCE_SPAWN_MERGE_RADIUS)) {
                 return known;
             }
         }
@@ -442,7 +442,7 @@ public class BedWarsTask extends Task {
         BlockPos closest = null;
         double closestDist = Double.MAX_VALUE;
         for (BlockPos spawn : confirmedResourceSpawns) {
-            double dist = spawn.getSquaredDistance(mod.getPlayer().getPos());
+            double dist = spawn.distSqr(BlockPos.containing(mod.getPlayer().position()));
             if (dist < closestDist) {
                 closestDist = dist;
                 closest = spawn;
@@ -469,12 +469,12 @@ public class BedWarsTask extends Task {
         if (!hasBasicNeeds(mod)) return null;
 
         Optional<Entity> teammate = mod.getEntityTracker().getClosestEntity(
-                mod.getPlayer().getPos(),
-                entity -> entity instanceof PlayerEntity player
+                mod.getPlayer().position(),
+                entity -> entity instanceof Player player
                         && inOurTeam(player)
                         && !player.equals(mod.getPlayer())
-                        && player.getPos().isInRange(mod.getPlayer().getPos(), TEAMMATE_FOLLOW_RADIUS),
-                PlayerEntity.class);
+                        && player.position().closerThan(mod.getPlayer().position(), TEAMMATE_FOLLOW_RADIUS),
+                Player.class);
 
         if (teammate.isPresent()) {
             setDebugState("Following teammate: " + teammate.get().getName().getString());
@@ -498,23 +498,23 @@ public class BedWarsTask extends Task {
     private Task goToShop(AltoClef mod) {
         return new DoToClosestEntityTask(
                 entity -> {
-                    if (entity.isInRange(mod.getPlayer(), 3)) {
+                    if (entity.closerThan(mod.getPlayer(), 3)) {
                         if (LookHelper.canHitEntity(mod, entity)) {
                             setDebugState("Found villager: " + entity.getName().getString());
                             LookHelper.smoothLookAt(mod, entity);
-                            mod.getController().interactEntity(mod.getPlayer(), entity, Hand.MAIN_HAND);
+                            mod.getController().interact(mod.getPlayer(), entity, null, InteractionHand.MAIN_HAND);
                             preShopTimer.reset();
                             inShop = false;
                             return null;
                         } else {
-                            return new GetCloseToBlockTask(entity.getBlockPos());
+                            return new GetCloseToBlockTask(entity.blockPosition());
                         }
                     } else {
                         return new GetToEntityTask(entity, 2);
                     }
                 },
                 entity -> isValidTrader(entity, mod),
-                VillagerEntity.class
+                Villager.class
         );
     }
 
@@ -528,8 +528,8 @@ public class BedWarsTask extends Task {
         boolean enemyBedNearby = false;
         if (enemyBedBlocks != null) {
             Optional<BlockPos> nearbyEnemy = mod.getBlockScanner().getNearestBlock(
-                    mod.getPlayer().getPos(),
-                    to -> to.isWithinDistance(mod.getPlayer().getBlockPos(), 40),
+                    mod.getPlayer().position(),
+                    to -> to.closerThan(mod.getPlayer().blockPosition(), 40),
                     enemyBedBlocks.toArray(Block[]::new));
             enemyBedNearby = nearbyEnemy.isPresent();
         }
@@ -541,12 +541,12 @@ public class BedWarsTask extends Task {
 
         // Check if teammate is too close to bed (covering already?)
         Optional<Entity> teammateAtBed = mod.getEntityTracker().getClosestEntity(
-                bedPos.toCenterPos(),
-                entity -> entity instanceof PlayerEntity player
+                net.minecraft.world.phys.Vec3.atCenterOf(bedPos),
+                entity -> entity instanceof Player player
                         && inOurTeam(player)
                         && !player.equals(mod.getPlayer())
-                        && player.getPos().isInRange(bedPos.toCenterPos(), 2.5),
-                PlayerEntity.class);
+                        && player.position().closerThan(net.minecraft.world.phys.Vec3.atCenterOf(bedPos), 2.5),
+                Player.class);
         if (teammateAtBed.isPresent()) {
             if (bedCoverTeammateTimeoutTicks < BED_COVER_TEAMMATE_TIMEOUT_TICKS) {
                 bedCoverTeammateTimeoutTicks++;
@@ -575,7 +575,7 @@ public class BedWarsTask extends Task {
             for (int dy = -1; dy <= 2; dy++) {
                 for (int dz = -1; dz <= 1; dz++) {
                     if (dx == 0 && dy == 0 && dz == 0) continue; // bed itself
-                    BlockPos check = bedPos.add(dx, dy, dz);
+                    BlockPos check = bedPos.offset(dx, dy, dz);
                     if (mod.getWorld().getBlockState(check).isAir()) {
                         candidates.add(check);
                     }
@@ -592,8 +592,8 @@ public class BedWarsTask extends Task {
             int bAbove = b.getY() > bedPos.getY() ? 0 : 1;
             if (aAbove != bAbove) return aAbove - bAbove;
             // Then closest
-            double aDist = a.getSquaredDistance(mod.getPlayer().getPos());
-            double bDist = b.getSquaredDistance(mod.getPlayer().getPos());
+            double aDist = a.distSqr(BlockPos.containing(mod.getPlayer().position()));
+            double bDist = b.distSqr(BlockPos.containing(mod.getPlayer().position()));
             return Double.compare(aDist, bDist);
         });
 
@@ -666,13 +666,13 @@ public class BedWarsTask extends Task {
 
     // ========== Helpers ==========
 
-    public boolean inOurTeam(PlayerEntity player) {
+    public boolean inOurTeam(Player player) {
         int color = getHelmetColor(player);
         return ourColor == color && color != -1;
     }
 
     protected boolean isValidEnemy(Entity entity) {
-        return entity instanceof PlayerEntity player && !inOurTeam(player)
+        return entity instanceof Player player && !inOurTeam(player)
                 && MurderMysteryTask.isValidPlayerMM(player);
     }
 
@@ -729,22 +729,22 @@ public class BedWarsTask extends Task {
 
     public static final Map<String, Block> BEDWARS_BED_COLORS = new HashMap<>();
     static {
-        BEDWARS_BED_COLORS.put("red", Blocks.RED_BED);
-        BEDWARS_BED_COLORS.put("yellow", Blocks.YELLOW_BED);
-        BEDWARS_BED_COLORS.put("orange", Blocks.ORANGE_BED);
-        BEDWARS_BED_COLORS.put("green", Blocks.GREEN_BED);
-        BEDWARS_BED_COLORS.put("gray", Blocks.GRAY_BED);
-        BEDWARS_BED_COLORS.put("cyan", Blocks.CYAN_BED);
-        BEDWARS_BED_COLORS.put("blue", Blocks.BLUE_BED);
-        BEDWARS_BED_COLORS.put("light_blue", Blocks.LIGHT_BLUE_BED);
-        BEDWARS_BED_COLORS.put("pink", Blocks.PINK_BED);
-        BEDWARS_BED_COLORS.put("white", Blocks.WHITE_BED);
-        BEDWARS_BED_COLORS.put("black", Blocks.BLACK_BED);
-        BEDWARS_BED_COLORS.put("brown", Blocks.BROWN_BED);
-        BEDWARS_BED_COLORS.put("lime", Blocks.LIME_BED);
-        BEDWARS_BED_COLORS.put("magenta", Blocks.MAGENTA_BED);
-        BEDWARS_BED_COLORS.put("light_gray", Blocks.LIGHT_GRAY_BED);
-        BEDWARS_BED_COLORS.put("purple", Blocks.PURPLE_BED);
+        BEDWARS_BED_COLORS.put("red", Blocks.BED.red());
+        BEDWARS_BED_COLORS.put("yellow", Blocks.BED.yellow());
+        BEDWARS_BED_COLORS.put("orange", Blocks.BED.orange());
+        BEDWARS_BED_COLORS.put("green", Blocks.BED.green());
+        BEDWARS_BED_COLORS.put("gray", Blocks.BED.gray());
+        BEDWARS_BED_COLORS.put("cyan", Blocks.BED.cyan());
+        BEDWARS_BED_COLORS.put("blue", Blocks.BED.blue());
+        BEDWARS_BED_COLORS.put("light_blue", Blocks.BED.lightBlue());
+        BEDWARS_BED_COLORS.put("pink", Blocks.BED.pink());
+        BEDWARS_BED_COLORS.put("white", Blocks.BED.white());
+        BEDWARS_BED_COLORS.put("black", Blocks.BED.black());
+        BEDWARS_BED_COLORS.put("brown", Blocks.BED.brown());
+        BEDWARS_BED_COLORS.put("lime", Blocks.BED.lime());
+        BEDWARS_BED_COLORS.put("magenta", Blocks.BED.magenta());
+        BEDWARS_BED_COLORS.put("light_gray", Blocks.BED.lightGray());
+        BEDWARS_BED_COLORS.put("purple", Blocks.BED.purple());
     }
 
     public String getClosestColorName(int rgb) {
@@ -772,14 +772,14 @@ public class BedWarsTask extends Task {
         return closestColorName;
     }
 
-    public int getHelmetColor(PlayerEntity player) {
+    public int getHelmetColor(Player player) {
         //#if MC >= 12111
-        //$$ for (ItemStack itemStack : java.util.List.of(player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), player.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST), player.getEquippedStack(net.minecraft.entity.EquipmentSlot.LEGS), player.getEquippedStack(net.minecraft.entity.EquipmentSlot.FEET))) {
+        //$$ for (ItemStack itemStack : java.util.List.of(player.getEquippedStack(net.minecraft.world.entity.EquipmentSlot.HEAD), player.getEquippedStack(net.minecraft.world.entity.EquipmentSlot.CHEST), player.getEquippedStack(net.minecraft.world.entity.EquipmentSlot.LEGS), player.getEquippedStack(net.minecraft.world.entity.EquipmentSlot.FEET))) {
         //#else
-        for (ItemStack itemStack : player.getArmorItems()) {
+        for (ItemStack itemStack : adris.altoclef.multiversion.entity.EntityVer.getArmorItems(player)) {
         //#endif
-            if (itemStack.isOf(Items.LEATHER_HELMET)) {
-                return DyedColorComponent.getColor(itemStack, DyedColorComponent.DEFAULT_COLOR);
+            if (itemStack.is(Items.LEATHER_HELMET)) {
+                return DyedItemColor.getOrDefault(itemStack, DyedItemColor.LEATHER_COLOR);
             }
         }
         return -1;

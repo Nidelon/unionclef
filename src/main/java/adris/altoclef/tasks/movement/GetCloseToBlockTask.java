@@ -2,7 +2,7 @@ package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 
 /**
  * Approaching a block can be done easily with baritone
@@ -44,13 +44,13 @@ public class GetCloseToBlockTask extends Task {
     }
 
     private int getCurrentDistance() {
-        return (int) Math.sqrt(AltoClef.getInstance().getPlayer().getBlockPos().getSquaredDistance(_toApproach));
+        return (int) Math.sqrt(AltoClef.getInstance().getPlayer().blockPosition().distSqr(_toApproach));
     }
 
     private boolean inRange() {
         // The initial MAX_VALUE radius must cover every target. Integer
         // multiplication wraps its square to 1 and prevents the first approach.
-        return AltoClef.getInstance().getPlayer().getBlockPos().getSquaredDistance(_toApproach)
+        return AltoClef.getInstance().getPlayer().blockPosition().distSqr(_toApproach)
                 <= (double) _currentRange * _currentRange;
     }
 

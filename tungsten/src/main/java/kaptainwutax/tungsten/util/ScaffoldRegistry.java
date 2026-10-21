@@ -1,6 +1,6 @@
 package kaptainwutax.tungsten.util;
 
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,7 +22,7 @@ public final class ScaffoldRegistry {
     private ScaffoldRegistry() {}
 
     public static synchronized void record(BlockPos p) {
-        if (p != null) placed.add(p.toImmutable());
+        if (p != null) placed.add(p.immutable());
     }
 
     /** Snapshot of scaffold blocks, HIGHEST Y first (mine top-down so removing a support
@@ -37,5 +37,5 @@ public final class ScaffoldRegistry {
 
     public static synchronized void clear() { placed.clear(); }
 
-    public static synchronized void remove(BlockPos p) { if (p != null) placed.remove(p.toImmutable()); }
+    public static synchronized void remove(BlockPos p) { if (p != null) placed.remove(p.immutable()); }
 }

@@ -3,8 +3,8 @@ package kaptainwutax.tungsten.path.movements;
 import com.google.common.collect.ImmutableSet;
 import java.util.Set;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Port of {@code baritone/pathing/movement/movements/MovementDiagonal.java} — ONE step across a
@@ -25,8 +25,8 @@ import net.minecraft.world.WorldView;
 public class MovementDiagonal extends Movement {
 
     /**
-     * MovementDiagonal.java:55. {@code positionsToBreak = {dir1, dir1.up(), dir2, dir2.up(), end,
-     * end.up()}} — the two corner columns and the destination column. No {@code positionToPlace}:
+     * MovementDiagonal.java:55. {@code positionsToBreak = {dir1, dir1.above(), dir2, dir2.above(), end,
+     * end.above()}} — the two corner columns and the destination column. No {@code positionToPlace}:
      * a diagonal builds nothing.
      */
     public MovementDiagonal(BetterBlockPos start, BetterBlockPos end) {
@@ -77,8 +77,8 @@ public class MovementDiagonal extends Movement {
             return state;
         }
 
-        PlayerEntity player = ctx.player();
-        WorldView world = player.getEntityWorld();
+        Player player = ctx.player();
+        LevelReader world = player.level();
 
         if (ctx.playerFeet().equals(dest)) {
             return state.setStatus(MovementStatus.SUCCESS);
@@ -89,7 +89,7 @@ public class MovementDiagonal extends Movement {
         }
         // Walking into a corner while stepping up needs a jump; horizontalCollision is what says
         // the body is actually against something rather than merely near it.
-        if (dest.getY() > src.getY() && player.getEntityPos().y < src.getY() + 0.1
+        if (dest.getY() > src.getY() && player.position().y < src.getY() + 0.1
                 && player.horizontalCollision) {
             state.setInput(Input.JUMP, true);
         }
@@ -126,8 +126,8 @@ public class MovementDiagonal extends Movement {
         // horizontal position and nothing else; a diagonal that has not moved in x or z for two
         // seconds is not going to.
         if (kaptainwutax.tungsten.TungstenConfig.get().diagonalGivesUpWhenWalled) {
-            double px = player.getEntityPos().x;
-            double pz = player.getEntityPos().z;
+            double px = player.position().x;
+            double pz = player.position().z;
             if (Math.abs(px - lastX) < 0.05 && Math.abs(pz - lastZ) < 0.05) {
                 if (++walledTicks > WALLED_LIMIT) {
                     diagonalWalled++;
@@ -151,7 +151,7 @@ public class MovementDiagonal extends Movement {
      * corner at sprint speed is how a diagonal turns into a collision.
      */
     private boolean sprint() {
-        WorldView world = ctx.player().getEntityWorld();
+        LevelReader world = ctx.player().level();
         if (MovementHelperB.isLiquid(world, ctx.playerFeet())) {
             return false;
         }
@@ -171,11 +171,11 @@ public class MovementDiagonal extends Movement {
      * needed mining.
      */
     @Override
-    public java.util.List<net.minecraft.util.math.BlockPos> toBreak(WorldView bsi) {
+    public java.util.List<net.minecraft.core.BlockPos> toBreak(LevelReader bsi) {
         if (toBreakCached != null) {
             return toBreakCached;
         }
-        java.util.List<net.minecraft.util.math.BlockPos> result = new java.util.ArrayList<>();
+        java.util.List<net.minecraft.core.BlockPos> result = new java.util.ArrayList<>();
         for (int i = 4; i < 6; i++) {
             if (!MovementHelperB.canWalkThrough(bsi, positionsToBreak[i])) {
                 result.add(positionsToBreak[i]);
@@ -187,7 +187,7 @@ public class MovementDiagonal extends Movement {
 
     /** MovementDiagonal.java:309-322: the corner columns are cells we WALK INTO, not break. */
     @Override
-    public java.util.List<net.minecraft.util.math.BlockPos> toWalkInto(WorldView bsi) {
+    public java.util.List<net.minecraft.core.BlockPos> toWalkInto(LevelReader bsi) {
         if (toWalkIntoCached == null) {
             toWalkIntoCached = new java.util.ArrayList<>();
         }

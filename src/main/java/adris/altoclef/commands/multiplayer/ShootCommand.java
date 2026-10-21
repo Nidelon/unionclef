@@ -7,7 +7,7 @@ import adris.altoclef.commandsystem.args.PlayerArg;
 import adris.altoclef.commandsystem.exception.CommandException;
 import adris.altoclef.commandsystem.exception.RuntimeCommandException;
 import adris.altoclef.tasks.entity.ShootArrowSimpleProjectileTask;
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 
 import java.util.Optional;
 

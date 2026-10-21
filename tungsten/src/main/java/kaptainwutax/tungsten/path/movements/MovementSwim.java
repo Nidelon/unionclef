@@ -3,9 +3,9 @@ package kaptainwutax.tungsten.path.movements;
 import com.google.common.collect.ImmutableSet;
 import java.util.Set;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * A step taken in liquid: swim across, swim up to the surface, or dive.
@@ -61,7 +61,7 @@ public class MovementSwim extends Movement {
 
     /** A stroke, priced in ticks, so the queue's timeout is a backstop rather than the limit. */
     @Override
-    public double calculateCost(WorldView world, ClientPlayerEntity player) {
+    public double calculateCost(LevelReader world, LocalPlayer player) {
         return 20.0;
     }
 
@@ -90,8 +90,8 @@ public class MovementSwim extends Movement {
 
     @Override
     protected void updateWaterInputs(MovementState state) {
-        PlayerEntity player = ctx.player();
-        if (!player.isTouchingWater()) return;
+        Player player = ctx.player();
+        if (!player.isInWater()) return;
         // ⛔ ONTO LAND YOU HOP (G99c, 2026-09-16, found by resuming the post-run2 checkpoint).
         // At the lip of the pool the body stands on the bank's edge with half its box in a
         // FLOWING water cell: vanilla then moves it at swim speed, the current pushes it back,
@@ -113,8 +113,8 @@ public class MovementSwim extends Movement {
                 || !kaptainwutax.tungsten.helpers.PlayerFit.bodyFits(ctx.world(),
                     dest.getX() + 0.5, targetY, dest.getZ() + 0.5);
         if (constrained) targetY = dest.getY();
-        state.setInput(Input.JUMP, player.getEntityPos().y < targetY);
-        state.setInput(Input.SNEAK, constrained && player.getEntityPos().y > targetY + 0.1);
+        state.setInput(Input.JUMP, player.position().y < targetY);
+        state.setInput(Input.SNEAK, constrained && player.position().y > targetY + 0.1);
     }
 
     @Override
@@ -123,12 +123,12 @@ public class MovementSwim extends Movement {
         if (state.getStatus() != MovementStatus.RUNNING) {
             return state;
         }
-        PlayerEntity player = ctx.player();
+        Player player = ctx.player();
 
         // A level stroke tolerates vertical bobbing within the destination column.
-        double dx = player.getEntityPos().x - (dest.getX() + 0.5);
-        double dy = player.getEntityPos().y - dest.getY();
-        double dz = player.getEntityPos().z - (dest.getZ() + 0.5);
+        double dx = player.position().x - (dest.getX() + 0.5);
+        double dy = player.position().y - dest.getY();
+        double dz = player.position().z - (dest.getZ() + 0.5);
         double distSq = dx * dx + dy * dy + dz * dz;
         // ⛔ ...UNLESS THE DESTINATION IS LAND (G99, 2026-09-16). The 0.6 tolerance is for a
         // body bobbing between two WATER cells. For the stroke out of the water it declared
@@ -145,7 +145,7 @@ public class MovementSwim extends Movement {
         // the water cell (G99c).
         BetterBlockPos feet = ctx.playerFeet();
         boolean landArrived = feet.equals(dest)
-                && (!player.isTouchingWater() || dx * dx + dz * dz < 0.09);
+                && (!player.isInWater() || dx * dx + dz * dz < 0.09);
         // Port baritone/.../movements/MovementTraverse.java:248-260: a horizontal step must enter
         // its destination before SUCCESS. In the empty tunnel, x=1.95646 is still in src1 but
         // within 0.6 of dest2's centre. The old radius consumed that stroke, then the next stroke
@@ -178,8 +178,8 @@ public class MovementSwim extends Movement {
         // carry it up and out (and dive actively when the dest is below). (2026-09-11)
         if (kaptainwutax.tungsten.TungstenConfig.get().swimAimsAtDestPitch) {
             Rotation cur = RotationHelper.playerRotations(player);
-            net.minecraft.util.math.Vec3d head = RotationHelper.playerHead(player);
-            net.minecraft.util.math.Vec3d centre = RotationHelper.getBlockPosCenter(dest);
+            net.minecraft.world.phys.Vec3 head = RotationHelper.playerHead(player);
+            net.minecraft.world.phys.Vec3 centre = RotationHelper.getBlockPosCenter(dest);
             // ⛔ A LEVEL STROKE LOOKS LEVEL (G64, 2026-09-12). The centre of the destination CELL
             // is at the feet's height; from the head, a block and a half up, that is a look of
             // forty to sixty degrees DOWN for a stroke to the cell beside us -- and in water the
@@ -192,10 +192,10 @@ public class MovementSwim extends Movement {
             // So the aim point is where the HEAD will be, not where the feet will be, for any
             // stroke that is not a dive: level or rising, look level at the destination column and
             // let JUMP do the rising. A dive keeps the cell centre -- looking down is the dive.
-            double eyeLift = head.y - player.getEntityPos().y;
-            net.minecraft.util.math.Vec3d aimAt = dest.getY() < src.getY()
+            double eyeLift = head.y - player.position().y;
+            net.minecraft.world.phys.Vec3 aimAt = dest.getY() < src.getY()
                     ? centre
-                    : new net.minecraft.util.math.Vec3d(centre.x, dest.getY() + eyeLift, centre.z);
+                    : new net.minecraft.world.phys.Vec3(centre.x, dest.getY() + eyeLift, centre.z);
             if (dest.getY() >= src.getY()) swimLevelAimTicks++;
             Rotation aim = RotationHelper.calcRotationFromVec3d(head, aimAt, cur);
             state.setTarget(new MovementState.MovementTarget(aim, false))

@@ -7,11 +7,11 @@ import adris.altoclef.tasks.construction.PlaceBlockTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.WorldHelper;
 import kaptainwutax.tungsten.path.RouteHazards;
-import net.minecraft.block.Block;
-import net.minecraft.item.Item;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.item.Item;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -81,9 +81,9 @@ public class NightShelterTask extends Task {
     @Override
     protected Task onTick() {
         AltoClef mod = AltoClef.getInstance();
-        World world = mod.getWorld();
+        Level world = mod.getWorld();
         holding = false;
-        BlockPos feet = mod.getPlayer().getBlockPos();
+        BlockPos feet = mod.getPlayer().blockPosition();
 
         if (committed && top != null && floods(world, top)) {
             committed = false;   // water or lava reached the shaft: pick somewhere else
@@ -97,21 +97,21 @@ public class NightShelterTask extends Task {
         if (top == null) {
             // Revalidate the real destination before the first dig: an approach can
             // remove one of its walls. A snapshot is for routing, never a dig permit.
-            if (mod.getPlayer().isOnGround() && siteHolds(world, feet)) {
-                top = feet.toImmutable();
+            if (mod.getPlayer().onGround() && siteHolds(world, feet)) {
+                top = feet.immutable();
                 approach = null;
                 Debug.logMessage("Night shelter at " + top.toShortString());
             } else {
-                if (approach != null && approach.contains(feet) && mod.getPlayer().isOnGround()) {
+                if (approach != null && approach.contains(feet) && mod.getPlayer().onGround()) {
                     approach = null; // reached a site that no longer passes the live predicate
                 }
-                if ((approach == null || !approach.ownsRoute()) && world.getTime() >= nextSiteScanTick) {
+                if ((approach == null || !approach.ownsRoute()) && world.getGameTime() >= nextSiteScanTick) {
                     List<BlockPos> sites = pickSites(world, feet);
                     // baritone/src/main/java/baritone/process/GetToBlockProcess.java:103-108 refreshes destinations
                     // during a goal. Refresh when our search finishes, preserving an ongoing
                     // route. The enclosed-site control otherwise retried one stale cell even
                     // after a reachable site appeared; Unstuck merely hid it by restarting us.
-                    nextSiteScanTick = world.getTime() + 20;
+                    nextSiteScanTick = world.getGameTime() + 20;
                     if (sites.isEmpty()) {
                         approach = null;
                     } else {
@@ -128,7 +128,7 @@ public class NightShelterTask extends Task {
                 return approach;
             }
         }
-        BlockPos cap = top.down(), bottom = top.down(DEPTH);
+        BlockPos cap = top.below(), bottom = top.below(DEPTH);
         if (feet.getX() != top.getX() || feet.getZ() != top.getZ()
                 || feet.getY() > top.getY() || feet.getY() < bottom.getY()) {
             setDebugState("Going to dig in for the night at " + top.toShortString());
@@ -138,10 +138,10 @@ public class NightShelterTask extends Task {
         // the goal: full54 dug its own cap out, put it back, dug it out again, for eight minutes.
         if (!feet.equals(bottom)) {
             for (int d = 1; d <= DEPTH; d++) {
-                if (solid(world, top.down(d))) {
+                if (solid(world, top.below(d))) {
                     committed = true;
                     setDebugState("Digging in for the night");
-                    return new DestroyBlockTask(top.down(d));
+                    return new DestroyBlockTask(top.below(d));
                 }
             }
         }
@@ -150,7 +150,7 @@ public class NightShelterTask extends Task {
             return new GetToBlockTask(bottom);
         }
         holding = true;
-        if (world.getBlockState(cap).isReplaceable()) {
+        if (world.getBlockState(cap).canBeReplaced()) {
             setDebugState("Closing the shelter");
             return new PlaceBlockTask(cap, new Block[0], true, false);
         }
@@ -158,29 +158,29 @@ public class NightShelterTask extends Task {
         return null;
     }
 
-    private static boolean floods(World world, BlockPos top) {
+    private static boolean floods(Level world, BlockPos top) {
         for (int d = 0; d <= DEPTH; d++) {
-            if (!world.getFluidState(top.down(d)).isEmpty()) return true;
+            if (!world.getFluidState(top.below(d)).isEmpty()) return true;
         }
         return false;
     }
 
     /** Diagnostic nearest valid site; execution searches all candidates for reachability. */
-    private static BlockPos pickSite(World world, BlockPos from) {
+    private static BlockPos pickSite(Level world, BlockPos from) {
         return pickSites(world, from).stream()
-                .min(Comparator.comparingDouble(p -> p.getSquaredDistance(from))).orElse(null);
+                .min(Comparator.comparingDouble(p -> p.distSqr(from))).orElse(null);
     }
 
     /** Client-thread policy checks produce immutable destinations for the planner worker. */
-    private static List<BlockPos> pickSites(World world, BlockPos from) {
+    private static List<BlockPos> pickSites(Level world, BlockPos from) {
         long began = System.nanoTime();
         List<BlockPos> candidates = new ArrayList<>();
         for (int dx = -SITE_SEARCH_RADIUS; dx <= SITE_SEARCH_RADIUS; dx++) {
             for (int dz = -SITE_SEARCH_RADIUS; dz <= SITE_SEARCH_RADIUS; dz++) {
-                if (!world.isChunkLoaded((from.getX() + dx) >> 4, (from.getZ() + dz) >> 4)) continue;
+                if (!world.hasChunk((from.getX() + dx) >> 4, (from.getZ() + dz) >> 4)) continue;
                 for (int dy = -SITE_SEARCH_RADIUS; dy <= SITE_SEARCH_RADIUS; dy++) {
-                    BlockPos cell = from.add(dx, dy, dz);
-                    if (cell.getY() - DEPTH - 1 < world.getBottomY()) continue;
+                    BlockPos cell = from.offset(dx, dy, dz);
+                    if (cell.getY() - DEPTH - 1 < world.getMinY()) continue;
                     if (siteHolds(world, cell)) candidates.add(cell);
                 }
             }
@@ -196,15 +196,15 @@ public class NightShelterTask extends Task {
      * body, and the top dug cell's walls are what the cap is placed against); the floor under them
      * is solid and not a hazard.
      */
-    static boolean siteHolds(World world, BlockPos top) {
+    static boolean siteHolds(Level world, BlockPos top) {
         if (!kaptainwutax.tungsten.helpers.PlayerFit.standable(world, top)) return false;
-        BlockPos.Mutable s = new BlockPos.Mutable();
+        net.minecraft.core.BlockPos.MutableBlockPos s = new net.minecraft.core.BlockPos.MutableBlockPos();
         for (int d = 1; d <= DEPTH; d++) {
-            BlockPos c = top.down(d);
+            BlockPos c = top.below(d);
             if (!solid(world, c) || !WorldHelper.canBreak(c)) return false;
             if (!world.getFluidState(c).isEmpty()) return false;
-            for (Direction dir : Direction.Type.HORIZONTAL) {
-                BlockPos n = c.offset(dir);
+            for (Direction dir : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                BlockPos n = c.relative(dir);
                 if (!world.getFluidState(n).isEmpty() || RouteHazards.hazardAt(world, n.getX(), n.getY(), n.getZ(), s)) {
                     return false;
                 }
@@ -212,11 +212,11 @@ public class NightShelterTask extends Task {
                 if (!solid(world, n)) return false;
             }
         }
-        BlockPos floor = top.down(DEPTH + 1);
+        BlockPos floor = top.below(DEPTH + 1);
         return solid(world, floor) && !RouteHazards.hazardAt(world, floor.getX(), floor.getY(), floor.getZ(), s);
     }
 
-    private static boolean solid(World world, BlockPos p) {
+    private static boolean solid(Level world, BlockPos p) {
         return !world.getBlockState(p).getCollisionShape(world, p).isEmpty();
     }
 
@@ -225,7 +225,7 @@ public class NightShelterTask extends Task {
         // Not at the first minute of dawn: the night's zombies and skeletons are still standing
         // there and burn only once the sun is up. Measured on the rung-bucket replay: a shelter
         // left at dawn met them at once, 20 -> 10 health chasing a zombie. Stay until time 1000.
-        int t = WorldHelper.getTimeOfDay();
+        int t = (int) net.minecraft.client.Minecraft.getInstance().level.getDefaultClockTime();
         return !WorldHelper.canSleep() && t >= 1000;
     }
 

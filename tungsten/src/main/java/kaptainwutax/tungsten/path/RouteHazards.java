@@ -1,11 +1,11 @@
 package kaptainwutax.tungsten.path;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.registry.tag.FluidTags;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * ONE definition of "this step is lethal", shared by the planners and the executors -- ported
@@ -58,16 +58,16 @@ public final class RouteHazards {
      * for which this is true.
      */
     public static boolean hazard(BlockState state) {
-        if (state.getFluidState().isIn(FluidTags.LAVA)) return true;
+        if (state.getFluidState().is(FluidTags.LAVA)) return true;
         var b = state.getBlock();
-        return b == net.minecraft.block.Blocks.MAGMA_BLOCK
-                || b == net.minecraft.block.Blocks.CACTUS
-                || b == net.minecraft.block.Blocks.SWEET_BERRY_BUSH
-                || b instanceof net.minecraft.block.AbstractFireBlock
-                || b instanceof net.minecraft.block.EndPortalFrameBlock
-                || b == net.minecraft.block.Blocks.END_PORTAL
-                || b == net.minecraft.block.Blocks.COBWEB
-                || b instanceof net.minecraft.block.BubbleColumnBlock;
+        return b == net.minecraft.world.level.block.Blocks.MAGMA_BLOCK
+                || b == net.minecraft.world.level.block.Blocks.CACTUS
+                || b == net.minecraft.world.level.block.Blocks.SWEET_BERRY_BUSH
+                || b instanceof net.minecraft.world.level.block.BaseFireBlock
+                || b instanceof net.minecraft.world.level.block.EndPortalFrameBlock
+                || b == net.minecraft.world.level.block.Blocks.END_PORTAL
+                || b == net.minecraft.world.level.block.Blocks.COBWEB
+                || b instanceof net.minecraft.world.level.block.BubbleColumnBlock;
     }
 
     /**
@@ -83,13 +83,13 @@ public final class RouteHazards {
      * baritone plans. Now it is what baritone says: an obstacle to break, never a floor (no collision,
      * so supportTop finds none -- baritone canWalkOn is false for it too).
      */
-    public static boolean blocksBody(BlockState st, WorldView w, BlockPos p) {
-        return st.getBlock() == net.minecraft.block.Blocks.POWDER_SNOW
+    public static boolean blocksBody(BlockState st, LevelReader w, BlockPos p) {
+        return st.getBlock() == net.minecraft.world.level.block.Blocks.POWDER_SNOW
                 || !st.getCollisionShape(w, p).isEmpty();
     }
 
-    public static boolean hazard(WorldView w, BlockPos p) {
-        return hazardAt(w, p.getX(), p.getY(), p.getZ(), new BlockPos.Mutable());
+    public static boolean hazard(LevelReader w, BlockPos p) {
+        return hazardAt(w, p.getX(), p.getY(), p.getZ(), new net.minecraft.core.BlockPos.MutableBlockPos());
     }
 
     /**
@@ -117,26 +117,26 @@ public final class RouteHazards {
      * Lava in any of the eight columns around (x, z), at feet or floor level: a cell a 0.6-wide
      * body steered at its centre can drift into lava from. See FastPlanner.hazardProximityPenalty.
      */
-    public static boolean lavaBeside(WorldView w, int x, int y, int z, BlockPos.Mutable s) {
+    public static boolean lavaBeside(LevelReader w, int x, int y, int z, net.minecraft.core.BlockPos.MutableBlockPos s) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 if (dx == 0 && dz == 0) continue;
-                if (w.getBlockState(s.set(x + dx, y, z + dz)).getFluidState().isIn(FluidTags.LAVA)) return true;
-                if (w.getBlockState(s.set(x + dx, y - 1, z + dz)).getFluidState().isIn(FluidTags.LAVA)) return true;
+                if (w.getBlockState(s.set(x + dx, y, z + dz)).getFluidState().is(FluidTags.LAVA)) return true;
+                if (w.getBlockState(s.set(x + dx, y - 1, z + dz)).getFluidState().is(FluidTags.LAVA)) return true;
             }
         }
         return false;
     }
 
     /** Is (x, y, z) lava that the escape may swim through right now? */
-    public static boolean swimmableLava(WorldView w, int x, int y, int z, BlockPos.Mutable s) {
+    public static boolean swimmableLava(LevelReader w, int x, int y, int z, net.minecraft.core.BlockPos.MutableBlockPos s) {
         if (!lavaSwim) return false;
-        if (!w.getBlockState(s.set(x, y, z)).getFluidState().isIn(FluidTags.LAVA)) return false;
+        if (!w.getBlockState(s.set(x, y, z)).getFluidState().is(FluidTags.LAVA)) return false;
         return w.getBlockState(s.set(x, y + 1, z)).getFluidState().isEmpty();
     }
 
     /** {@link #hazard(BlockState)} at a position, minus {@link #swimmableLava} while escaping. */
-    public static boolean hazardAt(WorldView w, int x, int y, int z, BlockPos.Mutable s) {
+    public static boolean hazardAt(LevelReader w, int x, int y, int z, net.minecraft.core.BlockPos.MutableBlockPos s) {
         if (!hazard(w.getBlockState(s.set(x, y, z)))) return false;
         return !swimmableLava(w, x, y, z, s);
     }
@@ -147,16 +147,16 @@ public final class RouteHazards {
      * on -- the column ends in LAVA before it reaches a solid block (baritone's Descend/Fall
      * landing rule with allowFallIntoLava=false, and Parkour's refusal of a lava gap floor).
      */
-    public static boolean lethalColumn(WorldView w, int x, int feetY, int z, BlockPos.Mutable s) {
+    public static boolean lethalColumn(LevelReader w, int x, int feetY, int z, net.minecraft.core.BlockPos.MutableBlockPos s) {
         if (hazardAt(w, x, feetY, z, s)) return true;
         if (hazardAt(w, x, feetY + 1, z, s)) return true;
-        int bottom = w.getBottomY();
+        int bottom = w.getMinY();
         for (int y = feetY - 1; y >= Math.max(bottom, feetY - LAVA_COLUMN_DEPTH); y--) {
             if (hazardAt(w, x, y, z, s)) return true;                 // magma floor, or lava below
             BlockState st = w.getBlockState(s.set(x, y, z));
             // Walking ONTO powder snow sinks the body into it (no collision): a free-form driver
             // stepping onto a snow field is exactly how the 0.95.41 playthrough froze to death.
-            if (st.getBlock() == net.minecraft.block.Blocks.POWDER_SNOW) return true;
+            if (st.getBlock() == net.minecraft.world.level.block.Blocks.POWDER_SNOW) return true;
             if (!st.getCollisionShape(w, s).isEmpty()) return false;  // solid ground first: safe
         }
         return false;                                                 // void or deep: not ours
@@ -168,18 +168,18 @@ public final class RouteHazards {
      * the body's 0.6 width brushes when it crosses diagonally (baritone Diagonal :158/162) -- the
      * route between two safe waypoints is exactly where a cut corner puts the feet in lava.
      */
-    public static boolean segmentLethal(WorldView w, Vec3d a, Vec3d b) {
+    public static boolean segmentLethal(LevelReader w, Vec3 a, Vec3 b) {
         segmentsChecked++;
-        BlockPos.Mutable s = new BlockPos.Mutable();
+        net.minecraft.core.BlockPos.MutableBlockPos s = new net.minecraft.core.BlockPos.MutableBlockPos();
         double dx = b.x - a.x, dz = b.z - a.z;
         double len = Math.sqrt(dx * dx + dz * dz);
         int n = Math.max(1, (int) Math.ceil(len / 0.3));
-        int feetY = MathHelper.floor(Math.min(a.y, b.y) + 0.01);
-        int px = MathHelper.floor(a.x), pz = MathHelper.floor(a.z);
+        int feetY = Mth.floor(Math.min(a.y, b.y) + 0.01);
+        int px = Mth.floor(a.x), pz = Mth.floor(a.z);
         for (int i = 1; i <= n; i++) {
             double t = (double) i / n;
-            int x = MathHelper.floor(a.x + dx * t), z = MathHelper.floor(a.z + dz * t);
-            int y = MathHelper.floor(a.y + (b.y - a.y) * t + 0.01);
+            int x = Mth.floor(a.x + dx * t), z = Mth.floor(a.z + dz * t);
+            int y = Mth.floor(a.y + (b.y - a.y) * t + 0.01);
             if (x == px && z == pz) continue;
             if (lethalColumn(w, x, Math.max(y, feetY), z, s)) return true;
             if (x != px && z != pz) {                                 // a diagonal cell change

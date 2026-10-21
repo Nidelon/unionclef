@@ -3,9 +3,9 @@ package kaptainwutax.tungsten.path.movements;
 import com.google.common.collect.ImmutableSet;
 import java.util.Set;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * The step we have no upstream class for — walked, not skipped.
@@ -68,7 +68,7 @@ public class MovementFallback extends Movement {
      * movement — see {@link #NO_PROGRESS_TICKS}.
      */
     @Override
-    public double calculateCost(WorldView world, ClientPlayerEntity player) {
+    public double calculateCost(LevelReader world, LocalPlayer player) {
         return 20.0;
     }
 
@@ -95,16 +95,16 @@ public class MovementFallback extends Movement {
         if (state.getStatus() != MovementStatus.RUNNING) {
             return state;
         }
-        PlayerEntity player = ctx.player();
+        Player player = ctx.player();
         if (ctx.playerFeet().equals(dest)) {
             return state.setStatus(MovementStatus.SUCCESS);
         }
         // Give up the moment we stop closing on the cell, rather than after the queue's eight
         // seconds. Measured against the destination CENTRE so that merely sliding along a wall,
         // which keeps the feet in a new block every few ticks, does not read as progress.
-        double dx = player.getEntityPos().x - (dest.getX() + 0.5);
-        double dy = player.getEntityPos().y - dest.getY();
-        double dz = player.getEntityPos().z - (dest.getZ() + 0.5);
+        double dx = player.position().x - (dest.getX() + 0.5);
+        double dy = player.position().y - dest.getY();
+        double dz = player.position().z - (dest.getZ() + 0.5);
         double distSq = dx * dx + dy * dy + dz * dz;
         if (distSq < bestDistSq - 0.01) {
             bestDistSq = distSq;

@@ -4,15 +4,15 @@ import adris.altoclef.trackers.threats.DamageTrackerStrategy;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.settings.AltoClefSettings;
 import kaptainwutax.tungsten.path.movements.Rotation;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Pair;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import adris.altoclef.util.Pair;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ClipContext;
 
 import java.util.*;
 import java.util.function.BiFunction;
@@ -35,8 +35,8 @@ public class BotBehaviour {
      * the field has to survive the module removal; only its home changes, to the one class
      * that ever touched it.
      */
-    public static net.minecraft.world.RaycastContext.FluidHandling LIVE_RAY_FLUID_HANDLING =
-            net.minecraft.world.RaycastContext.FluidHandling.NONE;
+    public static net.minecraft.world.level.ClipContext.Fluid LIVE_RAY_FLUID_HANDLING =
+            net.minecraft.world.level.ClipContext.Fluid.NONE;
 
     private final AltoClef mod;
     private Predicate<BlockPos> _extraAvoidBlockPlacing = null;
@@ -292,7 +292,7 @@ public class BotBehaviour {
         current().applyState();
     }
 
-    public void setRayTracingFluidHandling(RaycastContext.FluidHandling fluidHandling) {
+    public void setRayTracingFluidHandling(net.minecraft.world.level.ClipContext.Fluid fluidHandling) {
         current().rayFluidHandling = fluidHandling;
         //Debug.logMessage("OOF: " + fluidHandling);
         current().applyState();
@@ -369,7 +369,7 @@ public class BotBehaviour {
         AltoClef._cameraRotationModifer = new Rotation(yaw, pitch);
     }
     public void resetCameraRotationModifer() { AltoClef._cameraRotationModifer = null; }
-    public void setCameraPositionModifer(Vec3d pos) { AltoClef._cameraPositionModifer = pos; }
+    public void setCameraPositionModifer(Vec3 pos) { AltoClef._cameraPositionModifer = pos; }
     public void resetCameraPositionModifer() { AltoClef._cameraPositionModifer = null; }
 
     // --- User task chain priority ---
@@ -499,7 +499,7 @@ public class BotBehaviour {
         public boolean pauseOnLostFocus = true;
 
         // Hard coded stuff
-        public RaycastContext.FluidHandling rayFluidHandling;
+        public net.minecraft.world.level.ClipContext.Fluid rayFluidHandling;
 
         // Other necessary stuff
         public boolean escapeLava = true;
@@ -594,7 +594,7 @@ public class BotBehaviour {
         }
 
         private void readMinecraftState() {
-            pauseOnLostFocus = MinecraftClient.getInstance().options.pauseOnLostFocus;
+            pauseOnLostFocus = Minecraft.getInstance().options.pauseOnLostFocus;
         }
 
         /**
@@ -655,7 +655,7 @@ public class BotBehaviour {
             kaptainwutax.tungsten.path.movements.RotationHelper.fluidHandling = rayFluidHandling;
 
             // Minecraft
-            MinecraftClient.getInstance().options.pauseOnLostFocus = pauseOnLostFocus;
+            Minecraft.getInstance().options.pauseOnLostFocus = pauseOnLostFocus;
         }
     }
 }

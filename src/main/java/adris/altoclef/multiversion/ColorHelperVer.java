@@ -1,41 +1,41 @@
 package adris.altoclef.multiversion;
 
-import net.minecraft.util.math.ColorHelper;
+import net.minecraft.util.ARGB;
 
 public class ColorHelperVer {
     public static int getAlpha(int color) {
         //#if MC >= 12111
-        //$$ return ColorHelper.getAlpha(color);
+        //$$ return FastColor.getAlpha(color);
         //#else
-        return ColorHelper.Argb.getAlpha(color);
+        return ARGB.alpha(color);
         //#endif
     }
     public static int getRed(int color) {
         //#if MC >= 12111
-        //$$ return ColorHelper.getRed(color);
+        //$$ return FastColor.getRed(color);
         //#else
-        return ColorHelper.Argb.getRed(color);
+        return ARGB.red(color);
         //#endif
     }
     public static int getGreen(int color) {
         //#if MC >= 12111
-        //$$ return ColorHelper.getGreen(color);
+        //$$ return FastColor.getGreen(color);
         //#else
-        return ColorHelper.Argb.getGreen(color);
+        return ARGB.green(color);
         //#endif
     }
     public static int getBlue(int color) {
         //#if MC >= 12111
-        //$$ return ColorHelper.getBlue(color);
+        //$$ return FastColor.getBlue(color);
         //#else
-        return ColorHelper.Argb.getBlue(color);
+        return ARGB.blue(color);
         //#endif
     }
     public static int getArgb(int a, int r, int g, int b) {
         //#if MC >= 12111
-        //$$ return ColorHelper.getArgb(a, r, g, b);
+        //$$ return FastColor.getArgb(a, r, g, b);
         //#else
-        return ColorHelper.Argb.getArgb(a, r, g, b);
+        return ARGB.color(a, r, g, b);
         //#endif
     }
 }

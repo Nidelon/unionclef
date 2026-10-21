@@ -7,7 +7,7 @@ import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.commandsystem.Command;
 import kaptainwutax.tungsten.commandsystem.CommandException;
 import kaptainwutax.tungsten.task.BridgeTask;
-import net.minecraft.command.CommandSource;
+import net.minecraft.commands.SharedSuggestionProvider;
 
 /**
  * Godbridge command:
@@ -23,7 +23,7 @@ public class BridgeCommand extends Command {
     }
 
     @Override
-    public void build(LiteralArgumentBuilder<CommandSource> builder) {
+    public void build(LiteralArgumentBuilder<SharedSuggestionProvider> builder) {
         builder.executes(ctx -> { BridgeTask.start("", 16); return SINGLE_SUCCESS; });
 
         builder.then(argument("n", IntegerArgumentType.integer(1, 4096))

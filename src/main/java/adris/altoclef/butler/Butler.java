@@ -10,10 +10,10 @@ import adris.altoclef.tasks.multiplayer.LobbyTask;
 import adris.altoclef.ui.MessagePriority;
 import adris.altoclef.util.time.TimerGame;
 import adris.altoclef.util.time.TimerReal;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.option.Perspective;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.CameraType;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -87,9 +87,9 @@ public class Butler {
 
         // --- Server address / mode detection ---
         String serverAddress = "universal";
-        if (MinecraftClient.getInstance().getCurrentServerEntry() != null
-                && MinecraftClient.getInstance().getCurrentServerEntry().address != null) {
-            serverAddress = MinecraftClient.getInstance().getCurrentServerEntry().address.toString();
+        if (Minecraft.getInstance().getCurrentServer() != null
+                && Minecraft.getInstance().getCurrentServer().ip != null) {
+            serverAddress = Minecraft.getInstance().getCurrentServer().ip.toString();
             _mod.getInfoSender().UpdateServerInfo("server", serverAddress);
         }
 
@@ -268,11 +268,11 @@ public class Butler {
 
     // --- Teammates (runtime only, never persisted) ---
     public void AddNearestPlayerToFriends(AltoClef mod, double radius) {
-        List<PlayerEntity> players = mod.getEntityTracker().getTrackedEntities(PlayerEntity.class);
+        List<Player> players = mod.getEntityTracker().getTrackedEntities(Player.class);
         try {
             for (Entity entity : players) {
-                if (entity instanceof PlayerEntity
-                        && mod.getPlayer().getPos().isInRange(entity.getPos(), radius)
+                if (entity instanceof Player
+                        && mod.getPlayer().position().closerThan(entity.position(), radius)
                         && !entity.equals(mod.getPlayer())) {
                     String name = entity.getName().getString();
                     if (!_teammates.contains(name)) {

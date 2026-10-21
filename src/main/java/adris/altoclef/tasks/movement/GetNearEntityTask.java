@@ -4,7 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.goals.AltoGoal;
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 
 /**
  * The LONG HAUL to an entity: walk -- or dig, or build -- until it is within {@code range}, through
@@ -51,7 +51,7 @@ public class GetNearEntityTask extends CustomBaritoneGoalTask implements ITaskRe
 
     @Override
     protected AltoGoal newAltoGoal(AltoClef mod) {
-        return AltoGoal.nearLive(() -> entity.isRemoved() ? null : entity.getBlockPos(), range);
+        return AltoGoal.nearLive(() -> entity.isRemoved() ? null : entity.blockPosition(), range);
     }
 
     @Override
@@ -60,7 +60,7 @@ public class GetNearEntityTask extends CustomBaritoneGoalTask implements ITaskRe
         if (entity.isRemoved()) return true;
         // G61: half a block of slack -- a body beside a pig's cell is 1.2 from its centre, and a
         // range of 1 would never be met while the goal cell itself is reached.
-        if (mod != null && mod.getPlayer() != null && mod.getPlayer().isInRange(entity, range + 0.5)) return true;
+        if (mod != null && mod.getPlayer() != null && mod.getPlayer().closerThan(entity, range + 0.5)) return true;
         return super.isFinished();
     }
 
@@ -71,6 +71,6 @@ public class GetNearEntityTask extends CustomBaritoneGoalTask implements ITaskRe
 
     @Override
     protected String toDebugString() {
-        return "Long haul to " + entity.getType().getTranslationKey() + " (drive: walk / dig / build)";
+        return "Long haul to " + entity.getType().getDescriptionId() + " (drive: walk / dig / build)";
     }
 }

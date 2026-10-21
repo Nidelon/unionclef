@@ -10,10 +10,10 @@ import adris.altoclef.tasks.construction.compound.ConstructGraveTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.core.BlockPos;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -35,8 +35,8 @@ public class CombatTask extends Task {
 
     // Victory and grave tracking
     private String _lastTargetName = null;
-    private Vec3d _lastTargetPos = null;
-    private Vec3d _lastGroundPos = null;
+    private Vec3 _lastTargetPos = null;
+    private Vec3 _lastGroundPos = null;
     private Task _victoryTask = null;
     private Task _graveTask = null;
     private boolean _killedLastTarget = false;
@@ -115,7 +115,7 @@ public class CombatTask extends Task {
     protected Task onTick() {
         AltoClef mod = AltoClef.getInstance();
 
-        if (mod.getPlayer() == null || mod.getPlayer().getPos() == null)
+        if (mod.getPlayer() == null || mod.getPlayer().position() == null)
             return null;
 
         // If we're currently building a grave, continue with that or timeout
@@ -157,7 +157,7 @@ public class CombatTask extends Task {
                     // radius/entity filter here would be a behavior decision, not a bug fix.
                     boolean noPlayersNearby = true;
 
-                    if (noPlayersNearby && _lastGroundPos != null && _lastGroundPos.distanceTo(mod.getPlayer().getPos()) < 20) {
+                    if (noPlayersNearby && _lastGroundPos != null && _lastGroundPos.distanceTo(mod.getPlayer().position()) < 20) {
 
                         BlockPos gravePos = new BlockPos((int) _lastGroundPos.x, (int) _lastGroundPos.y + 1, (int) _lastGroundPos.z);
                         if (WorldHelper.canReach(gravePos)
@@ -219,7 +219,7 @@ public class CombatTask extends Task {
 
         _targetingTask = new DoToClosestEntityTask(
                 entity -> {
-                    if (entity instanceof PlayerEntity player) {
+                    if (entity instanceof Player player) {
                         String name = player.getName().getString();
 
                         // Check if this is a new target and show battle cry
@@ -231,13 +231,13 @@ public class CombatTask extends Task {
 
                         // Store target info for victory gestures
                         _lastTargetName = name;
-                        _lastTargetPos = player.getPos();
+                        _lastTargetPos = player.position();
                         // Approximate ground position: use player's feet position
-                        _lastGroundPos = player.getPos();
+                        _lastGroundPos = player.position();
                         _killedLastTarget = false;
 
                         // If target becomes unreachable
-                        BlockPos playerPos = player.getBlockPos();
+                        BlockPos playerPos = player.blockPosition();
                         if (!WorldHelper.canReach(playerPos)) {
                             blacklistTarget(name);
                             return null;
@@ -253,8 +253,8 @@ public class CombatTask extends Task {
                     }
                     return null;
                 },
-                entity -> isValidTarget((PlayerEntity) entity, mod),
-                PlayerEntity.class
+                entity -> isValidTarget((Player) entity, mod),
+                Player.class
         );
         if (_targetPlayerName != null) {
             setDebugState("Searching for target " + _targetPlayerName);
@@ -305,10 +305,10 @@ public class CombatTask extends Task {
         return false;
     }
 
-    private boolean isValidTarget(PlayerEntity player, AltoClef mod) {
+    private boolean isValidTarget(Player player, AltoClef mod) {
         if (player == null || player == mod.getPlayer() || player.getName() == null) return false;
         String name = player.getName().getString();
-        if (player.isInCreativeMode() || player.isSpectator() || !player.isAlive()) return false;
+        if (player.hasInfiniteMaterials() || player.isSpectator() || !player.isAlive()) return false;
         if (_shouldAttackPredicate != null) return _shouldAttackPredicate.test(player);
         if (_targetPlayerName != null) {
             return _targetPlayerName.equals(name);

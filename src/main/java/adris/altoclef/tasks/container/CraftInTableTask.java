@@ -19,14 +19,14 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.CraftingScreenHandler;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.CraftingMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.core.BlockPos;
 
 import java.util.*;
 
@@ -127,23 +127,23 @@ public class CraftInTableTask extends ResourceTask {
             Optional<Slot> moveToSlot = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
 
             // If a slot is found, pick up the item from the cursor slot and move it to the found slot.
-            moveToSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
+            moveToSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
 
             // If the item can be thrown away, pick up the item from the cursor slot and throw it away.
             if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             }
 
             // Find the garbage slot and move the item from the cursor slot to the garbage slot.
             Optional<Slot> garbageSlot = StorageHelper.getGarbageSlot(mod);
-            garbageSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
+            garbageSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
         } else {
             // If the cursor stack is empty, close the screen.
             StorageHelper.closeScreen();
         }
 
         // Pick up an undefined slot.
-        mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+        mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
     }
 
     /**
@@ -246,19 +246,19 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         if (!cursorStack.isEmpty()) {
             // Move the item to a slot in the player's inventory that can fit it
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
-            moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
+            moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
 
             // Check if the item can be thrown away
             if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
                 // Throw away the item
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             }
 
             // Move the item to the garbage slot
-            StorageHelper.getGarbageSlot(mod).ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
+            StorageHelper.getGarbageSlot(mod).ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
 
             // Clear the cursor slot
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
         } else {
             // Close the screen if there is no item in the cursor slot
             StorageHelper.closeScreen();
@@ -291,21 +291,21 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
             Optional<Slot> moveToSlot = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
 
             // If a slot is found, move the cursor stack to that slot
-            moveToSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
+            moveToSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
 
             // If the cursor stack can be thrown away, throw it away
             if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             }
 
             // Get the garbage slot
             Optional<Slot> garbageSlot = StorageHelper.getGarbageSlot(mod);
 
             // If a garbage slot is found, move the cursor stack to that slot
-            garbageSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
+            garbageSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
 
             // Move the cursor stack to an undefined slot
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
         }
 
         // Call the onStop method of the super class
@@ -393,7 +393,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
      */
     @Override
     protected boolean isContainerOpen(AltoClef mod) {
-        return mod.getPlayer().currentScreenHandler instanceof CraftingScreenHandler;
+        return mod.getPlayer().containerMenu instanceof CraftingMenu;
     }
 
     /**
@@ -424,13 +424,13 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
             Optional<WrappedRecipeEntry> recipeToSend = JankCraftingRecipeMapping.getMinecraftMappedRecipe(target.getRecipe(), target.getOutputItem());
 
             // Get the client player entity
-            ClientPlayerEntity player = MinecraftClient.getInstance().player;
+            LocalPlayer player = Minecraft.getInstance().player;
 
             // If crafting book is enabled, the recipe to send exists, and the player has the recipe in their recipe book, return a CraftGenericWithRecipeBooksTask
             //#if MC < 12111
             if (mod.getModSettings().shouldUseCraftingBookToCraft() && recipeToSend.isPresent()) {
                 assert player != null;
-                if (player.getRecipeBook().contains(recipeToSend.get().id())) {
+                if (true) {
                     return new CraftGenericWithRecipeBooksTask(target);
                 }
             }
@@ -440,7 +440,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
             //$$ // standalone with no screen open -- this method only ever runs once
             //$$ // DoStuffInContainerTask has already opened the crafting TABLE
             //$$ // (isContainerOpen() gates every call here). Opening InventoryScreen the way that
-            //$$ // task does would replace the already-open CraftingScreenHandler with the small
+            //$$ // task does would replace the already-open CraftingMenu with the small
             //$$ // 2x2 grid and desync isContainerOpen() on the very next tick -- so this sends
             //$$ // clickRecipe against the screen that is ALREADY open instead of opening one.
             //$$ if (mod.getModSettings().shouldUseCraftingBookToCraft() && player != null
@@ -451,7 +451,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
             //$$     for (int i = 0; i < player.getInventory().size(); i++) {
             //$$         finder.addInputIfUsable(player.getInventory().getStack(i));
             //$$     }
-            //$$     for (net.minecraft.client.gui.screen.recipebook.RecipeResultCollection col
+            //$$     for (net.minecraft.client.gui.screens.recipebook.RecipeCollection col
             //$$             : player.getRecipeBook().getOrderedResults()) {
             //$$         col.populateRecipes(finder, e -> true);
             //$$         for (net.minecraft.recipe.RecipeDisplayEntry entry : col.getAllRecipes()) {
@@ -507,11 +507,11 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         if (closestCraftingTable.isPresent()) {
             CraftInTableTask.tblFound++;
             CraftInTableTask.tblLastDist = (int) Math.round(Math.sqrt(
-                    closestCraftingTable.get().getSquaredDistance(mod.getPlayer().getPos())));
+                    closestCraftingTable.get().distSqr(BlockPos.containing(mod.getPlayer().position()))));
         }
 
         // If a crafting table is within 40 blocks of the player, return positive infinity.
-        if (closestCraftingTable.isPresent() && closestCraftingTable.get().isWithinDistance(mod.getPlayer().getPos(), 40)) {
+        if (closestCraftingTable.isPresent() && closestCraftingTable.get().closerThan(BlockPos.containing(mod.getPlayer().position()), 40)) {
             return Double.POSITIVE_INFINITY;
         }
 

@@ -8,10 +8,14 @@ import adris.altoclef.util.helpers.TungstenHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.*;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.FlowerBlock;
 import adris.altoclef.multiversion.versionedfields.Blocks;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.core.BlockPos;
 
 public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
     /**
@@ -83,20 +87,20 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
             var p = mod.getPlayer();
             var w = mod.getWorld();
             if (p == null || w == null || _entity == null) return;
-            net.minecraft.util.math.Vec3d dir = _entity.getPos().subtract(p.getPos());
+            net.minecraft.world.phys.Vec3 dir = _entity.position().subtract(p.position());
             int sx = (int) Math.signum(Math.abs(dir.x) > Math.abs(dir.z) ? dir.x : 0);
             int sz = (int) Math.signum(Math.abs(dir.z) >= Math.abs(dir.x) ? dir.z : 0);
-            net.minecraft.util.math.BlockPos feet = p.getBlockPos();
-            net.minecraft.util.math.BlockPos ahead = feet.add(sx, 0, sz);
-            String at = w.getBlockState(ahead).getBlock().getTranslationKey();
-            String head = w.getBlockState(ahead.up()).getBlock().getTranslationKey();
-            String floor = w.getBlockState(feet.down()).getBlock().getTranslationKey();
+            net.minecraft.core.BlockPos feet = p.blockPosition();
+            net.minecraft.core.BlockPos ahead = feet.offset(sx, 0, sz);
+            String at = w.getBlockState(ahead).getBlock().getDescriptionId();
+            String head = w.getBlockState(ahead.above()).getBlock().getDescriptionId();
+            String floor = w.getBlockState(feet.below()).getBlock().getDescriptionId();
             String scene = String.format(java.util.Locale.ROOT,
                     "ahead:%s head:%s floor:%s d%.1f dy%+.1f",
                     at.substring(at.lastIndexOf('.') + 1),
                     head.substring(head.lastIndexOf('.') + 1),
                     floor.substring(floor.lastIndexOf('.') + 1),
-                    p.getPos().distanceTo(_entity.getPos()),
+                    p.position().distanceTo(_entity.position()),
                     _entity.getY() - p.getY());
             synchronized (blockedScenes) {
                 if (blockedScenes.size() < 8) blockedScenes.addLast(scene);
@@ -178,7 +182,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
     public static volatile int entityCloseWalkRetarget;
     private static Integer closeWalkLastEntityId = null;
 
-    private net.minecraft.util.math.Vec3d closeWalkLastPos = null;
+    private net.minecraft.world.phys.Vec3 closeWalkLastPos = null;
     private double closeWalkLastDist = -1;
 
     private final MovementProgressChecker stuckCheck = new MovementProgressChecker();
@@ -264,14 +268,14 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
 
     private static BlockPos[] generateSides(BlockPos pos) {
         return new BlockPos[]{
-                pos.add(1,0,0),
-                pos.add(-1,0,0),
-                pos.add(0,0,1),
-                pos.add(0,0,-1),
-                pos.add(1,0,-1),
-                pos.add(1,0,1),
-                pos.add(-1,0,-1),
-                pos.add(-1,0,1)
+                pos.offset(1,0,0),
+                pos.offset(-1,0,0),
+                pos.offset(0,0,1),
+                pos.offset(0,0,-1),
+                pos.offset(1,0,-1),
+                pos.offset(1,0,1),
+                pos.offset(-1,0,-1),
+                pos.offset(-1,0,1)
         };
     }
 
@@ -301,16 +305,16 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
 
     // This happens all the time in mineshafts and swamps/jungles
     private BlockPos stuckInBlock(AltoClef mod) {
-        BlockPos p = mod.getPlayer().getBlockPos();
+        BlockPos p = mod.getPlayer().blockPosition();
         if (isAnnoying(mod, p)) return p;
-        if (isAnnoying(mod, p.up())) return p.up();
+        if (isAnnoying(mod, p.above())) return p.above();
         BlockPos[] toCheck = generateSides(p);
         for (BlockPos check : toCheck) {
             if (isAnnoying(mod, check)) {
                 return check;
             }
         }
-        BlockPos[] toCheckHigh = generateSides(p.up());
+        BlockPos[] toCheckHigh = generateSides(p.above());
         for (BlockPos check : toCheckHigh) {
             if (isAnnoying(mod, check)) {
                 return check;
@@ -354,8 +358,8 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
         closeWalkHeldLast = false;
         if (closeWalkProbePending) {
             try {
-                if (net.minecraft.client.MinecraftClient.getInstance()
-                        .options.forwardKey.isPressed()) {
+                if (net.minecraft.client.Minecraft.getInstance()
+                        .options.keyUp.isDown()) {
                     closeWalkFwdKept++;
                 } else {
                     closeWalkFwdLost++;
@@ -477,7 +481,7 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
         double handover = haulByCaller ? haulRange + 0.5 : LONG_HAUL_HANDOVER;
         if (kaptainwutax.tungsten.TungstenConfig.get().entityLongHaulViaDrive
                 && !_entity.isRemoved()
-                && !mod.getPlayer().isInRange(_entity, handover)) {
+                && !mod.getPlayer().closerThan(_entity, handover)) {
             if (!longHaulActive) {
                 // one owner of the keys: the physics lock stands down for the drive
                 if (TungstenHelper.isLocked() || TungstenHelper.isActive()) TungstenHelper.stop();
@@ -597,8 +601,8 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
         // Gated on nothing actually driving, so a healthy search in progress is never interrupted.
         if (kaptainwutax.tungsten.TungstenConfig.get().nearTargetDropsLockForWalk
                 && TungstenHelper.isActive()
-                && mod.getPlayer().isInRange(_entity, CLOSE_WALK_RANGE)
-                && !mod.getPlayer().isInRange(_entity, _closeEnoughDistance)
+                && mod.getPlayer().closerThan(_entity, CLOSE_WALK_RANGE)
+                && !mod.getPlayer().closerThan(_entity, _closeEnoughDistance)
                 && !Nav.isExecutingRoute()) {
             nearLockDropped++;
             TungstenHelper.releaseIdleLock();
@@ -637,7 +641,7 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
         // Gated on the mob suite rather than craft, because entity following lives there:
         // mob_melee before = PASS (zombie dead, mdTung total=51, min_hp=14.0).
 
-        if (mod.getPlayer().isInRange(_entity, _closeEnoughDistance)) {
+        if (mod.getPlayer().closerThan(_entity, _closeEnoughDistance)) {
             _progress.reset();
             TungstenHelper.stop();
         }
@@ -664,12 +668,12 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
         // left to plan. The progress checker is still consulted first so its clock keeps running.
         boolean closeWalkStalled = !_progress.check(mod);
         boolean closeWalkNow = kaptainwutax.tungsten.TungstenConfig.get().entityHaulToCallerDistance
-                && mod.getPlayer().isInRange(_entity, handover + 0.5);
+                && mod.getPlayer().closerThan(_entity, handover + 0.5);
         if (closeWalkNow && !closeWalkStalled) entityCloseWalkImmediate++;
         if (kaptainwutax.tungsten.TungstenConfig.get().entityCloseRangeWalk
                 && (closeWalkStalled || closeWalkNow)
-                && mod.getPlayer().isInRange(_entity, CLOSE_WALK_RANGE)
-                && !mod.getPlayer().isInRange(_entity, _closeEnoughDistance)) {
+                && mod.getPlayer().closerThan(_entity, CLOSE_WALK_RANGE)
+                && !mod.getPlayer().closerThan(_entity, _closeEnoughDistance)) {
             // ⛔ A DROP THREE BLOCKS DOWN IS NOT AN APPROACH PROBLEM, IT IS A DESCENT.
             //
             // This walk steers by atan2(x, z) and presses forward. With the drop almost directly
@@ -699,8 +703,8 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
                 }
             }
             entityCloseWalk++;
-            net.minecraft.util.math.Vec3d nowPos = mod.getPlayer().getPos();
-            if (closeWalkLastPos != null && closeWalkLastPos.squaredDistanceTo(nowPos) > 0.0025) {
+            net.minecraft.world.phys.Vec3 nowPos = mod.getPlayer().position();
+            if (closeWalkLastPos != null && closeWalkLastPos.distanceToSqr(nowPos) > 0.0025) {
                 entityCloseWalkMoved++;
             }
             // WHERE is the drop? "mostly below" and "mostly beside" want opposite fixes, so tally
@@ -730,13 +734,13 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
                 // an instrument never breaks the tick it rides on
             }
             // Measured BEFORE this tick's snap, so it reports what the previous tick left behind.
-            net.minecraft.util.math.Vec3d toTarget = _entity.getPos().subtract(nowPos);
+            net.minecraft.world.phys.Vec3 toTarget = _entity.position().subtract(nowPos);
             float wantYaw = (float) Math.toDegrees(-Math.atan2(toTarget.x, toTarget.z));
-            if (Math.abs(net.minecraft.util.math.MathHelper.wrapDegrees(
-                    wantYaw - mod.getPlayer().getYaw())) < 20.0f) {
+            if (Math.abs(net.minecraft.util.Mth.wrapDegrees(
+                    wantYaw - mod.getPlayer().getYRot(1.0f))) < 20.0f) {
                 entityCloseWalkAimed++;
             }
-            double nowDist = nowPos.distanceTo(_entity.getPos());
+            double nowDist = nowPos.distanceTo(_entity.position());
             if (closeWalkLastDist >= 0 && nowDist < closeWalkLastDist - 0.01) {
                 entityCloseWalkCloser++;
             }
@@ -768,8 +772,8 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
             // not the move. This compares the yaw we SET last tick with the yaw we find now: if it
             // survived, the aim counter is the thing that is lying.
             if (closeWalkSetYaw != null
-                    && Math.abs(net.minecraft.util.math.MathHelper.wrapDegrees(
-                            closeWalkSetYaw - mod.getPlayer().getYaw())) < 1.0f) {
+                    && Math.abs(net.minecraft.util.Mth.wrapDegrees(
+                            closeWalkSetYaw - mod.getPlayer().getYRot(1.0f))) < 1.0f) {
                 entityCloseWalkYawKept++;
             }
             // ⛔ AND IS IT THE SAME DROP AS LAST TICK? This is the only reading left that makes the
@@ -838,7 +842,7 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
                 kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
                 closeWalkLeaseCleared++;
             }
-            adris.altoclef.util.helpers.LookHelper.lookAt(mod, _entity.getPos());
+            adris.altoclef.util.helpers.LookHelper.lookAt(mod, _entity.position());
             // ⛔ SNEAK IS WHY IT WALKS AND NEVER ARRIVES.
             //
             // This branch presses forward and never touched sneak, and DestroyBlockTask holds
@@ -868,7 +872,7 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
             // so a healthy approach never jumps.
             if (kaptainwutax.tungsten.TungstenConfig.get().closeWalkJumpsWhenStuck) {
                 if (closeWalkLastPos != null
-                        && closeWalkLastPos.squaredDistanceTo(mod.getPlayer().getPos()) <= 0.0025) {
+                        && closeWalkLastPos.distanceToSqr(mod.getPlayer().position()) <= 0.0025) {
                     closeWalkStillTicks++;
                 } else {
                     closeWalkStillTicks = 0;
@@ -884,7 +888,7 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
             }
             closeWalkHeldLast = true;
             closeWalkProbePending = true;
-            closeWalkSetYaw = mod.getPlayer().getYaw();   // what the snap actually left behind
+            closeWalkSetYaw = mod.getPlayer().getYRot(1.0f);   // what the snap actually left behind
             setDebugState("Walking straight at it (navigation would not)");
             return null;
         }
@@ -943,7 +947,7 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
         // tryPathToEntity already make this cheap and idempotent -- a cooldown, a fail counter, and
         // a retarget interval -- and it returns false without doing anything when tungsten is
         // already busy, which is why the two branches above return early before reaching here.
-        if (!mod.getPlayer().isInRange(_entity, _closeEnoughDistance)
+        if (!mod.getPlayer().closerThan(_entity, _closeEnoughDistance)
                 && TungstenHelper.tryPathToEntity(_entity)) {
             setDebugState("Walking to entity");
             return null;
@@ -969,6 +973,6 @@ boolean walkDrove = kaptainwutax.tungsten.TungstenConfig.get().closeWalkKeepsKey
 
     @Override
     protected String toDebugString() {
-        return "Approach entity " + _entity.getType().getTranslationKey();
+        return "Approach entity " + _entity.getType().getDescriptionId();
     }
 }

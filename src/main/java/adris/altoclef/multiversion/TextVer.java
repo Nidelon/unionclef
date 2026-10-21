@@ -1,24 +1,24 @@
 package adris.altoclef.multiversion;
 
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Component;
 
 public class TextVer {
 
 
     @Pattern
-    public static MutableText empty() {
+    public static MutableComponent empty() {
         //#if MC >= 11900
-        return Text.empty();
+        return Component.empty();
         //#else
         //$$ return new net.minecraft.text.LiteralText("");
         //#endif
     }
 
     @Pattern
-    public static MutableText literal(String str) {
+    public static MutableComponent literal(String str) {
         //#if MC >= 11900
-        return Text.literal(str);
+        return Component.literal(str);
         //#else
         //$$ return new net.minecraft.text.LiteralText(str);
         //#endif

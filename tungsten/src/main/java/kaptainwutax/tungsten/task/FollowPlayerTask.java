@@ -1,11 +1,11 @@
 package kaptainwutax.tungsten.task;
 
 import kaptainwutax.tungsten.Debug;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Thin wrapper over FollowEntityTask for following players by name.
@@ -58,7 +58,7 @@ public class FollowPlayerTask {
      * Called every game tick from MixinClientPlayerEntity.
      * Only handles player re-discovery; routing is done by FollowEntityTask.tick().
      */
-    public static void tick(WorldView world, ClientPlayerEntity player) {
+    public static void tick(LevelReader world, LocalPlayer player) {
         if (!active) return;
 
         tryRediscover();
@@ -71,18 +71,18 @@ public class FollowPlayerTask {
     private static void tryRediscover() {
         if (targetName == null) return;
 
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.world == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
 
         // Validate existing entity is still in the CURRENT world.
         // After reconnect, old entity reference may be stale even if !isRemoved().
         if (targetEntity != null && !targetEntity.isRemoved()
-                && mc.world.getEntityById(targetEntity.getId()) == targetEntity) {
+                && mc.level.getEntity(targetEntity.getId()) == targetEntity) {
             return; // still valid in current world
         }
 
         // Re-scan world for target player by name
-        for (PlayerEntity p : mc.world.getPlayers()) {
+        for (Player p : mc.level.players()) {
             if (p.getName().getString().equalsIgnoreCase(targetName)) {
                 targetEntity = p;
                 return;

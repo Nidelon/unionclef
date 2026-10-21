@@ -9,12 +9,12 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
 import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.TungstenMod;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.command.CommandSource;
+import net.minecraft.client.Minecraft;
+import net.minecraft.commands.SharedSuggestionProvider;
 
 public class CommandExecutor {
 
-	public static final CommandDispatcher<CommandSource> DISPATCHER = new CommandDispatcher<>();
+	public static final CommandDispatcher<SharedSuggestionProvider> DISPATCHER = new CommandDispatcher<>();
     private final HashMap<String, Command> _commandSheet = new HashMap<>();
     private final TungstenMod _mod;
 
@@ -97,8 +97,8 @@ public class CommandExecutor {
     
     
     public static void dispatch(String message) throws CommandSyntaxException {
-        if (TungstenMod.mc == null || TungstenMod.mc.getNetworkHandler() == null) return;
-        DISPATCHER.execute(message, TungstenMod.mc.getNetworkHandler().getCommandSource());
+        if (TungstenMod.mc == null || TungstenMod.mc.getConnection() == null) return;
+        DISPATCHER.execute(message, TungstenMod.mc.getConnection().getSuggestionsProvider());
     }
 
     public void execute(String line, Consumer<CommandException> getException) {

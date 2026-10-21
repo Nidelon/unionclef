@@ -12,11 +12,11 @@ import adris.altoclef.util.Dimension;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.block.Blocks;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.Vec3i;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.core.Vec3i;
 
 import java.util.Optional;
 
@@ -87,15 +87,15 @@ public class GetToOuterEndIslandsTask extends Task {
             double approachDist = Double.POSITIVE_INFINITY;
             boolean standingOnACell = false;
             for (Vec3i off : OFFSETS) {
-                BlockPos cell = gateway.add(off);
-                if (cell.equals(mod.getPlayer().getBlockPos())) standingOnACell = true;
-                double d = cell.getSquaredDistance(mod.getPlayer().getPos());
+                BlockPos cell = gateway.offset(off);
+                if (cell.equals(mod.getPlayer().blockPosition())) standingOnACell = true;
+                double d = cell.distSqr(BlockPos.containing(mod.getPlayer().position()));
                 if (d < approachDist) {
                     approachDist = d;
                     approach = cell;
                 }
             }
-            if ((!standingOnACell || !mod.getPlayer().isOnGround()) && approach != null) {
+            if ((!standingOnACell || !mod.getPlayer().onGround()) && approach != null) {
                 setDebugState("Getting close to gateway...");
                 return new GetToBlockTask(approach);
             }
@@ -121,7 +121,7 @@ public class GetToOuterEndIslandsTask extends Task {
     @Override
     public boolean isFinished() {
         return WorldHelper.getCurrentDimension() == Dimension.END &&
-                !WorldHelper.inRangeXZ(new Vec3d(0, 64, 0), AltoClef.getInstance().getPlayer().getPos(), END_ISLAND_START_RADIUS);
+                !WorldHelper.inRangeXZ(new Vec3(0, 64, 0), AltoClef.getInstance().getPlayer().position(), END_ISLAND_START_RADIUS);
     }
 
     @Override

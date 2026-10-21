@@ -1,6 +1,6 @@
 package kaptainwutax.tungsten.helpers;
 
-import net.minecraft.world.dimension.DimensionType;
+import net.minecraft.world.level.dimension.DimensionType;
 
 public class DimensionVer {
     public static boolean isUltrawarm(DimensionType dim) {

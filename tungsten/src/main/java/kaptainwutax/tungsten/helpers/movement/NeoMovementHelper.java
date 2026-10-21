@@ -7,11 +7,11 @@ import kaptainwutax.tungsten.TungstenModRenderContainer;
 import kaptainwutax.tungsten.helpers.MovementHelper;
 import kaptainwutax.tungsten.render.Color;
 import kaptainwutax.tungsten.render.Cuboid;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.BlockPos.Mutable;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.BlockPos.MutableBlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 public class NeoMovementHelper {
 
@@ -25,7 +25,7 @@ public class NeoMovementHelper {
 	 * @param shouldSlow
 	 * @return Horizontal direction in which neo is possible and null otherwise
 	 */
-	public static Direction getNeoDirection(WorldView world, BlockPos startPos, BlockPos endPos, boolean shouldRender, boolean shouldSlow) {
+	public static Direction getNeoDirection(LevelReader world, BlockPos startPos, BlockPos endPos, boolean shouldRender, boolean shouldSlow) {
 
 		boolean isMovingOnXAxis = startPos.getX() - endPos.getX() == 0;
 		boolean isMovingOnZAxis = startPos.getZ() - endPos.getZ() == 0;
@@ -54,7 +54,7 @@ public class NeoMovementHelper {
 	 * @param shouldSlow
 	 * @return Horizontal direction in which neo is possible and null otherwise
 	 */
-	public static Direction getNeoDirection(WorldView world, boolean isMovingOnXAxis, boolean isMovingOnZAxis,
+	public static Direction getNeoDirection(LevelReader world, boolean isMovingOnXAxis, boolean isMovingOnZAxis,
 			BlockPos startPos, BlockPos endPos, boolean isJumpingUp, boolean isJumpingOneBlock, boolean shouldRender, boolean shouldSlow) {
 
 		if (isMovingOnXAxis) {
@@ -80,7 +80,7 @@ public class NeoMovementHelper {
 	 * @param shouldSlow
 	 * @return Horizontal direction in which neo is possible and null otherwise
 	 */
-	public static Direction getNeoDirection(WorldView world, Direction.Axis movementDir, BlockPos startPos,
+	public static Direction getNeoDirection(LevelReader world, Direction.Axis movementDir, BlockPos startPos,
 		BlockPos endPos, boolean isJumpingUp, boolean isJumpingOneBlock, boolean shouldRender, boolean shouldSlow) {
 		if (!movementDir.isHorizontal())
 			throw new IllegalArgumentException("Only X and Z directions are allowed for movementDir");
@@ -135,11 +135,11 @@ public class NeoMovementHelper {
 			this.shouldSlow = shouldSlow;
 		}
 
-		private boolean isClear(WorldView world, int start, int end, int fixed, boolean isXAxis, int y) {
+		private boolean isClear(LevelReader world, int start, int end, int fixed, boolean isXAxis, int y) {
 			int count = 0;
 			int increment = start < end ? 1 : -1;
 			int curr = start;
-			BlockPos.Mutable currPos = new BlockPos.Mutable();
+			net.minecraft.core.BlockPos.MutableBlockPos currPos = new net.minecraft.core.BlockPos.MutableBlockPos();
 
 			while (curr != end) {
 				if (TungstenModDataContainer.PATHFINDER.stop.get())
@@ -180,11 +180,11 @@ public class NeoMovementHelper {
 			return true;
 		}
 
-		private static void renderBlock(BlockPos.Mutable currPos, Color color, boolean shouldSlow) {
-			TungstenModRenderContainer.TEST.add(new Cuboid(new Vec3d(currPos.getX(), currPos.getY(), currPos.getZ()),
-					new Vec3d(1.0D, 1.0D, 1.0D), color));
-			TungstenModRenderContainer.TEST.add(new Cuboid(new Vec3d(currPos.getX(), currPos.getY() + 1, currPos.getZ()),
-					new Vec3d(1.0D, 1.0D, 1.0D), color));
+		private static void renderBlock(net.minecraft.core.BlockPos.MutableBlockPos currPos, Color color, boolean shouldSlow) {
+			TungstenModRenderContainer.TEST.add(new Cuboid(new Vec3(currPos.getX(), currPos.getY(), currPos.getZ()),
+					new Vec3(1.0D, 1.0D, 1.0D), color));
+			TungstenModRenderContainer.TEST.add(new Cuboid(new Vec3(currPos.getX(), currPos.getY() + 1, currPos.getZ()),
+					new Vec3(1.0D, 1.0D, 1.0D), color));
 			if (shouldSlow) {
 				try {
 					Thread.sleep(450);

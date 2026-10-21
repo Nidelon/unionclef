@@ -10,13 +10,22 @@ import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.multiversion.entity.PlayerVer;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.item.*;
-import net.minecraft.screen.PlayerScreenHandler;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.item.BucketItem;
+import net.minecraft.world.item.EmptyMapItem;
+import net.minecraft.world.item.EnderEyeItem;
+import net.minecraft.world.item.FireworkRocketItem;
+import net.minecraft.world.item.FishingRodItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.FoodOnAStickItem;
+import net.minecraft.world.item.PotionItem;
+import net.minecraft.world.item.SpawnEggItem;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.inventory.ContainerInput;
 
-import net.minecraft.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -99,7 +108,7 @@ public class SlotHandler {
     // it is judged); the ladder only climbs on cancels within a minute of each other (a slot
     // the server truly refuses still reaches the ten-minute muzzle in half a minute, a
     // one-off revert decays); and the muzzles belong to the body that earned them -- a new
-    // ClientPlayerEntity (respawn, dimension change) starts with none. And a dropped click is
+    // LocalPlayer (respawn, dimension change) starts with none. And a dropped click is
     // COUNTED and SAID, once every five seconds, so the next silent stand names its slot.
     /** Clicks dropped by a muzzle; ladders restarted because the last cancel was over a
      *  minute old; muzzle sets cleared with a new body; the slot a click was last dropped on. */
@@ -110,10 +119,10 @@ public class SlotHandler {
     private final Map<BlacklistKey, Long> _slotCancelAt = new HashMap<>();
     private static final long CANCEL_LADDER_MS = 60_000L;
     private long banDropLogMs;
-    private ClientPlayerEntity bansOwner;
+    private LocalPlayer bansOwner;
 
     /** The muzzles belong to one body; a new one (respawn) starts clean. */
-    private void adoptBody(ClientPlayerEntity player) {
+    private void adoptBody(LocalPlayer player) {
         if (bansOwner == player) return;
         if (!_slotBlacklist.isEmpty() || !_slotCancelCount.isEmpty()) shBanClearedOnRespawn++;
         _slotBlacklist.clear();
@@ -130,12 +139,12 @@ public class SlotHandler {
      * Client thread only.
      */
     public long debugRevertBurst(int windowSlot, int packets) {
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return -1;
-        if (windowSlot < 0 || windowSlot >= player.currentScreenHandler.slots.size()) return -2;
+        if (windowSlot < 0 || windowSlot >= player.containerMenu.slots.size()) return -2;
         adoptBody(player);
-        int syncId = player.currentScreenHandler.syncId;
-        ItemStack before = player.currentScreenHandler.getSlot(windowSlot).getStack().copy();
+        int syncId = player.containerMenu.containerId;
+        ItemStack before = player.containerMenu.getSlot(windowSlot).getItem().copy();
         long now = System.currentTimeMillis();
         _pendingSlotActions.removeIf(a -> now - a.timeMs() > 600);
         _pendingSlotActions.add(new PendingSlotAction(now, syncId, windowSlot, before, _pendingSlotActions.isEmpty()));
@@ -145,9 +154,9 @@ public class SlotHandler {
 
     /** How much longer clicks on {@code windowSlot} of the current screen are dropped (ms). */
     public long banRemainingMs(int windowSlot) {
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return -1;
-        Long exp = _slotBlacklist.get(new BlacklistKey(player.currentScreenHandler.syncId, windowSlot));
+        Long exp = _slotBlacklist.get(new BlacklistKey(player.containerMenu.containerId, windowSlot));
         return exp == null ? 0 : Math.max(0, exp - System.currentTimeMillis());
     }
 
@@ -177,7 +186,7 @@ public class SlotHandler {
     /** How many clicks have been traced; see the note at the trace site. Reset by resetRunCounters. */
     public static volatile int clickTrace;
 
-    public void clickSlot(Slot slot, int mouseButton, SlotActionType type) {
+    public void clickSlot(Slot slot, int mouseButton, ContainerInput type) {
         // A CLICK THAT SILENTLY DOES NOT HAPPEN LOOKS EXACTLY LIKE A CLICK THAT DID NOTHING.
         // The output-collection task clicks the crafting result 8996 times a run and the item
         // never leaves the slot; this gate returning early is one of the two ways that happens,
@@ -225,7 +234,7 @@ public class SlotHandler {
                 shUnresolvedKept++;
                 return;
             }
-            clickSlot(PlayerSlot.UNDEFINED, 0, SlotActionType.PICKUP);
+            clickSlot(PlayerSlot.UNDEFINED, 0, ContainerInput.PICKUP);
             return;
         }
         // NOT THE CASE! We may have something in the cursor slot to place.
@@ -234,13 +243,13 @@ public class SlotHandler {
         clickWindowSlot(slot.getWindowSlot(), mouseButton, type);
     }
 
-    private void clickSlotForce(Slot slot, int mouseButton, SlotActionType type) {
+    private void clickSlotForce(Slot slot, int mouseButton, ContainerInput type) {
         forceAllowNextSlotAction();
         clickSlot(slot, mouseButton, type);
     }
 
-    private void clickWindowSlot(int windowSlot, int mouseButton, SlotActionType type) {
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+    private void clickWindowSlot(int windowSlot, int mouseButton, ContainerInput type) {
+        LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
             return;
         }
@@ -272,7 +281,7 @@ public class SlotHandler {
             }
         }
         // Bounds check — prevent CrashException from ScreenHandler.onSlotClick
-        if (windowSlot >= 0 && windowSlot >= player.currentScreenHandler.slots.size()) {
+        if (windowSlot >= 0 && windowSlot >= player.containerMenu.slots.size()) {
             return;
         }
         // WATCH ONE CLICK, PROPERLY. The craft loop asks for a move 1854 times, 658 clicks go out,
@@ -282,21 +291,21 @@ public class SlotHandler {
         // first twenty are enough to see one whole pick-up-and-place cycle; after that it is noise.
         if (clickTrace < 20) {
             clickTrace++;
-            net.minecraft.item.ItemStack cur = StorageHelper.getItemStackInCursorSlot();
+            net.minecraft.world.item.ItemStack cur = StorageHelper.getItemStackInCursorSlot();
             String tgt = "?";
             try {
-                if (windowSlot >= 0 && windowSlot < player.currentScreenHandler.slots.size()) {
-                    net.minecraft.item.ItemStack st = player.currentScreenHandler.getSlot(windowSlot).getStack();
+                if (windowSlot >= 0 && windowSlot < player.containerMenu.slots.size()) {
+                    net.minecraft.world.item.ItemStack st = player.containerMenu.getSlot(windowSlot).getItem();
                     tgt = st.isEmpty() ? "empty" : (st.getItem() + "x" + st.getCount());
                 }
             } catch (RuntimeException ignored) { }
             Debug.logMessage("CLICK win=" + windowSlot + " btn=" + mouseButton + " type=" + type
                     + " cursor=" + (cur.isEmpty() ? "empty" : (cur.getItem() + "x" + cur.getCount()))
                     + " target=" + tgt
-                    + " screen=" + player.currentScreenHandler.getClass().getSimpleName());
+                    + " screen=" + player.containerMenu.getClass().getSimpleName());
         }
         registerSlotAction();
-        int syncId = player.currentScreenHandler.syncId;
+        int syncId = player.containerMenu.containerId;
         adoptBody(player);
 
         // Check blacklist before clicking -- and say so (G83): a click that vanishes here looks
@@ -318,10 +327,10 @@ public class SlotHandler {
 
         // Snapshot slot state before click for server-cancellation detection
         // Skip tracking in chest/GUI screens — server cancels are expected there (shop menus etc.)
-        boolean isPlayerInventory = player.currentScreenHandler instanceof PlayerScreenHandler;
+        boolean isPlayerInventory = player.containerMenu instanceof InventoryMenu;
         try {
-            if (isPlayerInventory && windowSlot >= 0 && windowSlot < player.currentScreenHandler.slots.size()) {
-                ItemStack before = player.currentScreenHandler.getSlot(windowSlot).getStack().copy();
+            if (isPlayerInventory && windowSlot >= 0 && windowSlot < player.containerMenu.slots.size()) {
+                ItemStack before = player.containerMenu.getSlot(windowSlot).getItem().copy();
                 long now = System.currentTimeMillis();
                 _pendingSlotActions.removeIf(a -> now - a.timeMs() > 600);
                 boolean alone = _pendingSlotActions.isEmpty();
@@ -330,7 +339,7 @@ public class SlotHandler {
         } catch (Exception ignored) {}
 
         try {
-            mod.getController().clickSlot(syncId, windowSlot, mouseButton, type, player);
+            mod.getController().handleContainerInput(syncId, windowSlot, mouseButton, type, player);
         } catch (Exception e) {
             Debug.logWarning("Slot Click Error (ignored)");
             e.printStackTrace();
@@ -348,10 +357,10 @@ public class SlotHandler {
         // click on it is dropped in silence. That is the whole of "the item is in the slot
         // (ciReceive 98%), the task clicks thousands of times, nothing ever leaves".
         try {
-            ClientPlayerEntity p = MinecraftClient.getInstance().player;
-            if (p != null && slot >= 0 && slot < p.currentScreenHandler.slots.size()
-                    && p.currentScreenHandler.getSlot(slot)
-                            instanceof net.minecraft.screen.slot.CraftingResultSlot) {
+            LocalPlayer p = Minecraft.getInstance().player;
+            if (p != null && slot >= 0 && slot < p.containerMenu.slots.size()
+                    && p.containerMenu.getSlot(slot)
+                            instanceof net.minecraft.world.inventory.ResultSlot) {
                 return;
             }
         } catch (Exception ignored) {}
@@ -365,7 +374,7 @@ public class SlotHandler {
             // for its slot inside 600 ms -- a full inventory sync is one packet per slot -- and
             // climbed the ladder below to ten minutes in a single burst.
             it.remove();
-            if (action.before().isEmpty() || !ItemStack.areEqual(serverStack, action.before())) {
+            if (action.before().isEmpty() || !ItemStack.matches(serverStack, action.before())) {
                 continue;   // the click landed (the slot changed): not a cancellation
             }
             // ⛔ A VERDICT NEEDS THE CLICK TO HAVE BEEN ALONE IN FLIGHT (G83b, round 43). "window
@@ -415,7 +424,7 @@ public class SlotHandler {
             _slotBlacklist.put(key, now + blacklistMs);
             if (!alreadyBlocked) {
                 Debug.logMessage("[WARN] Server cancelled slot action: window slot " + slot
-                        + " (" + serverStack.getItem().getTranslationKey()
+                        + " (" + serverStack.getItem().getDescriptionId()
                         + " x" + serverStack.getCount()
                         + ") — blacklisting for " + (blacklistMs / 1000) + "s (cancel #" + cancels + ")");
             }
@@ -430,9 +439,9 @@ public class SlotHandler {
                 toEquip);
         for (Slot CurrentItemSlot : currentItemSlot) {
             if (!Slot.isCursor(CurrentItemSlot)) {
-                mod.getSlotHandler().clickSlot(CurrentItemSlot, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(CurrentItemSlot, 0, ContainerInput.PICKUP);
             } else {
-                mod.getSlotHandler().clickSlot(PlayerSlot.OFFHAND_SLOT, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(PlayerSlot.OFFHAND_SLOT, 0, ContainerInput.PICKUP);
             }
         }
     }
@@ -453,7 +462,7 @@ public class SlotHandler {
             for (Slot ItemSlots : itemSlots) {
                 int hotbar = 1;
                 //_mod.getPlayer().getInventory().swapSlotWithHotbar();
-                clickSlotForce(Objects.requireNonNull(ItemSlots), inCursor ? 0 : hotbar, inCursor ? SlotActionType.PICKUP : SlotActionType.SWAP);
+                clickSlotForce(Objects.requireNonNull(ItemSlots), inCursor ? 0 : hotbar, inCursor ? ContainerInput.PICKUP : ContainerInput.SWAP);
                 //registerSlotAction();
             }
             return true;
@@ -485,11 +494,11 @@ public class SlotHandler {
                             || item == Items.WRITABLE_BOOK
                             || item == Items.WRITTEN_BOOK
                             || item instanceof FishingRodItem
-                            || item instanceof OnAStickItem
+                            || item instanceof FoodOnAStickItem
                             || item == Items.COMPASS
                             || item instanceof EmptyMapItem
                             //#if MC < 12111
-                            || item instanceof Equipment
+                            || item.components().has(net.minecraft.core.component.DataComponents.EQUIPPABLE)
                             //#endif
                             || item == Items.LEAD
                             || item == Items.SHIELD;
@@ -513,28 +522,28 @@ public class SlotHandler {
                 // Try to swap items with the first non-bad slot.
                 for (Slot slot : Slot.getCurrentScreenSlots()) {
                     if (!isBad.test(StorageHelper.getItemStackInSlot(slot))) {
-                        clickSlotForce(slot, 0, SlotActionType.PICKUP);
+                        clickSlotForce(slot, 0, ContainerInput.PICKUP);
                         return false;
                     }
                 }
                 if (ItemHelper.canThrowAwayStack(mod, cursor)) {
-                    clickSlotForce(PlayerSlot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    clickSlotForce(PlayerSlot.UNDEFINED, 0, ContainerInput.PICKUP);
                     return true;
                 }
                 // Can't throw :(
                 return false;
             } else {
                 // Put in the empty/available slot.
-                clickSlotForce(fittableSlots.get(), 0, SlotActionType.PICKUP);
+                clickSlotForce(fittableSlots.get(), 0, ContainerInput.PICKUP);
                 return true;
             }
         } else if (isBad.test(equip)) {
             // Pick up the item
-            clickSlotForce(PlayerSlot.getEquipSlot(), 0, SlotActionType.PICKUP);
+            clickSlotForce(PlayerSlot.getEquipSlot(), 0, ContainerInput.PICKUP);
             return false;
         } else if (equip.isEmpty() && !cursor.isEmpty()) {
             // cursor is good and equip is empty, so finish filling it in.
-            clickSlotForce(PlayerSlot.getEquipSlot(), 0, SlotActionType.PICKUP);
+            clickSlotForce(PlayerSlot.getEquipSlot(), 0, ContainerInput.PICKUP);
             return true;
         }
         // We're already de-equipped
@@ -543,7 +552,7 @@ public class SlotHandler {
 
     public void forceEquipSlot(Slot slot) {
         Slot target = PlayerSlot.getEquipSlot();
-        clickSlotForce(slot, target.getInventorySlot(), SlotActionType.SWAP);
+        clickSlotForce(slot, target.getInventorySlot(), ContainerInput.SWAP);
     }
 
     public boolean forceEquipItem(Item[] matches, boolean unInterruptable) {
@@ -583,19 +592,19 @@ public class SlotHandler {
         // either the timer is being reset or something else calls this. Count before guarding.
         shRefreshes++;
         if (!StorageHelper.getItemStackInCursorSlot().isEmpty()) shRefreshWithCursor++;
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;
         // Only refresh when player inventory is active — clicking slots in
         // other screen handlers (chests, crafting tables, etc.) crashes.
-        if (!(player.currentScreenHandler instanceof PlayerScreenHandler)) return;
+        if (!(player.containerMenu instanceof InventoryMenu)) return;
         //#if MC >= 12111
         //$$ for (int i = 0; i < 36; ++i) {
         //#else
-        for (int i = 0; i < player.getInventory().main.size(); ++i) {
+        for (int i = 0; i < player.getInventory().getNonEquipmentItems().size(); ++i) {
         //#endif
             Slot slot = Slot.getFromCurrentScreenInventory(i);
-            clickSlotForce(slot, 0, SlotActionType.PICKUP);
-            clickSlotForce(slot, 0, SlotActionType.PICKUP);
+            clickSlotForce(slot, 0, ContainerInput.PICKUP);
+            clickSlotForce(slot, 0, ContainerInput.PICKUP);
         }
     }
 }

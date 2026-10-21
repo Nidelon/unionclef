@@ -6,8 +6,8 @@ import adris.altoclef.eventbus.events.SneakEvent;
 import adris.altoclef.eventbus.events.multiplayer.TeleportEvent;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -24,7 +24,7 @@ public class ThreatTable {
     }
 
     public void onSneak(Entity entity, boolean sneak) {
-        if (entity instanceof PlayerEntity player) {
+        if (entity instanceof Player player) {
             PlayerThreat threat = playerThreats.get(player.getName().getString());
             if (threat != null) {
                 if (sneak) {
@@ -57,8 +57,8 @@ public class ThreatTable {
     public void registerPlayer(int entityId, boolean updateData) {
         if (playerThreats.entrySet().stream().anyMatch(e -> e.getValue().id == entityId)) return;
         if (_mod.getWorld() == null) return;
-        Entity entity = _mod.getWorld().getEntityById(entityId);
-        if (entity instanceof PlayerEntity player) {
+        Entity entity = _mod.getWorld().getEntity(entityId);
+        if (entity instanceof Player player) {
             String playerName = entity.getName().getString();
             if (playerName != null) {
                 entityIdToName.put(entityId, playerName);
@@ -194,7 +194,7 @@ public class ThreatTable {
         return -1;
     }
 
-    public void updatePlayerData(String playerName, PlayerEntity entity, boolean register) {
+    public void updatePlayerData(String playerName, Player entity, boolean register) {
         if (register) registerPlayer(entity.getId());
         PlayerThreat threat = playerThreats.get(playerName);
         if (threat != null) {
@@ -204,28 +204,28 @@ public class ThreatTable {
                 entityIdToName.remove(threat.id);
                 threat.id = entityId;
             }
-            if (threat.sneak != entity.isSneaking()) {
+            if (threat.sneak != entity.isShiftKeyDown()) {
                 if (threat.name != null && _mod.getPlayer() != null && _mod.getPlayer().getName() != null
                         && !threat.name.equals(_mod.getPlayer().getName().getString())) {
-                    EventBus.publish(new SneakEvent(entity, entity.isSneaking()));
+                    EventBus.publish(new SneakEvent(entity, entity.isShiftKeyDown()));
                 }
-                threat.sneak = entity.isSneaking();
+                threat.sneak = entity.isShiftKeyDown();
             }
             if (threat.sneakRate > 0 && threat.shiftTimer.elapsed()) threat.sneakRate = 0;
-            if (entity.getPos() != null) {
-                if (threat.lastPos != null && threat.lastPos.distanceTo(entity.getPos()) > 10) {
-                    EventBus.publish(new TeleportEvent(entity, threat.lastPos, entity.getPos()));
+            if (entity.position() != null) {
+                if (threat.lastPos != null && threat.lastPos.distanceTo(entity.position()) > 10) {
+                    EventBus.publish(new TeleportEvent(entity, threat.lastPos, entity.position()));
                 }
-                threat.lastPos = entity.getPos();
+                threat.lastPos = entity.position();
             }
             threat.weaponThreat = ItemHelper.getWeaponThreat(_mod, entity);
             threat.lastHealth = entity.getHealth();
-            threat.lastRotationVec = entity.getRotationVec(0);
+            threat.lastRotationVec = entity.getViewVector(0);
             threat.name = entity.getName().getString();
         }
     }
 
-    public void updatePlayerData(String playerName, PlayerEntity entity) {
+    public void updatePlayerData(String playerName, Player entity) {
         updatePlayerData(playerName, entity, true);
     }
 

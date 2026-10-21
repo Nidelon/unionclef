@@ -3,9 +3,9 @@ package adris.altoclef.ui;
 import adris.altoclef.AltoClef;
 import adris.altoclef.multiversion.DrawContextWrapper;
 import adris.altoclef.tasksystem.Task;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import com.mojang.blaze3d.vertex.PoseStack;
 
 import java.awt.*;
 import java.time.Instant;
@@ -47,14 +47,14 @@ public class CommandStatusOverlay {
             paused = false;
         }
 
-        // TODO [1.21.11] MatrixStack replaced — skip scaling for now
-        drawTaskChain(context, MinecraftClient.getInstance().textRenderer, 10, 10, 10, tasks, mod);
+        // TODO [1.21.11] PoseStack replaced — skip scaling for now
+        drawTaskChain(context, Minecraft.getInstance().font, 10, 10, 10, tasks, mod);
     }
 
-    private void drawTaskChain(DrawContextWrapper context, TextRenderer renderer, int x, int y, int maxLines, List<Task> tasks, AltoClef mod) {
+    private void drawTaskChain(DrawContextWrapper context, Font renderer, int x, int y, int maxLines, List<Task> tasks, AltoClef mod) {
         int whiteColor = 0xFFFFFFFF;
 
-        int fontHeight = renderer.fontHeight;
+        int fontHeight = renderer.lineHeight;
         int addX = 4;
         int addY = fontHeight + 2;
 
@@ -135,11 +135,11 @@ public class CommandStatusOverlay {
     }
 
 
-    private void renderTask(Task task, DrawContextWrapper context, TextRenderer renderer, int x, int y) {
+    private void renderTask(Task task, DrawContextWrapper context, Font renderer, int x, int y) {
         String taskName = task.getClass().getSimpleName() + " ";
         context.drawText(renderer, taskName, x, y, new Color(128, 128, 128).getRGB(), true);
 
-        context.drawText(renderer, task.toString(), x + renderer.getWidth(taskName), y, new Color(255, 255, 255).getRGB(), true);
+        context.drawText(renderer, task.toString(), x + renderer.width(taskName), y, new Color(255, 255, 255).getRGB(), true);
 
     }
 

@@ -1,6 +1,6 @@
 package kaptainwutax.tungsten;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 public class Debug {
 
@@ -48,7 +48,7 @@ public class Debug {
                 message = "\u00A72\u00A7l\u00A7o" + getLogPrefix() + "\u00A7r" + message;
             }
             try {
-                TungstenModDataContainer.player.sendMessage(Text.of(message), false);
+                TungstenModDataContainer.player.sendSystemMessage(Component.literal(message));
             } catch (Exception e) {
                 // MC ChatHud can crash with IndexOutOfBoundsException on message overflow
                 logInternal("Chat overflow, message dropped: " + message);
@@ -70,7 +70,7 @@ public class Debug {
         if (TungstenModDataContainer.player != null) {
             message = "\u00A72\u00A7l\u00A7oWARNING:\u00A7r" + message;
             try {
-                TungstenModDataContainer.player.sendMessage(Text.of(message), false);
+                TungstenModDataContainer.player.sendSystemMessage(Component.literal(message));
             } catch (Exception e) {
                 logInternal("Chat overflow, warning dropped: " + message);
             }

@@ -2,11 +2,11 @@ package adris.altoclef.multiversion.entity;
 
 import adris.altoclef.multiversion.Pattern;
 import net.fabricmc.loader.impl.lib.sat4j.core.Vec;
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 import adris.altoclef.mixins.EntityAccessor;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.phys.Vec3;
 
 public class EntityVer {
 
@@ -33,7 +33,7 @@ public class EntityVer {
     @Pattern
     public BlockPos getLandingPos(Entity entity) {
         //#if MC >= 11701
-        return entity.getSteppingPos();
+        return entity.getOnPos();
         //#else
         //$$ return ((adris.altoclef.mixins.EntityAccessor) entity).invokeGetLandingPos();
         //#endif
@@ -42,7 +42,7 @@ public class EntityVer {
     @Pattern
     private static float getPitch(Entity player) {
         //#if MC >= 11701
-        return player.getPitch();
+        return player.getXRot(1.0f);
         //#else
         //$$ return player.pitch;
         //#endif
@@ -51,7 +51,7 @@ public class EntityVer {
     @Pattern
     private static float getYaw(Entity player) {
         //#if MC >= 11701
-        return player.getYaw();
+        return player.getYRot(1.0f);
         //#else
         //$$ return player.yaw;
         //#endif
@@ -60,7 +60,7 @@ public class EntityVer {
     @Pattern
     private static void setPitch(Entity player, float value) {
         //#if MC >= 11701
-        player.setPitch(value);
+        player.setXRot(value);
         //#else
         //$$ player.pitch = value;
         //#endif
@@ -69,16 +69,16 @@ public class EntityVer {
     @Pattern
     private static void setYaw(Entity player, float value) {
         //#if MC >= 11701
-        player.setYaw(value);
+        player.setYRot(value);
         //#else
         //$$ player.yaw = value;
         //#endif
     }
 
     @Pattern
-    private static Vec3d getEyePos(Entity entity) {
+    private static Vec3 getEyePos(Entity entity) {
         //#if MC >= 11701
-        return entity.getEyePos();
+        return entity.getEyePosition();
         //#else
         //$$ return adris.altoclef.multiversion.entity.EntityHelper.getEyePos(entity);
         //#endif
@@ -87,7 +87,7 @@ public class EntityVer {
     @Pattern
     private static ChunkPos getChunkPos(Entity entity) {
         //#if MC >= 11701
-        return entity.getChunkPos();
+        return entity.chunkPosition();
         //#else
         //$$ return adris.altoclef.multiversion.entity.EntityHelper.getChunkPos(entity);
         //#endif
@@ -121,27 +121,27 @@ public class EntityVer {
     }
 
     @Pattern
-    private static Vec3d getPos(Entity entity) {
+    private static Vec3 getPos(Entity entity) {
         //#if MC >= 12111
         //$$ return entity.getEntityPos();
         //#else
-        return entity.getPos();
+        return entity.position();
         //#endif
     }
 
     @Pattern
-    private static net.minecraft.world.World getWorld(Entity entity) {
+    private static net.minecraft.world.level.Level getWorld(Entity entity) {
         //#if MC >= 12111
-        //$$ return entity.getEntityWorld();
+        //$$ return entity.level();
         //#else
-        return entity.getWorld();
+        return entity.level();
         //#endif
     }
 
     // getHandItems/getArmorItems deleted in 1.21.11.
     // Preprocessor crashes remapping deleted methods, even in inactive #if.
     // Use reflection on 1.21.1 to hide identifiers from preprocessor.
-    public static Iterable<net.minecraft.item.ItemStack> getHandItems(net.minecraft.entity.LivingEntity entity) {
+    public static Iterable<net.minecraft.world.item.ItemStack> getHandItems(net.minecraft.world.entity.LivingEntity entity) {
         //#if MC >= 12111
         //$$ return java.util.List.of(entity.getMainHandStack(), entity.getOffHandStack());
         //#else
@@ -149,13 +149,13 @@ public class EntityVer {
         //#endif
     }
 
-    public static Iterable<net.minecraft.item.ItemStack> getArmorItems(net.minecraft.entity.LivingEntity entity) {
+    public static Iterable<net.minecraft.world.item.ItemStack> getArmorItems(net.minecraft.world.entity.LivingEntity entity) {
         //#if MC >= 12111
         //$$ return java.util.List.of(
-        //$$     entity.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD),
-        //$$     entity.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST),
-        //$$     entity.getEquippedStack(net.minecraft.entity.EquipmentSlot.LEGS),
-        //$$     entity.getEquippedStack(net.minecraft.entity.EquipmentSlot.FEET)
+        //$$     entity.getEquippedStack(net.minecraft.world.entity.EquipmentSlot.HEAD),
+        //$$     entity.getEquippedStack(net.minecraft.world.entity.EquipmentSlot.CHEST),
+        //$$     entity.getEquippedStack(net.minecraft.world.entity.EquipmentSlot.LEGS),
+        //$$     entity.getEquippedStack(net.minecraft.world.entity.EquipmentSlot.FEET)
         //$$ );
         //#else
         return LivingEntityVer.callArmorItems(entity);

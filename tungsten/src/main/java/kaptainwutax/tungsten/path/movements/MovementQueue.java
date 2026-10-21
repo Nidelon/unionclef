@@ -7,11 +7,11 @@ import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.util.WindMouseRotation;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.block.BlockState;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * What the planner hands over: an ORDERED chain of {@link Movement}s, of which exactly one is
@@ -51,7 +51,7 @@ import net.minecraft.world.WorldView;
  * <h2>Divergences, recorded not faked</h2>
  * <ul>
  *   <li>Upstream re-uses the path's own cost estimate. Here the estimate comes from
- *       {@link Movement#getCost(net.minecraft.world.WorldView, ClientPlayerEntity)} at start time,
+ *       {@link Movement#getCost(net.minecraft.world.level.LevelReader, LocalPlayer)} at start time,
  *       and it is CLAMPED to {@link #MAX_COST_ESTIMATE}: tungsten's planner, not
  *       {@code MovementTraverse.cost}, decided this edge was possible, so the movement's own price
  *       may be {@code COST_INF} for a cell whose floor the route is about to lay. An unclamped
@@ -172,12 +172,12 @@ public final class MovementQueue {
     private static final List<Movement> movements = new ArrayList<>();
 
     /** Body to the current movement's destination, then on through the next three (baritone lookahead). */
-    private static boolean queueAheadLethal(ClientPlayerEntity player, int index) {
-        var w = player.getEntityWorld();
-        net.minecraft.util.math.Vec3d prev = player.getEntityPos();
+    private static boolean queueAheadLethal(LocalPlayer player, int index) {
+        var w = player.level();
+        net.minecraft.world.phys.Vec3 prev = player.position();
         for (int i = index; i < Math.min(movements.size(), index + 4); i++) {
             var d = movements.get(i).getDest();
-            net.minecraft.util.math.Vec3d next = new net.minecraft.util.math.Vec3d(d.getX() + 0.5, d.getY(), d.getZ() + 0.5);
+            net.minecraft.world.phys.Vec3 next = new net.minecraft.world.phys.Vec3(d.getX() + 0.5, d.getY(), d.getZ() + 0.5);
             if (kaptainwutax.tungsten.path.RouteHazards.segmentLethal(w, prev, next)) return true;
             prev = next;
         }
@@ -241,8 +241,8 @@ public final class MovementQueue {
             var world = kaptainwutax.tungsten.TungstenModDataContainer.world;
             if (world == null || feet == null) return;
             java.util.function.Function<BlockPos, String> name = bp -> {
-                String id = net.minecraft.registry.Registries.BLOCK
-                        .getId(world.getBlockState(bp).getBlock()).getPath();
+                String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                        .getKey(world.getBlockState(bp).getBlock()).getPath();
                 return id.length() > 14 ? id.substring(0, 14) : id;
             };
             // ⛔ THE DIRECTION MUST BE THE EDGE, NOT THE BODY'S OFFSET FROM IT. The first version
@@ -301,7 +301,7 @@ public final class MovementQueue {
             // and sent that investigation somewhere useful; here it has never been asked at all.
             String look = "?";
             try {
-                var pl = net.minecraft.client.MinecraftClient.getInstance().player;
+                var pl = net.minecraft.client.Minecraft.getInstance().player;
                 if (pl != null && cur != null) {
                     double ddx = (cur.dest.x + 0.5) - pl.getX();
                     double ddz = (cur.dest.z + 0.5) - pl.getZ();
@@ -314,15 +314,15 @@ public final class MovementQueue {
                     // show, or it is against nothing and simply is not moving. Those want
                     // opposite fixes and the scene cannot currently tell them apart.
                     look = String.format(java.util.Locale.ROOT, "%+.0f coll:%s v:%.2f",
-                            net.minecraft.util.math.MathHelper.wrapDegrees(
-                                    wantYawDeg - pl.getYaw()),
+                            net.minecraft.util.Mth.wrapDegrees(
+                                    wantYawDeg - pl.getYRot(1.0f)),
                             pl.horizontalCollision ? "Y" : "n",
-                            Math.hypot(pl.getVelocity().x, pl.getVelocity().z));
+                            Math.hypot(pl.getDeltaMovement().x, pl.getDeltaMovement().z));
                 }
             } catch (Exception ignored) {
                 // an instrument never breaks the tick it rides on
             }
-            stuckScenes.addLast("on:" + name.apply(feet.down()) + " in:" + name.apply(feet)
+            stuckScenes.addLast("on:" + name.apply(feet.below()) + " in:" + name.apply(feet)
                     + " head:" + name.apply(feet.above()) + " go:" + dir + " off:" + look
                     + " " + keys + " " + who);
             while (stuckScenes.size() > 4) stuckScenes.removeFirst();
@@ -552,7 +552,7 @@ public final class MovementQueue {
      * a jump -- it is a route the planner shortened, and launching the bot over ground it could
      * have walked is how a fix becomes a regression.
      */
-    private static boolean isParkourEdge(WorldView world, BlockPos a, BlockPos b) {
+    private static boolean isParkourEdge(LevelReader world, BlockPos a, BlockPos b) {
         if (!isParkourShape(a, b)) {
             return false;
         }
@@ -563,8 +563,8 @@ public final class MovementQueue {
                 ? (dx > 0 ? Direction.EAST : Direction.WEST)
                 : (dz > 0 ? Direction.SOUTH : Direction.NORTH);
         for (int i = 1; i < d; i++) {
-            BlockPos mid = a.offset(dir, i);
-            if (MovementHelperB.canWalkOn(world, mid.down(), world.getBlockState(mid.down()))) {
+            BlockPos mid = a.relative(dir, i);
+            if (MovementHelperB.canWalkOn(world, mid.below(), world.getBlockState(mid.below()))) {
                 return false;                   // walkable ground in between: not a gap
             }
         }
@@ -595,7 +595,7 @@ public final class MovementQueue {
         // The planner offers all six cardinal strokes in water. In particular a
         // dive has no land movement class, but MovementSwim already executes it.
         // Admission must agree with dispatch or a roof escape replans forever.
-        var world = net.minecraft.client.MinecraftClient.getInstance().world;
+        var world = net.minecraft.client.Minecraft.getInstance().level;
         int strokeLength = Math.abs(b.getX() - a.getX())
                 + Math.abs(b.getY() - a.getY()) + Math.abs(b.getZ() - a.getZ());
         if (world != null && strokeLength == 1
@@ -699,8 +699,8 @@ public final class MovementQueue {
         // as unclassified. This adds cells where the walk is real and changes nothing elsewhere.
         if (cells != null && cells.size() > 1
                 && kaptainwutax.tungsten.TungstenConfig.get().queueExpandsStraightRuns) {
-            net.minecraft.world.WorldView w =
-                    net.minecraft.client.MinecraftClient.getInstance().world;
+            net.minecraft.world.level.LevelReader w =
+                    net.minecraft.client.Minecraft.getInstance().level;
             if (w != null) {
                 List<BlockPos> run = new java.util.ArrayList<>(cells.size());
                 run.add(cells.get(0));
@@ -719,7 +719,7 @@ public final class MovementQueue {
                         List<BlockPos> mid = new java.util.ArrayList<>(n);
                         boolean walkable = true;
                         for (int k = 1; k <= n; k++) {
-                            BlockPos m = a.add(sx * k, 0, sz * k);
+                            BlockPos m = a.offset(sx * k, 0, sz * k);
                             // MATCH THE STANDARD THE QUEUE ITSELF ADMITS BY, NOT A STRICTER ONE.
                             // The first guard here also demanded a floor under every intermediate
                             // cell, and it refused ONE HUNDRED PERCENT of the straight runs it saw
@@ -732,14 +732,14 @@ public final class MovementQueue {
                             // not have. What it genuinely cannot do is walk through solid rock, so
                             // that -- headroom for body and head -- is what stays.
                             if (!MovementHelperB.canWalkThrough(w, m)
-                                    || !MovementHelperB.canWalkThrough(w, m.up())) {
+                                    || !MovementHelperB.canWalkThrough(w, m.above())) {
                                 walkable = false;
                                 break;
                             }
                             // Counted, not assumed: a cell with no floor is a bridge the executor
                             // must build, and early game it may have nothing to build with. If
                             // this number is large the expansion is buying stalls, not steps.
-                            if (!MovementHelperB.canWalkOn(w, m.down())) {
+                            if (!MovementHelperB.canWalkOn(w, m.below())) {
                                 qExpandNoFloor++;
                                 // A COUNTER SAYS HOW MANY, NEVER WHERE, and "every cell is
                                 // floorless" is exactly the shape a misread world produces as
@@ -794,10 +794,10 @@ public final class MovementQueue {
         // the body is nowhere on the route is the leg refused, which sends it to the walker.
         if (cells != null && cells.size() > 1
                 && kaptainwutax.tungsten.TungstenConfig.get().queueRebasesToFeet) {
-            net.minecraft.client.network.ClientPlayerEntity me =
-                    net.minecraft.client.MinecraftClient.getInstance().player;
+            net.minecraft.client.player.LocalPlayer me =
+                    net.minecraft.client.Minecraft.getInstance().player;
             if (me != null) {
-                BlockPos feet = me.getBlockPos();
+                BlockPos feet = me.blockPosition();
                 if (!cells.get(0).equals(feet)) {
                     int at = -1;
                     for (int i = 1; i < Math.min(cells.size(), 4); i++) {
@@ -824,8 +824,8 @@ public final class MovementQueue {
             return 0;
         }
         stop();
-        net.minecraft.world.WorldView world =
-                net.minecraft.client.MinecraftClient.getInstance().world;
+        net.minecraft.world.level.LevelReader world =
+                net.minecraft.client.Minecraft.getInstance().level;
         if (world == null) {
             qRefused++;
             return 0;
@@ -947,8 +947,8 @@ public final class MovementQueue {
             qRefused++;
             return 0;
         }
-        net.minecraft.client.network.ClientPlayerEntity self =
-                net.minecraft.client.MinecraftClient.getInstance().player;
+        net.minecraft.client.player.LocalPlayer self =
+                net.minecraft.client.Minecraft.getInstance().player;
         int executable = movements.size();
         outer:
         for (int i = 0; i < movements.size(); i++) {
@@ -979,7 +979,7 @@ public final class MovementQueue {
                     // thrown away whole and nothing about why, which is not a diagnosis.
                     Debug.logMessage("MovementQueue: cut at " + i + " — "
                             + m.getClass().getSimpleName() + " needs " + cell + " ("
-                            + net.minecraft.registry.Registries.BLOCK.getId(st.getBlock())
+                            + net.minecraft.core.registries.BuiltInRegistries.BLOCK.getId(st.getBlock())
                             + ") " + (forbidden ? "FORBIDDEN" : "mine=" + ticksToMine));
                     executable = i;
                     break outer;
@@ -1087,7 +1087,7 @@ public final class MovementQueue {
      * copied, not paraphrased: the two snap loops with their resets, the same-tick advance on
      * SUCCESS, the off-path cancel, and the cost-estimate timeout.
      */
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         if (!running) {
             return;
         }
@@ -1142,8 +1142,8 @@ public final class MovementQueue {
             // genuinely moving.
             boolean tungstenStill;
             if (kaptainwutax.tungsten.TungstenConfig.get().queueStallIsHorizontal) {
-                double px = player.getEntityPos().x;
-                double pz = player.getEntityPos().z;
+                double px = player.position().x;
+                double pz = player.position().z;
                 tungstenStill = Math.abs(px - lastTickX) < 0.05 && Math.abs(pz - lastTickZ) < 0.05;
                 if (!tungstenStill) {
                     lastTickX = px;
@@ -1230,8 +1230,8 @@ public final class MovementQueue {
                 Debug.logMessage(String.format(
                         "MovementQueue: off path (%.1f) at %.2f,%.2f,%.2f ground=%b fall=%.1f"
                                 + " step=%d/%d — replanning from here",
-                        closest, player.getEntityPos().x, player.getEntityPos().y,
-                        player.getEntityPos().z, player.isOnGround(), player.fallDistance,
+                        closest, player.position().x, player.position().y,
+                        player.position().z, player.onGround(), player.fallDistance,
                         index, movements.size()));
                 qUnreachable++;
                 qLost++;
@@ -1250,7 +1250,7 @@ public final class MovementQueue {
                 costEstimateIndex = index;
                 double cost;
                 try {
-                    cost = movement.getCost(player.getEntityWorld(), player);
+                    cost = movement.getCost(player.level(), player);
                 } catch (RuntimeException e) {
                     cost = MAX_COST_ESTIMATE;
                 }
@@ -1266,7 +1266,7 @@ public final class MovementQueue {
             // executor carried the check. Same primitive as theirs (RouteHazards), same response as
             // this file's own lost-path branch above: stop, and re-plan from where the body stands.
             // Only on the ground, baritone's safeToCancel -- mid-arc a cancel only drops the keys.
-            if (player.isOnGround() && queueAheadLethal(player, index)) {
+            if (player.onGround() && queueAheadLethal(player, index)) {
                 kaptainwutax.tungsten.path.RouteHazards.refusedQueue++;
                 kaptainwutax.tungsten.Debug.logMessage("MovementQueue: next movements are lethal (hazard) -- replanning");
                 stop();
@@ -1288,7 +1288,7 @@ public final class MovementQueue {
                 if (status == MovementStatus.PREPPING) qPrepTicks++;
                 else if (status == MovementStatus.RUNNING) qRunTicks++;
                 try {
-                    var o = net.minecraft.client.MinecraftClient.getInstance().options;
+                    var o = net.minecraft.client.Minecraft.getInstance().options;
                     // ⛔ THE MISSING KEY WAS THE ONE THE PATHOLOGY USES. This latched sneak,
                     // forward and sprint only, so a movement sitting in PREPPING while it MINES
                     // an obstruction recorded as "sneak:n fwd:n spr:n" -- and read as "pressing
@@ -1299,11 +1299,11 @@ public final class MovementQueue {
                     // Captured live on the playthrough: Descend/PREPPING/idx0of3 with
                     // "in:air head:air", which does NOT rule the obstruction out either --
                     // positionsToBreak is not the body and head cells.
-                    lastTickKeys = "sneak:" + (o.sneakKey.isPressed() ? "Y" : "n")
-                            + " fwd:" + (o.forwardKey.isPressed() ? "Y" : "n")
-                            + " spr:" + (o.sprintKey.isPressed() ? "Y" : "n")
-                            + " mine:" + (o.attackKey.isPressed() ? "Y" : "n")
-                            + " jump:" + (o.jumpKey.isPressed() ? "Y" : "n");
+                    lastTickKeys = "sneak:" + (o.keyShift.isDown() ? "Y" : "n")
+                            + " fwd:" + (o.keyUp.isDown() ? "Y" : "n")
+                            + " spr:" + (o.keySprint.isDown() ? "Y" : "n")
+                            + " mine:" + (o.keyAttack.isDown() ? "Y" : "n")
+                            + " jump:" + (o.keyJump.isDown() ? "Y" : "n");
                 } catch (Exception ignored) {
                     // an instrument never breaks the tick it rides on
                 }
@@ -1484,27 +1484,27 @@ public final class MovementQueue {
      * three blocks of air before anything slows it, and tripping that threshold means an immediate
      * stop + replan MID-AIR — from a position with no support to route from.
      */
-    private static boolean possiblyOffPath(ClientPlayerEntity player, Movement current,
+    private static boolean possiblyOffPath(LocalPlayer player, Movement current,
                                            double closest, double leniency) {
         if (closest <= leniency) {
             return false;
         }
         if (current instanceof MovementFall) {
             BetterBlockPos fallDest = current.getDest();
-            double dx = player.getEntityPos().x - (fallDest.getX() + 0.5);
-            double dz = player.getEntityPos().z - (fallDest.getZ() + 0.5);
+            double dx = player.position().x - (fallDest.getX() + 0.5);
+            double dz = player.position().z - (fallDest.getZ() + 0.5);
             return Math.sqrt(dx * dx + dz * dz) >= leniency;   // >=, as upstream
         }
         return true;
     }
 
-    private static double closestPathPos(ClientPlayerEntity player) {
+    private static double closestPathPos(LocalPlayer player) {
         double best = -1;
         for (Movement movement : movements) {
             for (BetterBlockPos pos : movement.getValidPositions()) {
-                double xdiff = pos.getX() + 0.5 - player.getEntityPos().x;
-                double ydiff = pos.getY() + 0.5 - player.getEntityPos().y;
-                double zdiff = pos.getZ() + 0.5 - player.getEntityPos().z;
+                double xdiff = pos.getX() + 0.5 - player.position().x;
+                double ydiff = pos.getY() + 0.5 - player.position().y;
+                double zdiff = pos.getZ() + 0.5 - player.position().z;
                 double dist = Math.sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
                 if (dist < best || best == -1) {
                     best = dist;
@@ -1524,7 +1524,7 @@ public final class MovementQueue {
      *
      * @return true if any remaining step wants a block broken or placed, or if we cannot tell
      */
-    public static synchronized boolean remainingNeedsBlockWork(net.minecraft.world.WorldView world) {
+    public static synchronized boolean remainingNeedsBlockWork(net.minecraft.world.level.LevelReader world) {
         if (world == null || movements.isEmpty()) {
             return false;
         }

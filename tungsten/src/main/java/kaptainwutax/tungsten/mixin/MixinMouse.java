@@ -1,8 +1,8 @@
 package kaptainwutax.tungsten.mixin;
 
 import kaptainwutax.tungsten.util.WindMouseRotation;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.Mouse;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.MouseHandler;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -14,16 +14,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Injects synthetic mouse deltas into cursorDeltaX/Y before updateMouse() runs.
  * When focused: full vanilla pipeline. When unfocused: UnfocusedMouseHelper handles it.
  */
-@Mixin(Mouse.class)
+@Mixin(MouseHandler.class)
 public class MixinMouse {
 
-    @Shadow @Final private MinecraftClient client;
-    @Shadow private double cursorDeltaX;
-    @Shadow private double cursorDeltaY;
+    @Shadow @Final private Minecraft client;
+    @Shadow private double accumulatedDX;
+    @Shadow private double accumulatedDY;
 
-    @Inject(method = "updateMouse", at = @At("HEAD"))
-    private void injectSyntheticDeltas(CallbackInfo ci) {
-        if (this.client.player == null || this.client.currentScreen != null) return;
+    @Inject(method = "turnPlayer", at = @At("HEAD"))
+    private void injectSyntheticDeltas(double delta, CallbackInfo ci) {
+        if (this.client.player == null || this.client.gui.screen() != null) return;
 // NOTE, and a warning about how this was nearly "fixed": both this injection and
         // UnfocusedMouseHelper call consumeRawPixelDeltas(), which ZEROES the buffer, so they can
         // race. I added a !isWindowFocused() guard here on the strength of a trace showing the yaw
@@ -39,8 +39,8 @@ public class MixinMouse {
 
         double[] deltas = WindMouseRotation.INSTANCE.consumeRawPixelDeltas();
         if (deltas[0] != 0 || deltas[1] != 0) {
-            this.cursorDeltaX += deltas[0];
-            this.cursorDeltaY += deltas[1];
+            this.accumulatedDX += deltas[0];
+            this.accumulatedDY += deltas[1];
         }
     }
 }

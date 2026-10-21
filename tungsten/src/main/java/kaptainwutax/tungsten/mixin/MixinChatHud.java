@@ -4,21 +4,21 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
-import net.minecraft.client.gui.hud.ChatHud;
+import net.minecraft.client.gui.components.ChatComponent;
 
 /**
- * Fixes a vanilla MC 1.21 off-by-one bug in ChatHud.addVisibleMessage:
+ * Fixes a vanilla MC 1.21 off-by-one bug in ChatComponent.addVisibleMessage:
  *   list.remove(list.size())   ← IndexOutOfBoundsException when list is full
  * should be:
  *   list.remove(list.size()-1)
  *
  * Triggered by any sendMessage call when the visible message list is at max capacity (100).
  */
-@Mixin(ChatHud.class)
+@Mixin(ChatComponent.class)
 public class MixinChatHud {
 
     @ModifyArg(
-        method = "addVisibleMessage",
+        method = "addMessageToDisplayQueue",
         at = @At(value = "INVOKE", target = "Ljava/util/List;remove(I)Ljava/lang/Object;")
     )
     private int fixRemoveOutOfBounds(int index) {

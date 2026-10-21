@@ -5,7 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.AbstractDoToClosestObjectTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -97,23 +97,23 @@ public class ChooseStrategyTask<T extends Enum<T>> extends AbstractDoToClosestOb
         if (_currentStrategy == null || mod.getPlayer() == null) {
             return Double.POSITIVE_INFINITY;
         }
-        Vec3d at = getPos(mod, _currentStrategy);
+        Vec3 at = getPos(mod, _currentStrategy);
         if (at == null) {
             return Double.POSITIVE_INFINITY;
         }
         return adris.altoclef.util.helpers.BaritoneHelper.calculateGenericHeuristic(
-                mod.getPlayer().getPos(), at);
+                mod.getPlayer().position(), at);
     }
 
     @Override
-    protected Vec3d getPos(AltoClef mod, T strategy) {
+    protected Vec3 getPos(AltoClef mod, T strategy) {
         if (strategy == null) return null;
         PositionWrapper wrapper = _strategyMap.get(strategy);
         return wrapper != null ? wrapper.getPos() : null;
     }
 
     @Override
-    protected Optional<T> getClosestTo(AltoClef mod, Vec3d pos) {
+    protected Optional<T> getClosestTo(AltoClef mod, Vec3 pos) {
         if (_currentStrategy == null) {
             _currentStrategy = findClosestValidStrategy(mod, pos);
             _switchTimer.reset();
@@ -156,7 +156,7 @@ public class ChooseStrategyTask<T extends Enum<T>> extends AbstractDoToClosestOb
         return validStrategies.get(_strategyIndex);
     }
 
-    private T findClosestValidStrategy(AltoClef mod, Vec3d pos) {
+    private T findClosestValidStrategy(AltoClef mod, Vec3 pos) {
         T closest = null;
         double minDist = Double.POSITIVE_INFINITY;
 
@@ -164,7 +164,7 @@ public class ChooseStrategyTask<T extends Enum<T>> extends AbstractDoToClosestOb
             PositionWrapper wrapper = entry.getValue();
             if (wrapper != null && wrapper.hasPosition() &&
                 wrapper.getPos() != null && isValid(mod, entry.getKey())) {
-                double dist = wrapper.getPos().squaredDistanceTo(pos);
+                double dist = wrapper.getPos().distanceToSqr(pos);
                 if (dist < minDist) {
                     minDist = dist;
                     closest = entry.getKey();
@@ -175,8 +175,8 @@ public class ChooseStrategyTask<T extends Enum<T>> extends AbstractDoToClosestOb
     }
 
     @Override
-    protected Vec3d getOriginPos(AltoClef mod) {
-        return mod.getPlayer().getPos();
+    protected Vec3 getOriginPos(AltoClef mod) {
+        return mod.getPlayer().position();
     }
 
     @Override

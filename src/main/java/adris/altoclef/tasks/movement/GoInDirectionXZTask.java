@@ -4,12 +4,12 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.goals.AltoGoal;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 public class GoInDirectionXZTask extends CustomBaritoneGoalTask {
 
-    private final Vec3d _origin;
-    private final Vec3d _delta;
+    private final Vec3 _origin;
+    private final Vec3 _delta;
 
     /**
      * @param sidePenalty ACCEPTED AND DELIBERATELY UNUSED. It was a ranking term for baritone's A*,
@@ -19,13 +19,13 @@ public class GoInDirectionXZTask extends CustomBaritoneGoalTask {
      *                    call sites need not change, and so this note is where anyone looking for
      *                    the penalty will find it.
      */
-    public GoInDirectionXZTask(Vec3d origin, Vec3d delta, double sidePenalty) {
+    public GoInDirectionXZTask(Vec3 origin, Vec3 delta, double sidePenalty) {
         _origin = origin;
         _delta = delta;
     }
 
-    private static boolean closeEnough(Vec3d a, Vec3d b) {
-        return a.squaredDistanceTo(b) < 0.001;
+    private static boolean closeEnough(Vec3 a, Vec3 b) {
+        return a.distanceToSqr(b) < 0.001;
     }
 
     @Override
@@ -34,7 +34,7 @@ public class GoInDirectionXZTask extends CustomBaritoneGoalTask {
         // never arrive at a direction -- wrapped around one heuristic. AltoGoal.Direction says the
         // same thing in the drive's own terms. The zero-length guard stays: normalising a zero
         // offset yields NaN, and a NaN target steers the bot nowhere at all.
-        if (_delta.multiply(1, 0, 1).lengthSquared() < 1.0E-6) {
+        if (_delta.multiply(1, 0, 1).lengthSqr() < 1.0E-6) {
             Debug.logMessage("Invalid goal direction XZ (probably zero distance)");
             return null;
         }

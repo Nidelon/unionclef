@@ -1,41 +1,41 @@
 package adris.altoclef.multiversion.entity;
 
 import adris.altoclef.multiversion.Pattern;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.item.ItemStack;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.Container;
+import net.minecraft.world.item.ItemStack;
 
 public class PlayerVer {
 
 
-    public static void sendChatMessage(ClientPlayerEntity player,String content) {
+    public static void sendChatMessage(LocalPlayer player,String content) {
         //#if MC >= 11904
-        player.networkHandler.sendChatMessage(content);
+        player.connection.sendChat(content);
         //#else
         //$$ player.sendChatMessage(content);
         //#endif
     }
 
-    public static void sendChatCommand(ClientPlayerEntity player,String content) {
+    public static void sendChatCommand(LocalPlayer player,String content) {
         //#if MC >= 11904
-        player.networkHandler.sendChatCommand(content);
+        player.connection.sendCommand(content);
         //#else
         //$$ player.sendChatMessage("/"+content);
         //#endif
     }
 
     @Pattern
-    private static ItemStack getCursorStack(PlayerEntity player) {
+    private static ItemStack getCursorStack(Player player) {
         //#if MC >= 11701
-        return player.currentScreenHandler.getCursorStack();
+        return player.containerMenu.getCarried();
         //#else
         //$$ return player.inventory.getCursorStack();
         //#endif
     }
 
     @Pattern
-    private static Inventory getInventory(PlayerEntity player) {
+    private static Container getInventory(Player player) {
         //#if MC >= 11701
         return player.getInventory();
         //#else
@@ -43,20 +43,20 @@ public class PlayerVer {
         //#endif
     }
 
-    public static boolean inPowderedSnow(PlayerEntity player) {
+    public static boolean inPowderedSnow(Player player) {
         //#if MC >= 11701
-        return player.inPowderSnow;
+        return player.isInPowderSnow;
         //#else
         //$$ return false;
         //#endif
     }
 
     @Pattern
-    public static int getSelectedSlot(net.minecraft.entity.player.PlayerInventory inv) {
+    public static int getSelectedSlot(net.minecraft.world.entity.player.Inventory inv) {
         //#if MC >= 12111
         //$$ return inv.getSelectedSlot();
         //#else
-        return inv.selectedSlot;
+        return inv.getSelectedSlot();
         //#endif
     }
 
@@ -67,13 +67,13 @@ public class PlayerVer {
      * allround as ~12 hits of exactly 1.0 hp a run -- a bow's attack damage -- with an iron_sword
      * drawn on the client. Behind syncSlotToServer while it is being measured.
      */
-    public static void setSelectedSlot(net.minecraft.entity.player.PlayerInventory inv, int slot) {
+    public static void setSelectedSlot(net.minecraft.world.entity.player.Inventory inv, int slot) {
         //#if MC >= 12111
         //$$ inv.setSelectedSlot(slot);
         //#else
-        inv.selectedSlot = slot;
+        inv.setSelectedSlot(slot);
         //#endif
-        net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
         if (mc.player != null && mc.player.getInventory() == inv) {
             kaptainwutax.tungsten.combat.WeaponSelector.syncSlot(mc.player, slot);
         }

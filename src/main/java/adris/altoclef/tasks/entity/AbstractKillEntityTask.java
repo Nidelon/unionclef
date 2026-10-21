@@ -11,17 +11,16 @@ import adris.altoclef.util.helpers.WorldHelper;
 import kaptainwutax.tungsten.path.movements.Input;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.AxeItem;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 import adris.altoclef.tasks.movement.GetToEntityTask;
 
-import net.minecraft.entity.LivingEntity;
+import net.minecraft.world.entity.LivingEntity;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -30,7 +29,7 @@ import java.util.Map;
 
 /**
  * Attacks an entity, but the target entity must be specified.
- * For PlayerEntity targets: uses smooth look (WindMouse) only — no instant rotation (anti-cheat).
+ * For Player targets: uses smooth look (WindMouse) only — no instant rotation (anti-cheat).
  * For mob targets: keeps original instant-aim behavior so speedrun is not broken.
  */
 public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
@@ -103,7 +102,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     /** Grant 5-minute combat immunity after confirmed invulnerability. */
     private static void grantImmunity(Entity entity, float health) {
         immuneEntities.put(entity.getId(), new ImmunityRecord(health));
-        Debug.logMessage("[Combat] " + entity.getType().getName().getString()
+        Debug.logMessage("[Combat] " + entity.getType().getDescription().getString()
                 + " granted 5 min immunity (" + REPOSITION_CYCLES_FOR_IMMUNITY + " reposition cycles, no damage)");
     }
 
@@ -111,7 +110,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     public static void clearImmunity(Entity entity) {
         if (entity == null) return;
         if (immuneEntities.remove(entity.getId()) != null) {
-            Debug.logMessage("[Combat] " + entity.getType().getName().getString() + " immunity cleared");
+            Debug.logMessage("[Combat] " + entity.getType().getDescription().getString() + " immunity cleared");
         }
     }
 
@@ -133,7 +132,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
             for (Entity e : nearbyEntities) {
                 if (e.getId() == entry.getKey() && e instanceof LivingEntity living) {
                     if (living.getHealth() < rec.lastKnownHealth || living.hurtTime > 0) {
-                        Debug.logMessage("[Combat] " + e.getType().getName().getString()
+                        Debug.logMessage("[Combat] " + e.getType().getDescription().getString()
                                 + " immunity cleared (took damage)");
                         it.remove();
                     }
@@ -219,7 +218,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
             // preference below intact while letting swords back in.
             if (ItemHelper.meleeDamageOf(item) <= 0) continue;
 
-            if (item instanceof AxeItem) {
+            if (item.components().has(net.minecraft.core.component.DataComponents.TOOL)) {
                 if (!hasAxe) {
                     bestItem = item;
                     bestDamage = getAttackDamage(item);
@@ -261,7 +260,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
 
     @Override
     protected Task onEntityInteract(AltoClef mod, Entity entity) {
-        if (entity instanceof PlayerEntity playerEntity) {
+        if (entity instanceof Player playerEntity) {
             // Player PvP: smooth look only, no instant rotation
             return onPlayerInteract(mod, playerEntity);
         }
@@ -305,7 +304,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         // plus the combat controller's close quarters, which do drive inside 4.5), and the
         // complaint this whole change answers was about a PIG. So the closing is for targets that
         // do not strike back; a hostile one keeps exactly the behaviour it had.
-        boolean hostile = entity instanceof net.minecraft.entity.mob.HostileEntity;
+        boolean hostile = entity instanceof net.minecraft.world.entity.monster.Monster;
         boolean controllerDrives = hostile || mod.getMobDefenseChain().tungstenDrives(entity);
         if (controllerDrives) {
             kaMobYielded++;
@@ -336,7 +335,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
                         : "Mob at an edge -- pathfinding to it");
                 return new GetToEntityTask(entity, 1.0);
             }
-            LookHelper.lookAt(mod, entity.getEyePos());
+            LookHelper.lookAt(mod, entity.getEyePosition());
             // Jump only when the body has met something -- a step up onto the next block, the way
             // a player takes a slope at a run. A free jump every tick would be the crit hop, which
             // is the controller's business, not the approach's.
@@ -350,11 +349,11 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
             KillAuraHelper.stopCombatMovement(mod);   // in reach: the swing owns the body now
         }
         if (!equipping) {
-            float hitProg = mod.getPlayer().getAttackCooldownProgress(0);
-            if (hitProg >= 1 && (mod.getPlayer().isOnGround()
-                    || mod.getPlayer().getVelocity().getY() < 0
-                    || mod.getPlayer().isTouchingWater())) {
-                LookHelper.lookAt(mod, entity.getEyePos());
+            float hitProg = mod.getPlayer().getAttackStrengthScale(0);
+            if (hitProg >= 1 && (mod.getPlayer().onGround()
+                    || mod.getPlayer().getDeltaMovement().y() < 0
+                    || mod.getPlayer().isInWater())) {
+                LookHelper.lookAt(mod, entity.getEyePosition());
                 if (mod.getControllerExtras().attack(entity)) {
                     kaMobSwings++;
                 }
@@ -400,7 +399,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
      * Uses smoothLook (WindMouse) — no instant rotation, no ban risk.
      * Matches autoclef behavior: canHit check, GoJump, shield→axe, hurtTime guard.
      */
-    private Task onPlayerInteract(AltoClef mod, PlayerEntity player) {
+    private Task onPlayerInteract(AltoClef mod, Player player) {
         // Alternate between aggressive and passive strategy periodically
         if (_attackStrategyTimer.elapsed()) {
             _aggressiveAttackStrategy = !_aggressiveAttackStrategy;
@@ -463,9 +462,9 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
             //#if MC >= 12111
             //$$ for (ItemStack stack : java.util.List.of(player.getMainHandStack(), player.getOffHandStack())) {
             //#else
-            for (ItemStack stack : player.getHandItems()) {
+            for (ItemStack stack : java.util.List.of(player.getMainHandItem(), player.getOffhandItem())) {
             //#endif
-                if (stack.isOf(Items.SHIELD)) {
+                if (stack.is(Items.SHIELD)) {
                     preferAxe = true;
                     break;
                 }
@@ -650,19 +649,19 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
      * Checks: blocks under the bot (2-block forward strip toward target) and under the target.
      */
     private boolean isNearDangerousDrop(AltoClef mod, Entity target) {
-        BlockPos botFeet = mod.getPlayer().getBlockPos();
+        BlockPos botFeet = mod.getPlayer().blockPosition();
 
         // Check under the bot itself
         if (getDropBelow(botFeet) > DANGEROUS_DROP) return true;
 
         // Check under the target
-        BlockPos targetFeet = target.getBlockPos();
+        BlockPos targetFeet = target.blockPosition();
         if (getDropBelow(targetFeet) > DANGEROUS_DROP) return true;
 
         // Check 1-2 blocks ahead toward the target
-        Vec3d dir = target.getPos().subtract(mod.getPlayer().getPos()).normalize();
+        Vec3 dir = target.position().subtract(mod.getPlayer().position()).normalize();
         for (int i = 1; i <= 2; i++) {
-            BlockPos ahead = botFeet.add((int) Math.round(dir.x * i), 0, (int) Math.round(dir.z * i));
+            BlockPos ahead = botFeet.offset((int) Math.round(dir.x * i), 0, (int) Math.round(dir.z * i));
             if (getDropBelow(ahead) > DANGEROUS_DROP) return true;
         }
         return false;
@@ -671,7 +670,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     /** How many air blocks are below this position before hitting solid ground. */
     private int getDropBelow(BlockPos pos) {
         for (int dy = 1; dy <= DANGEROUS_DROP + 1; dy++) {
-            if (WorldHelper.isSolidBlock(pos.down(dy))) return dy - 1;
+            if (WorldHelper.isSolidBlock(pos.below(dy))) return dy - 1;
         }
         return DANGEROUS_DROP + 1;
     }

@@ -22,29 +22,32 @@ import adris.altoclef.util.SmeltTarget;
 import adris.altoclef.util.helpers.*;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.EndPortalFrameBlock;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.EndermanEntity;
-import net.minecraft.entity.mob.PillagerEntity;
-import net.minecraft.entity.mob.SilverfishEntity;
-import net.minecraft.entity.mob.WitchEntity;
-import net.minecraft.entity.passive.PigEntity;
-import net.minecraft.item.*;
-import net.minecraft.registry.tag.EnchantmentTags;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.biome.BiomeKeys;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.EndPortalFrameBlock;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.illager.Pillager;
+import net.minecraft.world.entity.monster.Silverfish;
+import net.minecraft.world.entity.monster.Witch;
+import net.minecraft.world.entity.animal.pig.Pig;
+import net.minecraft.world.item.EnderEyeItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.tags.EnchantmentTags;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.biome.Biomes;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.*;
 import java.util.function.Predicate;
 
-import static net.minecraft.client.MinecraftClient.getInstance;
+import static net.minecraft.client.Minecraft.getInstance;
 
 @SuppressWarnings("ALL")
 public class MarvionBeatMinecraftTask extends Task {
@@ -110,7 +113,7 @@ public class MarvionBeatMinecraftTask extends Task {
     private static final int TWISTING_VINES_COUNT_MIN = 14;
     // We don't want curse of binding
     private static final Predicate<ItemStack> _noCurseOfBinding = stack -> {
-        if (stack.getEnchantments().getEnchantments().contains(EnchantmentTags.CURSE)) {
+        if (stack.getEnchantments().keySet().contains(EnchantmentTags.CURSE)) {
             return false;
         }
         return true;
@@ -213,7 +216,7 @@ public class MarvionBeatMinecraftTask extends Task {
             };
 
             for (int[] offset : frameOffsets) {
-                BlockPos frameBlock = endPortalCenter.add(offset[0], offset[1], offset[2]);
+                BlockPos frameBlock = endPortalCenter.offset(offset[0], offset[1], offset[2]);
                 frameBlocks.add(frameBlock);
             }
         }
@@ -258,7 +261,7 @@ public class MarvionBeatMinecraftTask extends Task {
             return false;
         }
 
-        return blockState.get(EndPortalFrameBlock.EYE);
+        return blockState.getValue(EndPortalFrameBlock.HAS_EYE);
     }
 
     private static boolean shouldForce(AltoClef mod, Task task) {
@@ -267,7 +270,7 @@ public class MarvionBeatMinecraftTask extends Task {
 
     @Override
     public boolean isFinished() {
-        if (getInstance().currentScreen instanceof net.minecraft.client.gui.screen.CreditsScreen) {
+        if (getInstance().gui.screen() instanceof net.minecraft.client.gui.screens.WinScreen) {
             return true;
         }
 
@@ -290,11 +293,11 @@ public class MarvionBeatMinecraftTask extends Task {
         _cachedEndItemDrops.clear();
 
         for (ItemEntity entity : droppedItems) {
-            if (entity.getStack().isEmpty()) {
+            if (entity.getItem().isEmpty()) {
                 continue;
             }
-            Item item = entity.getStack().getItem();
-            int count = entity.getStack().getCount();
+            Item item = entity.getItem().getItem();
+            int count = entity.getItem().getCount();
 
             _cachedEndItemDrops.put(item, _cachedEndItemDrops.getOrDefault(item, 0) + count);
         }
@@ -445,7 +448,7 @@ public class MarvionBeatMinecraftTask extends Task {
             return mod.getBlockScanner().getNearestBlock(blockPos -> {
                 boolean isNotRuinedPortalChest = !_notRuinedPortalChests.contains(blockPos);
                 boolean isUnopenedChest = WorldHelper.isUnopenedChest(blockPos);
-                boolean isWithinDistance = mod.getPlayer().getBlockPos().isWithinDistance(blockPos, 150);
+                boolean isWithinDistance = mod.getPlayer().blockPosition().closerThan(blockPos, 150);
                 boolean isLootablePortalChest = canBeLootablePortalChest(mod, blockPos);
 
                 return isNotRuinedPortalChest && isUnopenedChest && isWithinDistance && isLootablePortalChest;
@@ -559,7 +562,7 @@ public class MarvionBeatMinecraftTask extends Task {
     protected Task onTick() {
         AltoClef mod = AltoClef.getInstance();
 
-        if (mod.getPlayer().getMainHandStack().getItem() instanceof EnderEyeItem && !openingEndPortal
+        if (mod.getPlayer().getMainHandItem().getItem() instanceof EnderEyeItem && !openingEndPortal
                 && StorageHelper.getItemStackInCursorSlot().isEmpty()) {
             // Same fix as BeatMinecraftTask: one weapon, chosen by what it hits for, on both
             // versions. The 1.21.11 half of the split this replaces was an empty TODO.
@@ -627,13 +630,13 @@ public class MarvionBeatMinecraftTask extends Task {
                     && !thisOrChildSatisfies(isCraftingTableTask) && !mod.getBlockScanner().isUnreachable(craftingTables.get())) {
                 Debug.logMessage("Blacklisting extra crafting table.");
                 mod.getBlockScanner().requestBlockUnreachable(craftingTables.get(), 0);
-                BlockState craftingTablePosUp = mod.getWorld().getBlockState(craftingTables.get().up(2));
-                Optional<Entity> witch = mod.getEntityTracker().getClosestEntity(WitchEntity.class);
-                if (witch.isPresent() && craftingTables.get().isWithinDistance(witch.get().getPos(), 15)) {
+                BlockState craftingTablePosUp = mod.getWorld().getBlockState(craftingTables.get().above(2));
+                Optional<Entity> witch = mod.getEntityTracker().getClosestEntity(Witch.class);
+                if (witch.isPresent() && craftingTables.get().closerThan(BlockPos.containing(witch.get().position()), 15)) {
                     Debug.logMessage("Blacklisting witch crafting table.");
                     mod.getBlockScanner().requestBlockUnreachable(craftingTables.get(), 0);
                 }
-                if (craftingTablePosUp.getBlock() == Blocks.WHITE_WOOL) {
+                if (craftingTablePosUp.getBlock() == Blocks.WOOL.white()) {
                     Debug.logMessage("Blacklisting pillage crafting table.");
                     mod.getBlockScanner().requestBlockUnreachable(craftingTables.get(), 0);
                 }
@@ -678,10 +681,10 @@ public class MarvionBeatMinecraftTask extends Task {
         for (Block logBlock : logBlocks) {
             Optional<BlockPos> logs = mod.getBlockScanner().getNearestBlock(logBlock);
             if (logs.isPresent()) {
-                Iterable<Entity> entities = mod.getWorld().getEntities();
+                Iterable<Entity> entities = mod.getWorld().entitiesForRendering();
                 for (Entity entity : entities) {
-                    if (entity instanceof PillagerEntity && !mod.getBlockScanner().isUnreachable(logs.get())
-                            && logs.get().isWithinDistance(entity.getPos(), 40)) {
+                    if (entity instanceof Pillager && !mod.getBlockScanner().isUnreachable(logs.get())
+                            && logs.get().closerThan(BlockPos.containing(entity.position()), 40)) {
                         Debug.logMessage("Blacklisting pillage log.");
                         mod.getBlockScanner().requestBlockUnreachable(logs.get(), 0);
                     }
@@ -698,7 +701,7 @@ public class MarvionBeatMinecraftTask extends Task {
                 if (!Nav.isExploring()) {
                     if (_timer1.elapsed()) {
                         if (_config.renderDistanceManipulation) {
-                            getInstance().options.getViewDistance().setValue(12);
+                            getInstance().options.renderDistance().set(12);
                         }
                         _timer1.reset();
                     }
@@ -711,14 +714,14 @@ public class MarvionBeatMinecraftTask extends Task {
             if (!Nav.isExploring()) {
                 if (_timer3.getDuration() >= 30) {
                     if (_config.renderDistanceManipulation) {
-                        getInstance().options.getViewDistance().setValue(12);
-                        getInstance().options.getEntityDistanceScaling().setValue(1.0);
+                        getInstance().options.renderDistance().set(12);
+                        getInstance().options.entityDistanceScaling().set(1.0);
                     }
                 }
                 if (_timer3.elapsed()) {
                     if (_config.renderDistanceManipulation) {
-                        getInstance().options.getViewDistance().setValue(32);
-                        getInstance().options.getEntityDistanceScaling().setValue(5.0);
+                        getInstance().options.renderDistance().set(32);
+                        getInstance().options.entityDistanceScaling().set(5.0);
                     }
                     _timer3.reset();
                 }
@@ -731,8 +734,8 @@ public class MarvionBeatMinecraftTask extends Task {
             if (!Nav.isExploring()) {
                 if (_timer1.elapsed()) {
                     if (_config.renderDistanceManipulation) {
-                        getInstance().options.getViewDistance().setValue(2);
-                        getInstance().options.getEntityDistanceScaling().setValue(0.5);
+                        getInstance().options.renderDistance().set(2);
+                        getInstance().options.entityDistanceScaling().set(0.5);
                     }
                     _timer1.reset();
                 }
@@ -743,8 +746,8 @@ public class MarvionBeatMinecraftTask extends Task {
                     _config.renderDistanceManipulation) {
                 if (_timer1.elapsed()) {
                     if (_config.renderDistanceManipulation) {
-                        getInstance().options.getViewDistance().setValue(12);
-                        getInstance().options.getEntityDistanceScaling().setValue(1.0);
+                        getInstance().options.renderDistance().set(12);
+                        getInstance().options.entityDistanceScaling().set(1.0);
                     }
                     _timer1.reset();
                 }
@@ -757,9 +760,9 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (!mod.getControllerExtras().isBreakingBlock()) {
                         LookHelper.randomOrientation(mod);
                     }
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 } else {
-                    mod.getSlotHandler().clickSlot(torch, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(torch, 0, ContainerInput.PICKUP);
                 }
             }
         }
@@ -771,9 +774,9 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (!mod.getControllerExtras().isBreakingBlock()) {
                         LookHelper.randomOrientation(mod);
                     }
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 } else {
-                    mod.getSlotHandler().clickSlot(bed, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(bed, 0, ContainerInput.PICKUP);
                 }
             }
         }
@@ -784,9 +787,9 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (!mod.getControllerExtras().isBreakingBlock()) {
                         LookHelper.randomOrientation(mod);
                     }
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 } else {
-                    mod.getSlotHandler().clickSlot(excessWaterBucket, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(excessWaterBucket, 0, ContainerInput.PICKUP);
                 }
             }
         }
@@ -797,9 +800,9 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (!mod.getControllerExtras().isBreakingBlock()) {
                         LookHelper.randomOrientation(mod);
                     }
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 } else {
-                    mod.getSlotHandler().clickSlot(excessLighter, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(excessLighter, 0, ContainerInput.PICKUP);
                 }
             }
         }
@@ -810,9 +813,9 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (!mod.getControllerExtras().isBreakingBlock()) {
                         LookHelper.randomOrientation(mod);
                     }
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 } else {
-                    mod.getSlotHandler().clickSlot(sand, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(sand, 0, ContainerInput.PICKUP);
                 }
             }
         }
@@ -823,9 +826,9 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (!mod.getControllerExtras().isBreakingBlock()) {
                         LookHelper.randomOrientation(mod);
                     }
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 } else {
-                    mod.getSlotHandler().clickSlot(gravel, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(gravel, 0, ContainerInput.PICKUP);
                 }
             }
         }
@@ -838,9 +841,9 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (!mod.getControllerExtras().isBreakingBlock()) {
                         LookHelper.randomOrientation(mod);
                     }
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 } else {
-                    mod.getSlotHandler().clickSlot(furnaceSlot, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(furnaceSlot, 0, ContainerInput.PICKUP);
                 }
             }
         }
@@ -852,9 +855,9 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (!mod.getControllerExtras().isBreakingBlock()) {
                         LookHelper.randomOrientation(mod);
                     }
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 } else {
-                    mod.getSlotHandler().clickSlot(shear, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(shear, 0, ContainerInput.PICKUP);
                 }
             }
         }
@@ -864,13 +867,13 @@ public class MarvionBeatMinecraftTask extends Task {
 
         // End stuff.
         if (WorldHelper.getCurrentDimension() == Dimension.END) {
-            if (!mod.getWorld().isChunkLoaded(0, 0)) {
+            if (!mod.getWorld().hasChunk(0, 0)) {
                 setDebugState("Waiting for chunks to load");
                 return null;
             }
             if (_config.renderDistanceManipulation) {
-                getInstance().options.getViewDistance().setValue(12);
-                getInstance().options.getEntityDistanceScaling().setValue(1.0);
+                getInstance().options.renderDistance().set(12);
+                getInstance().options.entityDistanceScaling().set(1.0);
             }
             // If we have bed, do bed strats, otherwise punk normally.
             updateCachedEndItems(mod);
@@ -919,7 +922,7 @@ public class MarvionBeatMinecraftTask extends Task {
                     mod.getExtraBaritoneSettings().canWalkOnEndPortal(true);
                 }
                 return new DoToClosestBlockTask(
-                        blockPos -> new GetToBlockTask(blockPos.up()),
+                        blockPos -> new GetToBlockTask(blockPos.above()),
                         Blocks.END_PORTAL
                 );
             }
@@ -952,7 +955,7 @@ public class MarvionBeatMinecraftTask extends Task {
             Optional<BlockPos> nearestCraftingTable = mod.getBlockScanner().getNearestBlock(Blocks.CRAFTING_TABLE);
             if (nearestCraftingTable.isPresent() && WorldHelper.canBreak(nearestCraftingTable.get())) {
                 for (Block CopperBlock : copperBlocks) {
-                    Block blockBelow = mod.getWorld().getBlockState(nearestCraftingTable.get().down()).getBlock();
+                    Block blockBelow = mod.getWorld().getBlockState(nearestCraftingTable.get().below()).getBlock();
                     if (blockBelow == CopperBlock) {
                         Debug.logMessage("Blacklisting crafting table in trial chambers.");
                         mod.getBlockScanner().requestBlockUnreachable(nearestCraftingTable.get(), 0);
@@ -974,10 +977,10 @@ public class MarvionBeatMinecraftTask extends Task {
                         && _config.rePickupCraftingTable && !mod.getItemStorage().hasItem(Items.BLAST_FURNACE)
                         && !thisOrChildSatisfies(isBlastFurnaceTask) && WorldHelper.canBreak(blastFurnacePos.get())
                         || (blastFurnaceEntity.isPresent()
-                        && mod.getEntityTracker().itemDropped(blastFurnaceEntity.get().getStack().getItem())
+                        && mod.getEntityTracker().itemDropped(blastFurnaceEntity.get().getItem().getItem())
                         && !thisOrChildSatisfies(isBlastFurnaceTask) && !mod.getItemStorage().hasItem(Items.BLAST_FURNACE))) {
                     setDebugState("Picking up the blast furnace while we are at it.");
-                    Item blastFurnaceItem = blastFurnaceEntity.isPresent() ? blastFurnaceEntity.get().getStack().getItem() : Items.BLAST_FURNACE;
+                    Item blastFurnaceItem = blastFurnaceEntity.isPresent() ? blastFurnaceEntity.get().getItem().getItem() : Items.BLAST_FURNACE;
                     Block blastFurnaceBlock = blastFurnacePos.isPresent() ? mod.getWorld().getBlockState(blastFurnacePos.get()).getBlock() : Blocks.BLAST_FURNACE;
                     return new MineAndCollectTask(blastFurnaceItem, 1, new Block[]{blastFurnaceBlock}, MiningRequirement.WOOD);
                 }
@@ -990,11 +993,11 @@ public class MarvionBeatMinecraftTask extends Task {
                         && _config.rePickupCraftingTable && !mod.getItemStorage().hasItem(Items.FURNACE)
                         && !mod.getItemStorage().hasItem(Items.BLAST_FURNACE) && !thisOrChildSatisfies(isFurnaceTask)
                         && WorldHelper.canBreak(furnacePos.get())
-                        || (furnaceEntity.isPresent() && mod.getEntityTracker().itemDropped(furnaceEntity.get().getStack().getItem())
+                        || (furnaceEntity.isPresent() && mod.getEntityTracker().itemDropped(furnaceEntity.get().getItem().getItem())
                         && !thisOrChildSatisfies(isFurnaceTask) && !mod.getItemStorage().hasItem(Items.FURNACE)
                         && !mod.getItemStorage().hasItem(Items.BLAST_FURNACE))) {
                     setDebugState("Picking up the furnace while we are at it.");
-                    Item furnaceItem = furnaceEntity.isPresent() ? furnaceEntity.get().getStack().getItem() : Items.FURNACE;
+                    Item furnaceItem = furnaceEntity.isPresent() ? furnaceEntity.get().getItem().getItem() : Items.FURNACE;
                     Block furnaceBlock = furnacePos.isPresent() ? mod.getWorld().getBlockState(furnacePos.get()).getBlock() : Blocks.FURNACE;
                     return new MineAndCollectTask(furnaceItem, 1, new Block[]{furnaceBlock}, MiningRequirement.WOOD);
                 }
@@ -1007,10 +1010,10 @@ public class MarvionBeatMinecraftTask extends Task {
                         && _config.rePickupCraftingTable && !mod.getItemStorage().hasItem(Items.SMOKER)
                         && !thisOrChildSatisfies(isSmokerTask) && WorldHelper.canBreak(smokerPos.get())
                         || (smokerEntity.isPresent()
-                        && mod.getEntityTracker().itemDropped(smokerEntity.get().getStack().getItem())
+                        && mod.getEntityTracker().itemDropped(smokerEntity.get().getItem().getItem())
                         && !thisOrChildSatisfies(isSmokerTask) && !mod.getItemStorage().hasItem(Items.SMOKER))) {
                     setDebugState("Picking up the smoker while we are at it.");
-                    Item smokerItem = smokerEntity.isPresent() ? smokerEntity.get().getStack().getItem() : Items.SMOKER;
+                    Item smokerItem = smokerEntity.isPresent() ? smokerEntity.get().getItem().getItem() : Items.SMOKER;
                     Block smokerBlock = smokerPos.isPresent() ? mod.getWorld().getBlockState(smokerPos.get()).getBlock() : Blocks.SMOKER;
                     return new MineAndCollectTask(smokerItem, 1, new Block[]{smokerBlock}, MiningRequirement.WOOD);
                 }
@@ -1023,10 +1026,10 @@ public class MarvionBeatMinecraftTask extends Task {
                         && _config.rePickupCraftingTable && !mod.getItemStorage().hasItem(Items.CRAFTING_TABLE)
                         && !thisOrChildSatisfies(isCraftingTableTask) && WorldHelper.canBreak(craftingTablePos.get())
                         || (craftingTableEntity.isPresent()
-                        && mod.getEntityTracker().itemDropped(craftingTableEntity.get().getStack().getItem())
+                        && mod.getEntityTracker().itemDropped(craftingTableEntity.get().getItem().getItem())
                         && !thisOrChildSatisfies(isCraftingTableTask) && !mod.getItemStorage().hasItem(Items.CRAFTING_TABLE))) {
                     setDebugState("Picking up the crafting table while we are at it.");
-                    Item craftingTableItem = craftingTableEntity.isPresent() ? craftingTableEntity.get().getStack().getItem() : Items.CRAFTING_TABLE;
+                    Item craftingTableItem = craftingTableEntity.isPresent() ? craftingTableEntity.get().getItem().getItem() : Items.CRAFTING_TABLE;
                     Block craftingTableBlock = craftingTablePos.isPresent() ? mod.getWorld().getBlockState(craftingTablePos.get()).getBlock() : Blocks.CRAFTING_TABLE;
                     return new MineAndCollectTask(craftingTableItem, 1, new Block[]{craftingTableBlock}, MiningRequirement.HAND);
                 }
@@ -1068,8 +1071,8 @@ public class MarvionBeatMinecraftTask extends Task {
                 if (_config.renderDistanceManipulation && mod.getItemStorage().hasItem(ItemHelper.BED)) {
                     if (!Nav.isExploring()) {
                         if (_timer1.elapsed()) {
-                            getInstance().options.getViewDistance().setValue(2);
-                            getInstance().options.getEntityDistanceScaling().setValue(0.5);
+                            getInstance().options.renderDistance().set(2);
+                            getInstance().options.entityDistanceScaling().set(0.5);
                             _timer1.reset();
                         }
                     }
@@ -1102,7 +1105,7 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (nearestBed.isPresent() && WorldHelper.canBreak(nearestBed.get())) {
                         boolean isValid = true;
                         for (Block CopperBlock : copperBlocks) {
-                            Block blockBelow = mod.getWorld().getBlockState(nearestBed.get().down()).getBlock();
+                            Block blockBelow = mod.getWorld().getBlockState(nearestBed.get().below()).getBlock();
                             if (blockBelow == CopperBlock) {
                                 isValid = false;
                                 break;
@@ -1121,8 +1124,8 @@ public class MarvionBeatMinecraftTask extends Task {
                 if (_config.renderDistanceManipulation) {
                     if (!Nav.isExploring()) {
                         if (_timer1.elapsed()) {
-                            getInstance().options.getViewDistance().setValue(2);
-                            getInstance().options.getEntityDistanceScaling().setValue(0.5);
+                            getInstance().options.renderDistance().set(2);
+                            getInstance().options.entityDistanceScaling().set(0.5);
                             _timer1.reset();
                         }
                     }
@@ -1158,9 +1161,9 @@ public class MarvionBeatMinecraftTask extends Task {
                                 if (!mod.getControllerExtras().isBreakingBlock()) {
                                     LookHelper.randomOrientation(mod);
                                 }
-                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                             } else {
-                                mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP);
+                                mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP);
                             }
                         }
                     }
@@ -1171,9 +1174,9 @@ public class MarvionBeatMinecraftTask extends Task {
                                 if (!mod.getControllerExtras().isBreakingBlock()) {
                                     LookHelper.randomOrientation(mod);
                                 }
-                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                             } else {
-                                mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP);
+                                mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP);
                             }
                         }
                     }
@@ -1183,7 +1186,7 @@ public class MarvionBeatMinecraftTask extends Task {
                     // Destroy silverfish spawner
                     if (StorageHelper.miningRequirementMetInventory(MiningRequirement.WOOD)) {
                         Optional<BlockPos> silverfish = mod.getBlockScanner().getNearestBlock(blockPos -> {
-                            return WorldHelper.getSpawnerEntity(blockPos) instanceof SilverfishEntity;
+                            return WorldHelper.getSpawnerEntity(blockPos) instanceof Silverfish;
                         }, Blocks.SPAWNER);
                         if (silverfish.isPresent()) {
                             setDebugState("Breaking silverfish spawner.");
@@ -1209,7 +1212,7 @@ public class MarvionBeatMinecraftTask extends Task {
                             mod.getExtraBaritoneSettings().canWalkOnEndPortal(true);
                         }
                         return new DoToClosestBlockTask(
-                                blockPos -> new GetToBlockTask(blockPos.up()),
+                                blockPos -> new GetToBlockTask(blockPos.above()),
                                 Blocks.END_PORTAL
                         );
                     } else {
@@ -1230,8 +1233,8 @@ public class MarvionBeatMinecraftTask extends Task {
                         if (!Nav.isExploring()) {
                             if (_timer1.elapsed()) {
                                 if (_config.renderDistanceManipulation) {
-                                    getInstance().options.getViewDistance().setValue(32);
-                                    getInstance().options.getEntityDistanceScaling().setValue(5.0);
+                                    getInstance().options.renderDistance().set(32);
+                                    getInstance().options.entityDistanceScaling().set(5.0);
                                 }
                                 _timer1.reset();
                             }
@@ -1269,9 +1272,9 @@ public class MarvionBeatMinecraftTask extends Task {
                                 if (!mod.getControllerExtras().isBreakingBlock()) {
                                     LookHelper.randomOrientation(mod);
                                 }
-                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                             } else {
-                                mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP);
+                                mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP);
                             }
                         }
                     }
@@ -1282,9 +1285,9 @@ public class MarvionBeatMinecraftTask extends Task {
                                 if (!mod.getControllerExtras().isBreakingBlock()) {
                                     LookHelper.randomOrientation(mod);
                                 }
-                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                             } else {
-                                mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP);
+                                mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP);
                             }
                         }
                     }
@@ -1345,12 +1348,12 @@ public class MarvionBeatMinecraftTask extends Task {
             return new TradeWithPiglinsTask(32, Items.ENDER_PEARL, count);
         }
 
-        boolean endermanFound = mod.getEntityTracker().entityFound(EndermanEntity.class);
+        boolean endermanFound = mod.getEntityTracker().entityFound(EnderMan.class);
         boolean pearlDropped = mod.getEntityTracker().itemDropped(Items.ENDER_PEARL);
         boolean hasTwistingVines = mod.getItemStorage().getItemCount(Items.TWISTING_VINES) > TWISTING_VINES_COUNT_MIN;
 
         if ((endermanFound || pearlDropped) && hasTwistingVines) {
-            Optional<Entity> toKill = mod.getEntityTracker().getClosestEntity(EndermanEntity.class);
+            Optional<Entity> toKill = mod.getEntityTracker().getClosestEntity(EnderMan.class);
             if (toKill.isPresent()) {
                 return new KillEndermanTask(count);
             }
@@ -1368,7 +1371,7 @@ public class MarvionBeatMinecraftTask extends Task {
             return new SearchChunkForBlockTask(Blocks.TWISTING_VINES, Blocks.TWISTING_VINES_PLANT, Blocks.WARPED_HYPHAE, Blocks.WARPED_NYLIUM);
         }
 
-        return new SearchWithinBiomeTask(BiomeKeys.WARPED_FOREST);
+        return new SearchWithinBiomeTask(Biomes.WARPED_FOREST);
     }
 
     private int getTargetBeds(AltoClef mod) {
@@ -1409,7 +1412,7 @@ public class MarvionBeatMinecraftTask extends Task {
             Optional<BlockPos> nearestBed = mod.getBlockScanner().getNearestBlock(bed);
             if (nearestBed.isPresent() && WorldHelper.canBreak(nearestBed.get())) {
                 for (Block CopperBlock : copperBlocks) {
-                    Block blockBelow = mod.getWorld().getBlockState(nearestBed.get().down()).getBlock();
+                    Block blockBelow = mod.getWorld().getBlockState(nearestBed.get().below()).getBlock();
                     if (blockBelow == CopperBlock) {
                         Debug.logMessage("Blacklisting bed in trial chambers.");
                         mod.getBlockScanner().requestBlockUnreachable(nearestBed.get(), 0);
@@ -1429,7 +1432,7 @@ public class MarvionBeatMinecraftTask extends Task {
             if (nearestBed.isPresent() && WorldHelper.canBreak(nearestBed.get())) {
                 validBedsFoundInBlocks = true;
                 for (Block CopperBlock : copperBlocksLocal) {
-                    Block blockBelow = mod.getWorld().getBlockState(nearestBed.get().down()).getBlock();
+                    Block blockBelow = mod.getWorld().getBlockState(nearestBed.get().below()).getBlock();
                     if (blockBelow == CopperBlock) {
                         validBedsFoundInBlocks = false;
                         break;
@@ -1470,13 +1473,13 @@ public class MarvionBeatMinecraftTask extends Task {
     }
 
     private boolean canBeLootablePortalChest(AltoClef mod, BlockPos blockPos) {
-        if (mod.getWorld().getBlockState(blockPos.up()).getBlock() == Blocks.WATER ||
+        if (mod.getWorld().getBlockState(blockPos.above()).getBlock() == Blocks.WATER ||
                 blockPos.getY() < 50) {
             return false;
         }
 
-        BlockPos minPos = blockPos.add(-4, -2, -4);
-        BlockPos maxPos = blockPos.add(4, 2, 4);
+        BlockPos minPos = blockPos.offset(-4, -2, -4);
+        BlockPos maxPos = blockPos.offset(4, 2, 4);
 
         try {
             for (BlockPos checkPos : WorldHelper.scanRegion(minPos, maxPos)) {
@@ -1528,8 +1531,8 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (_config.renderDistanceManipulation) {
                         if (!Nav.isExploring()) {
                             if (_timer1.elapsed()) {
-                                getInstance().options.getViewDistance().setValue(2);
-                                getInstance().options.getEntityDistanceScaling().setValue(0.5);
+                                getInstance().options.renderDistance().set(2);
+                                getInstance().options.entityDistanceScaling().set(0.5);
                                 _timer1.reset();
                             }
                         }
@@ -1552,8 +1555,8 @@ public class MarvionBeatMinecraftTask extends Task {
                     setDebugState("Getting pork chop just for fun.");
                     if (_config.renderDistanceManipulation) {
                         if (!Nav.isExploring()) {
-                            getInstance().options.getViewDistance().setValue(32);
-                            getInstance().options.getEntityDistanceScaling().setValue(5.0);
+                            getInstance().options.renderDistance().set(32);
+                            getInstance().options.entityDistanceScaling().set(5.0);
                         }
                     }
                     return _getPorkchopTask;
@@ -1578,8 +1581,8 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (_config.renderDistanceManipulation) {
                         if (!Nav.isExploring()) {
                             if (_timer1.elapsed()) {
-                                getInstance().options.getViewDistance().setValue(2);
-                                getInstance().options.getEntityDistanceScaling().setValue(0.5);
+                                getInstance().options.renderDistance().set(2);
+                                getInstance().options.entityDistanceScaling().set(0.5);
                                 _timer1.reset();
                             }
                         }
@@ -1643,24 +1646,24 @@ public class MarvionBeatMinecraftTask extends Task {
                             _stoneGearTask = TaskCatalogue.getSquashedItemTask(COLLECT_STONE_GEAR);
                             return _stoneGearTask;
                         }
-                        if (mod.getEntityTracker().entityFound(PigEntity.class) && (StorageHelper.itemTargetsMet(mod,
+                        if (mod.getEntityTracker().entityFound(Pig.class) && (StorageHelper.itemTargetsMet(mod,
                                 COLLECT_STONE_GEAR) || StorageHelper.itemTargetsMet(mod, IRON_GEAR_MIN) ||
                                 eyeGearSatisfied || ironGearSatisfied2)) {
                             Predicate<Entity> notBaby = entity -> entity instanceof LivingEntity livingEntity && !livingEntity.isBaby();
-                            _getPorkchopTask = new KillAndLootTask(PigEntity.class, notBaby, new ItemTarget(Items.PORKCHOP, 1));
+                            _getPorkchopTask = new KillAndLootTask(Pig.class, notBaby, new ItemTarget(Items.PORKCHOP, 1));
                             return _getPorkchopTask;
                         }
                         setDebugState("Searching a better place to start with.");
                         if (_config.renderDistanceManipulation) {
                             if (!Nav.isExploring()) {
                                 if (_timer1.elapsed()) {
-                                    getInstance().options.getViewDistance().setValue(32);
-                                    getInstance().options.getEntityDistanceScaling().setValue(5.0);
+                                    getInstance().options.renderDistance().set(32);
+                                    getInstance().options.entityDistanceScaling().set(5.0);
                                     _timer1.reset();
                                 }
                             }
                         }
-                        searchBiomeTask = new SearchWithinBiomeTask(BiomeKeys.PLAINS);
+                        searchBiomeTask = new SearchWithinBiomeTask(Biomes.PLAINS);
                         return searchBiomeTask;
                     }
                     // Then get one bed
@@ -1758,9 +1761,9 @@ public class MarvionBeatMinecraftTask extends Task {
                                     if (!mod.getControllerExtras().isBreakingBlock()) {
                                         LookHelper.randomOrientation(mod);
                                     }
-                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                                 } else {
-                                    mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP);
                                 }
                             }
                         }
@@ -1771,9 +1774,9 @@ public class MarvionBeatMinecraftTask extends Task {
                                     if (!mod.getControllerExtras().isBreakingBlock()) {
                                         LookHelper.randomOrientation(mod);
                                     }
-                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                                 } else {
-                                    mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP);
                                 }
                             }
                         }

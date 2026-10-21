@@ -4,8 +4,8 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.goals.AltoGoal;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.core.BlockPos;
 
 /**
  * Walk -- or BUILD, or DIG -- into the cell a settled drop lies in. The approach a pickup needs.
@@ -54,13 +54,13 @@ public class GetToDropTask extends CustomBaritoneGoalTask implements ITaskRequir
 
     public GetToDropTask(ItemEntity drop) {
         this.drop = drop;
-        this.cell = drop.getBlockPos();
+        this.cell = drop.blockPosition();
     }
 
     /** True when {@code drop} lies still on solid ground: a place the navigator can be sent to. */
     public static boolean settled(ItemEntity drop) {
-        return drop != null && drop.isAlive() && drop.isOnGround() && !drop.isTouchingWater()
-                && drop.getVelocity().horizontalLengthSquared() < SETTLED_SPEED_SQ;
+        return drop != null && drop.isAlive() && drop.onGround() && !drop.isInWater()
+                && drop.getDeltaMovement().horizontalDistanceSqr() < SETTLED_SPEED_SQ;
     }
 
     @Override
@@ -73,7 +73,7 @@ public class GetToDropTask extends CustomBaritoneGoalTask implements ITaskRequir
         // moment it rests again; the goal is rebuilt, and the armed route re-planned (G88 in
         // the drive) toward where it now lies.
         if (settled(drop)) {
-            BlockPos now = drop.getBlockPos();
+            BlockPos now = drop.blockPosition();
             if (!now.equals(cell)) {
                 cell = now;
                 dropMoved++;
@@ -111,7 +111,7 @@ public class GetToDropTask extends CustomBaritoneGoalTask implements ITaskRequir
 
     @Override
     protected String toDebugString() {
-        return "Getting to drop " + drop.getStack().getItem().getTranslationKey() + " at "
+        return "Getting to drop " + drop.getItem().getItem().getDescriptionId() + " at "
                 + cell.toShortString() + " (dig/build allowed)";
     }
 }

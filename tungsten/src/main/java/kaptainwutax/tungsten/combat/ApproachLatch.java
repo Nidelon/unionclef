@@ -1,8 +1,8 @@
 package kaptainwutax.tungsten.combat;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Keeps the bot walking at a committed target on the ticks where nothing else does.
@@ -61,7 +61,7 @@ public final class ApproachLatch {
     private static final int FRESH_TICKS = 3;
 
     /** Set by MobDefenseChain on the branch that commits to a kill. */
-    public static volatile Vec3d target;
+    public static volatile Vec3 target;
     /** Client tick at which {@link #target} was stamped. */
     public static volatile long stampedAt;
     /** Ticks the latch actually pressed keys. The mechanism gate for its A/B. */
@@ -80,7 +80,7 @@ public final class ApproachLatch {
     }
 
     /** Called from the chain when it commits to killing something. */
-    public static void stamp(Vec3d pos) {
+    public static void stamp(Vec3 pos) {
         target = pos;
         stampedAt = tickCounter;
     }
@@ -89,21 +89,21 @@ public final class ApproachLatch {
      * Final-word position: after every other writer, so "nothing else pressed anything" is a fact
      * rather than a guess. Never throws.
      */
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         tickCounter++;
         try {
             if (!kaptainwutax.tungsten.TungstenConfig.get().combatApproachLatch) {
                 return;
             }
-            MinecraftClient mc = MinecraftClient.getInstance();
+            Minecraft mc = Minecraft.getInstance();
             if (player == null || mc == null || mc.options == null) {
                 return;
             }
-            Vec3d tgt = target;
+            Vec3 tgt = target;
             if (tgt == null || tickCounter - stampedAt > FRESH_TICKS) {
                 return;
             }
-            Vec3d self = player.getEntityPos();
+            Vec3 self = player.position();
             double dx = tgt.x - self.x;
             double dz = tgt.z - self.z;
             double flat = Math.sqrt(dx * dx + dz * dz);
@@ -117,25 +117,25 @@ public final class ApproachLatch {
             // ⛔ ONLY ON A TICK NOBODY ELSE DROVE. This is what keeps the latch from fighting the
             // pathfinder, the walker, the dodge or the controller: if any of them pressed a
             // direction, they own the tick and this does nothing but count it.
-            if (mc.options.forwardKey.isPressed() || mc.options.backKey.isPressed()
-                    || mc.options.leftKey.isPressed() || mc.options.rightKey.isPressed()) {
+            if (mc.options.keyUp.isDown() || mc.options.keyDown.isDown()
+                    || mc.options.keyLeft.isDown() || mc.options.keyRight.isDown()) {
                 declined++;
                 return;
             }
-            double yaw = Math.toRadians(player.getYaw());
+            double yaw = Math.toRadians(player.getYRot(1.0f));
             double fx = -Math.sin(yaw), fz = Math.cos(yaw);
             double rx = -fz, rz = fx;
             double nx = dx / flat, nz = dz / flat;
             double fwd = nx * fx + nz * fz;
             double side = nx * rx + nz * rz;
             final double DEADZONE = 0.25;
-            mc.options.forwardKey.setPressed(fwd > DEADZONE);
-            mc.options.backKey.setPressed(fwd < -DEADZONE);
-            mc.options.rightKey.setPressed(side > DEADZONE);
-            mc.options.leftKey.setPressed(side < -DEADZONE);
+            mc.options.keyUp.setDown(fwd > DEADZONE);
+            mc.options.keyDown.setDown(fwd < -DEADZONE);
+            mc.options.keyRight.setDown(side > DEADZONE);
+            mc.options.keyLeft.setDown(side < -DEADZONE);
             // Sprint only earns its speed going forwards, and the whole point is the 0.244 b/t
             // figure, which is a sprinting number.
-            mc.options.sprintKey.setPressed(fwd > DEADZONE);
+            mc.options.keySprint.setDown(fwd > DEADZONE);
             latched++;
         } catch (Exception ignored) {
             // a movement aid must never be the thing that breaks a fight

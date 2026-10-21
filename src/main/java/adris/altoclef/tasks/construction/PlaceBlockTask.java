@@ -15,11 +15,11 @@ import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import kaptainwutax.tungsten.helpers.BlockPlaceHelper;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.Item;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.Item;
+import net.minecraft.core.BlockPos;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.Arrays;
@@ -200,7 +200,7 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
         // Place block
         if (tryingAlternativeWay()) {
             setDebugState("Alternative way: Trying to go above block to place block.");
-            return new GetToBlockTask(target.up(), false);
+            return new GetToBlockTask(target.above(), false);
         } else {
             // TUNGSTEN PLACES IT NOW (G-0a). What stood here asked baritone's BuilderProcess to
             // build a schematic that was 1x1x1 -- "put one of these blocks in that cell" dressed
@@ -244,9 +244,9 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
 
     /** Registry id of the block the held item would place, or null when it would place nothing. */
     private static String heldBlockId(AltoClef mod) {
-        Item held = mod.getPlayer().getMainHandStack().getItem();
-        if (!(held instanceof net.minecraft.item.BlockItem bi)) return null;
-        return net.minecraft.registry.Registries.BLOCK.getId(bi.getBlock()).toString();
+        Item held = mod.getPlayer().getMainHandItem().getItem();
+        if (!(held instanceof net.minecraft.world.item.BlockItem bi)) return null;
+        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(bi.getBlock()).toString();
     }
 
     @Override
@@ -268,7 +268,7 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
 
     @Override
     public boolean isFinished() {
-        assert MinecraftClient.getInstance().world != null;
+        assert Minecraft.getInstance().level != null;
         if (useThrowaways) {
             return WorldHelper.isSolidBlock(target);
         }

@@ -13,14 +13,14 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3i;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
+import net.minecraft.world.level.Level;
 
 import java.util.LinkedList;
 
@@ -142,7 +142,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
      * and build the frame there, off the pit.
      */
     private static BlockPos getBuildableAreaNearby(AltoClef mod) {
-        BlockPos feet = mod.getPlayer().getBlockPos();
+        BlockPos feet = mod.getPlayer().blockPosition();
         // PASS 1: prefer a genuinely clean, flat, open pad (no scaffolding, no obstruction).
         BlockPos clean = scanForSite(mod, feet, true);
         if (clean != null) return clean;
@@ -159,7 +159,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
                 for (int dz = -r; dz <= r; dz++) {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) != r) continue;   // just the ring at radius r
                     for (int dy = 1; dy >= -2; dy--) {                         // prefer at / just above foot level
-                        BlockPos origin = feet.add(dx, dy, dz);
+                        BlockPos origin = feet.offset(dx, dy, dz);
                         if (!mod.getChunkTracker().isChunkLoaded(origin)) continue;
                         if (strict ? isCleanFlatBuildSite(mod, origin) : isDecentBuildSite(mod, origin)) {
                             return origin;
@@ -188,17 +188,17 @@ public class ConstructNetherPortalObsidianTask extends Task {
      * placements and never re-gathers.
      */
     private static boolean isDecentBuildSite(AltoClef mod, BlockPos origin) {
-        World world = mod.getWorld();
+        Level world = mod.getWorld();
         if (world == null) return false;
-        for (BlockPos f : WorldHelper.scanRegion(origin.add(-1, -2, -1), origin.add(1, -2, 2))) {
+        for (BlockPos f : WorldHelper.scanRegion(origin.offset(-1, -2, -1), origin.offset(1, -2, 2))) {
             if (!WorldHelper.isSolidBlock(f)) return false;                    // must have a floor (not a pit-with-no-floor / mid-air)
             var b = world.getBlockState(f).getBlock();
             if (b == Blocks.LAVA || b == Blocks.WATER || b == Blocks.OBSIDIAN) return false;
         }
         for (int dy = -1; dy <= 3; dy++) {                                     // open column above origin: not sealed in
-            if (!world.getBlockState(origin.add(0, dy, 0)).isAir()) return false;
+            if (!world.getBlockState(origin.offset(0, dy, 0)).isAir()) return false;
         }
-        for (BlockPos a : WorldHelper.scanRegion(origin.add(-1, -1, -1), origin.add(1, 3, 2))) {
+        for (BlockPos a : WorldHelper.scanRegion(origin.offset(-1, -1, -1), origin.offset(1, 3, 2))) {
             var b = world.getBlockState(a).getBlock();
             if (b == Blocks.LAVA || b == Blocks.WATER || b == Blocks.OBSIDIAN) return false;  // no lava/water/obsidian in the frame region
         }
@@ -217,16 +217,16 @@ public class ConstructNetherPortalObsidianTask extends Task {
      * fresh ground keeps the frame's ten placements the only obsidian the task ever spends here.
      */
     private static boolean isCleanFlatBuildSite(AltoClef mod, BlockPos origin) {
-        World world = mod.getWorld();
+        Level world = mod.getWorld();
         if (world == null) return false;
         // solid floor pad beneath the whole footprint (y=-2, x in [-1,1], z in [-1,2])
-        for (BlockPos f : WorldHelper.scanRegion(origin.add(-1, -2, -1), origin.add(1, -2, 2))) {
+        for (BlockPos f : WorldHelper.scanRegion(origin.offset(-1, -2, -1), origin.offset(1, -2, 2))) {
             if (!WorldHelper.isSolidBlock(f)) return false;
             var b = world.getBlockState(f).getBlock();
             if (b == Blocks.LAVA || b == Blocks.WATER || b == Blocks.OBSIDIAN) return false;
         }
         // clear air for the whole frame envelope above the floor (y=-1..3, x in [-1,1], z in [-1,2])
-        for (BlockPos a : WorldHelper.scanRegion(origin.add(-1, -1, -1), origin.add(1, 3, 2))) {
+        for (BlockPos a : WorldHelper.scanRegion(origin.offset(-1, -1, -1), origin.offset(1, 3, 2))) {
             if (!world.getBlockState(a).isAir()) return false;
         }
         return true;
@@ -243,7 +243,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
             if (origin != null) {
                 // Don't break frame
                 for (Vec3i framePosRelative : PORTAL_FRAME) {
-                    BlockPos framePos = origin.add(framePosRelative);
+                    BlockPos framePos = origin.offset(framePosRelative);
                     if (block.equals(framePos)) {
                         return mod.getWorld().getBlockState(framePos).getBlock() == Blocks.OBSIDIAN;
                     }
@@ -259,9 +259,9 @@ public class ConstructNetherPortalObsidianTask extends Task {
         AltoClef mod = AltoClef.getInstance();
 
         if (origin != null) {
-            if (mod.getWorld().getBlockState(origin.up()).getBlock() == Blocks.NETHER_PORTAL) {
+            if (mod.getWorld().getBlockState(origin.above()).getBlock() == Blocks.NETHER_PORTAL) {
                 setDebugState("Done constructing nether portal.");
-                mod.getBlockScanner().addBlock(Blocks.NETHER_PORTAL, origin.up());
+                mod.getBlockScanner().addBlock(Blocks.NETHER_PORTAL, origin.above());
                 return null;
             }
         }
@@ -289,7 +289,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
         int neededObsidian = PORTAL_FRAME.length;
         BlockPos placeTarget = null;
         for (Vec3i frameOffs : PORTAL_FRAME) {
-            BlockPos framePos = origin.add(frameOffs);
+            BlockPos framePos = origin.offset(frameOffs);
             // ⛔ READ THE WORLD, NOT THE BLOCK SCANNER (G108, 2026-09-18). The scanner is
             // event-driven and lags a just-placed block, so a frame obsidian the bot placed this
             // tick reads as "still needed" -> neededObsidian stays high -> the task re-enters the
@@ -332,7 +332,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
         // re-approaches the cell locally. This also pulls the body back from the lava after a gather.
         // No-op on the bench, where the body stays within a couple of blocks of the frame.
         if (placeTarget != null) {
-            BlockPos body = mod.getPlayer().getBlockPos();
+            BlockPos body = mod.getPlayer().blockPosition();
             long ddx = body.getX() - origin.getX(), ddz = body.getZ() - origin.getZ();
             long ddy = body.getY() - origin.getY();
             // ⛔ ...AND STRAYED VERTICALLY TOO (G108, 2026-09-21). This guard measured X/Z only, so a
@@ -397,7 +397,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
                 // rather than one slow stretch. Re-site on THAT. The tick count stays only as a
                 // backstop against a freeze the scanner never notices, and at two minutes it can no
                 // longer fire on an ordinary dig-through leg.
-                double distSq = body.getSquaredDistance(origin);
+                double distSq = body.distSqr(origin);
                 boolean driveGaveUp = mod.getBlockScanner().isUnreachable(origin);
                 if (distSq < _returnBestDistSq - 1.0) {
                     _returnBestDistSq = distSq;
@@ -455,7 +455,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
 
         // Place frame
         if (placeTarget != null) {
-            World world = mod.getWorld();
+            Level world = mod.getWorld();
 
             if (surroundedByAir(world,placeTarget)) {
                 // ⛔ FIXED 2026-09-05: the while condition tested `placeTarget` (the fixed BFS
@@ -463,7 +463,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
                 // was always true given the outer `if` already established it -- the loop relied
                 // entirely on the inner `return` to exit, with no bound tied to actual BFS
                 // progress. Worse, nothing tracked visited positions, so the search could cycle
-                // forever (e.g. `pos.up()` then later that node's `pos.down()` re-enqueues `pos`
+                // forever (e.g. `pos.above()` then later that node's `pos.below()` re-enqueues `pos`
                 // itself), growing the queue without limit. Both are real hang/OOM risks on this
                 // task's own tick thread. Added a visited set (also fixes re-enqueuing/re-checking
                 // the same cell) and a hard node cap as a safety bound, matching this session's
@@ -477,7 +477,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
                     BlockPos pos = queue.removeFirst();
 
                     if (surroundedByAir(world, pos)) {
-                        for (BlockPos next : new BlockPos[]{pos.up(), pos.down(), pos.east(), pos.west(), pos.north(), pos.south()}) {
+                        for (BlockPos next : new BlockPos[]{pos.above(), pos.below(), pos.east(), pos.west(), pos.north(), pos.south()}) {
                             if (visited.add(next)) {
                                 queue.add(next);
                             }
@@ -510,25 +510,25 @@ public class ConstructNetherPortalObsidianTask extends Task {
             return new DestroyBlockTask(_destroyTarget);
         }
         for (Vec3i middleOffs : PORTAL_INTERIOR) {
-            BlockPos middlePos = origin.add(middleOffs);
+            BlockPos middlePos = origin.offset(middleOffs);
             if (!WorldHelper.isAir(middlePos)) {
                 _destroyTarget = middlePos;
                 return new DestroyBlockTask(_destroyTarget);
             }
         }
         // Flint and steel
-        return new InteractWithBlockTask(new ItemTarget(Items.FLINT_AND_STEEL, 1), Direction.UP, origin.down(), true);
+        return new InteractWithBlockTask(new ItemTarget(Items.FLINT_AND_STEEL, 1), Direction.UP, origin.below(), true);
     }
 
-    private boolean surroundedByAir(World world, BlockPos pos) {
+    private boolean surroundedByAir(Level world, BlockPos pos) {
         return world.getBlockState(pos.west()).isAir() && world.getBlockState(pos.south()).isAir() && world.getBlockState(pos.east()).isAir() &&
-                world.getBlockState(pos.up()).isAir() && world.getBlockState(pos.down()).isAir() && world.getBlockState(pos.north()).isAir();
+                world.getBlockState(pos.above()).isAir() && world.getBlockState(pos.below()).isAir() && world.getBlockState(pos.north()).isAir();
     }
 
     /** Every cell of the temporary front standing wall is solid. */
     private boolean frontScaffoldComplete(AltoClef mod) {
         for (Vec3i o : FRONT_SCAFFOLD) {
-            if (!WorldHelper.isSolidBlock(origin.add(o))) return false;
+            if (!WorldHelper.isSolidBlock(origin.offset(o))) return false;
         }
         return true;
     }
@@ -538,9 +538,9 @@ public class ConstructNetherPortalObsidianTask extends Task {
     private BlockPos nextFrontScaffoldCell(AltoClef mod) {
         for (int dy = -1; dy <= 2; dy++) {
             for (int dz = -1; dz <= 2; dz++) {
-                BlockPos p = origin.add(1, dy, dz);
+                BlockPos p = origin.offset(1, dy, dz);
                 if (WorldHelper.isSolidBlock(p)) continue;          // already built
-                if (!WorldHelper.isSolidBlock(p.down())) continue;  // no support yet; build lower first
+                if (!WorldHelper.isSolidBlock(p.below())) continue;  // no support yet; build lower first
                 return p;
             }
         }
@@ -551,7 +551,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
     private BlockPos highestFrontScaffoldBlock(AltoClef mod) {
         for (int dy = 2; dy >= -1; dy--) {
             for (int dz = -1; dz <= 2; dz++) {
-                BlockPos p = origin.add(1, dy, dz);
+                BlockPos p = origin.offset(1, dy, dz);
                 if (!WorldHelper.isAir(p)) return p;
             }
         }

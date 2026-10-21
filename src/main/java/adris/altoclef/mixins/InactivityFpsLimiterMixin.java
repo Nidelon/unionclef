@@ -1,6 +1,6 @@
 package adris.altoclef.mixins;
 
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 //#if MC >= 12111
 //$$ import net.minecraft.client.option.InactivityFpsLimiter;
@@ -31,14 +31,14 @@ import org.spongepowered.asm.mixin.Mixin;
  * 1.21.11 and is absent from the 1.21 base this tree compiles against, so the BASE branch must be
  * the plain-Java one and the 1.21.11 mixin must be the {@code //$$} commented one — the
  * preprocessor swaps them for the versioned build. The annotation has to move with the class, not
- * just the method: leaving {@code @Mixin(MinecraftClient.class)} live for both would inject
+ * just the method: leaving {@code @Mixin(Minecraft.class)} live for both would inject
  * {@code update} into the wrong class on 1.21.11. Same shape as MiningToolItemAccessor.
  *
  * <p>OFF BY DEFAULT: an idle Minecraft on a human's machine SHOULD stop burning a core. The bench
  * pins {@code botFpsNoIdleThrottle} on.
  */
 //#if MC < 12111
-@Mixin(MinecraftClient.class) // no-op stub — InactivityFpsLimiter does not exist before 1.21.11
+@Mixin(Minecraft.class) // no-op stub — InactivityFpsLimiter does not exist before 1.21.11
 public class InactivityFpsLimiterMixin {
 }
 //#else
@@ -53,7 +53,7 @@ public class InactivityFpsLimiterMixin {
 //$$     @Inject(method = "update", at = @At("RETURN"), cancellable = true)
 //$$     private void unionclef$keepBotClientAwake(CallbackInfoReturnable<Integer> cir) {
 //$$         if (!kaptainwutax.tungsten.TungstenConfig.get().botFpsNoIdleThrottle) return;
-//$$         MinecraftClient mc = MinecraftClient.getInstance();
+//$$         Minecraft mc = Minecraft.getInstance();
 //$$         if (mc == null || mc.options == null) return;
 //$$         int configured = mc.options.getMaxFps().getValue();
 //$$         if (cir.getReturnValue() < configured) {

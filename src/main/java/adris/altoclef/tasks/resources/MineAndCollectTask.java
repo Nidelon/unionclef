@@ -17,15 +17,15 @@ import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.CursorSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.block.Block;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.util.Pair;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import adris.altoclef.util.Pair;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 
@@ -64,7 +64,7 @@ public class MineAndCollectTask extends ResourceTask {
      * .withTargetFilter(p -> ...)}. Null (the default) is the unchanged behaviour. Used by the
      * obsidian collect to refuse obsidian sitting against lava.
      */
-    public MineAndCollectTask withTargetFilter(java.util.function.Predicate<net.minecraft.util.math.BlockPos> filter) {
+    public MineAndCollectTask withTargetFilter(java.util.function.Predicate<net.minecraft.core.BlockPos> filter) {
         _subtask.setTargetFilter(filter);
         return this;
     }
@@ -73,7 +73,7 @@ public class MineAndCollectTask extends ResourceTask {
         List<Block> result = new ArrayList<>(targets.length);
         for (ItemTarget target : targets) {
             for (Item item : target.getMatches()) {
-                Block block = Block.getBlockFromItem(item);
+                Block block = Block.byItem(item);
                 if (block != null && !WorldHelper.isAir(block)) {
                     result.add(block);
                 }
@@ -188,13 +188,13 @@ public class MineAndCollectTask extends ResourceTask {
 
     private void makeSureToolIsEquipped(AltoClef mod) {
         if (_cursorStackTimer.elapsed() && !mod.getFoodChain().needsToEat()) {
-            assert MinecraftClient.getInstance().player != null;
+            assert Minecraft.getInstance().player != null;
             ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
             if (cursorStack != null && !cursorStack.isEmpty()) {
                 // We have something in our cursor stack
                 Item item = cursorStack.getItem();
-                net.minecraft.block.BlockState mining = mod.getWorld().getBlockState(_subtask.miningPos());
-                if (item.getDefaultStack().isSuitableFor(mining)) {
+                net.minecraft.world.level.block.state.BlockState mining = mod.getWorld().getBlockState(_subtask.miningPos());
+                if (item.getDefaultInstance().isCorrectToolForDrops(mining)) {
                     // ASK WHAT THE TOOLS DO TO THIS BLOCK, NOT WHAT CLASS THEY ARE.
                     //
                     // On 1.21.11 this whole body was switched off -- the mining-tool CLASS was
@@ -212,8 +212,8 @@ public class MineAndCollectTask extends ResourceTask {
                     // scores 1.0, so a pickaxe wins on stone by arithmetic rather than by a special
                     // case, and axes, shovels and shears are handled by the same line for free.
                     ItemStack equipped = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot());
-                    if (item.getDefaultStack().getMiningSpeedMultiplier(mining)
-                            > equipped.getMiningSpeedMultiplier(mining)) {
+                    if (item.getDefaultInstance().getDestroySpeed(mining)
+                            > equipped.getDestroySpeed(mining)) {
                         toolSwaps++;
                         mod.getSlotHandler().forceEquipSlot(CursorSlot.SLOT);
                     }
@@ -243,12 +243,12 @@ public class MineAndCollectTask extends ResourceTask {
         public void setTargetFilter(java.util.function.Predicate<BlockPos> filter) { _targetFilter = filter; }
 
         @Override
-        protected Vec3d getPos(AltoClef mod, Object obj) {
+        protected Vec3 getPos(AltoClef mod, Object obj) {
             if (obj instanceof BlockPos b) {
                 return WorldHelper.toVec3d(b);
             }
             if (obj instanceof ItemEntity item) {
-                return item.getPos();
+                return item.position();
             }
             throw new UnsupportedOperationException("Shouldn't try to get the position of object " + obj + " of type " + (obj != null ? obj.getClass().toString() : "(null object)"));
         }
@@ -277,7 +277,7 @@ public class MineAndCollectTask extends ResourceTask {
         public void setDropsOnly(boolean v) { dropsOnly = v; }
 
         @Override
-        protected Optional<Object> getClosestTo(AltoClef mod, Vec3d pos) {
+        protected Optional<Object> getClosestTo(AltoClef mod, Vec3 pos) {
             minePickCalls++;
             Pair<Double, Optional<BlockPos>> closestBlock = dropsOnly
                     ? new Pair<>(Double.POSITIVE_INFINITY, Optional.empty())
@@ -346,7 +346,7 @@ public class MineAndCollectTask extends ResourceTask {
         /** Candidates rejected for being below standing height while the surface still had some. */
         public static volatile int scanBelowFeet;
 
-        public static Pair<Double, Optional<ItemEntity>> getClosestItemDrop(AltoClef mod,Vec3d pos, ItemTarget... items) {
+        public static Pair<Double, Optional<ItemEntity>> getClosestItemDrop(AltoClef mod,Vec3 pos, ItemTarget... items) {
             Optional<ItemEntity> closestDrop = Optional.empty();
             dropAsked++;
             if (mod.getEntityTracker().itemDropped(items)) {
@@ -377,7 +377,7 @@ public class MineAndCollectTask extends ResourceTask {
             final boolean exempt = kaptainwutax.tungsten.TungstenConfig.get().dropNoPenaltyWhenNear;
             return new Pair<>(
                     closestDrop.map(itemEntity -> {
-                        double trueSq = itemEntity.squaredDistanceTo(pos);
+                        double trueSq = itemEntity.distanceToSqr(pos);
                         // ⛔ A DROP MORE THAN A FALL BELOW IS REACHED BY DIGGING, AND A DIG IS PRICED
                         // LIKE A DIG (G72, 2026-09-12). This comparison is in squared blocks, where
                         // eleven blocks straight down costs the same as eleven blocks across. The
@@ -419,15 +419,15 @@ public class MineAndCollectTask extends ResourceTask {
          */
         private static boolean enclosedAtFeet(AltoClef mod, int feetY) {
             try {
-                BlockPos feet = new BlockPos(mod.getPlayer().getBlockPos().getX(), feetY,
-                        mod.getPlayer().getBlockPos().getZ());
-                for (net.minecraft.util.math.Direction d
-                        : new net.minecraft.util.math.Direction[]{
-                        net.minecraft.util.math.Direction.NORTH,
-                        net.minecraft.util.math.Direction.SOUTH,
-                        net.minecraft.util.math.Direction.EAST,
-                        net.minecraft.util.math.Direction.WEST}) {
-                    if (!WorldHelper.isSolidBlock(feet.offset(d))) {
+                BlockPos feet = new BlockPos(mod.getPlayer().blockPosition().getX(), feetY,
+                        mod.getPlayer().blockPosition().getZ());
+                for (net.minecraft.core.Direction d
+                        : new net.minecraft.core.Direction[]{
+                        net.minecraft.core.Direction.NORTH,
+                        net.minecraft.core.Direction.SOUTH,
+                        net.minecraft.core.Direction.EAST,
+                        net.minecraft.core.Direction.WEST}) {
+                    if (!WorldHelper.isSolidBlock(feet.relative(d))) {
                         return false;
                     }
                 }
@@ -438,19 +438,19 @@ public class MineAndCollectTask extends ResourceTask {
             }
         }
 
-        public static Pair<Double,Optional<BlockPos> > getClosestBlock(AltoClef mod,Vec3d pos ,Block... blocks) {
+        public static Pair<Double,Optional<BlockPos> > getClosestBlock(AltoClef mod,Vec3 pos ,Block... blocks) {
             return getClosestBlock(mod, pos, null, blocks);
         }
 
         /**
-         * As {@link #getClosestBlock(AltoClef, Vec3d, Block...)}, with an OPTIONAL extra per-position
+         * As {@link #getClosestBlock(AltoClef, Vec3, Block...)}, with an OPTIONAL extra per-position
          * gate ANDed into every candidate scan. Null means "no extra gate" and is byte-for-byte the
          * old behaviour, so the 37 existing callers are untouched. The obsidian collect uses it to
          * refuse obsidian sitting against lava -- see CollectObsidianTask (G108, 2026-09-19: the bot
          * mined the flood's obsidian DOWN into the lake basin and stepped into the lava that the water
          * had not reached, "tried to swim in lava").
          */
-        public static Pair<Double,Optional<BlockPos> > getClosestBlock(AltoClef mod,Vec3d pos ,java.util.function.Predicate<BlockPos> extraFilter, Block... blocks) {
+        public static Pair<Double,Optional<BlockPos> > getClosestBlock(AltoClef mod,Vec3 pos ,java.util.function.Predicate<BlockPos> extraFilter, Block... blocks) {
 
             // !! DIGGING THE BLOCK UNDER YOUR OWN FEET IS HOW A BOT BURIES ITSELF.
             //
@@ -477,7 +477,7 @@ public class MineAndCollectTask extends ResourceTask {
             // So the rule is about the SURFACE, not about a block: while enough candidates remain
             // at or above standing height, do not choose one below it. Descending still works when
             // the surface runs out, which is what mine_diamond needs and why it stays green.
-            int feetY = mod.getPlayer() == null ? Integer.MIN_VALUE : mod.getPlayer().getBlockPos().getY();
+            int feetY = mod.getPlayer() == null ? Integer.MIN_VALUE : mod.getPlayer().blockPosition().getY();
             if (kaptainwutax.tungsten.TungstenConfig.get().mineStayOnSurface
                     && feetY != Integer.MIN_VALUE) {
                 // !! THE RULE ABOVE RATCHETED, WHICH IS WHY IT MEASURED NOTHING.
@@ -518,7 +518,7 @@ public class MineAndCollectTask extends ResourceTask {
                     return new Pair<>(BlockPosVer.getSquaredDistance(onSurface.get(), pos), onSurface);
                 }
             }
-            BlockPos underfoot = mod.getPlayer() == null ? null : mod.getPlayer().getBlockPos().down();
+            BlockPos underfoot = mod.getPlayer() == null ? null : mod.getPlayer().blockPosition().below();
             if (kaptainwutax.tungsten.TungstenConfig.get().mineAvoidUnderfoot && underfoot != null) {
                 Optional<BlockPos> preferred = mod.getBlockScanner().getNearestBlock(pos, check -> {
                     if (extraFilter != null && !extraFilter.test(check)) return false;
@@ -563,8 +563,8 @@ public class MineAndCollectTask extends ResourceTask {
         }
 
         @Override
-        protected Vec3d getOriginPos(AltoClef mod) {
-            return mod.getPlayer().getPos();
+        protected Vec3 getOriginPos(AltoClef mod) {
+            return mod.getPlayer().position();
         }
 
         @Override
@@ -622,7 +622,7 @@ public class MineAndCollectTask extends ResourceTask {
                     if (miningPos != null) {
                         mineRetarget++;
                         mineRetargetCm = (int) Math.min(
-                                Math.sqrt(miningPos.getSquaredDistance(newPos)) * 100.0,
+                                Math.sqrt(miningPos.distSqr(newPos)) * 100.0,
                                 2_000_000_000.0);
                         if (lastLeft != null && lastLeft.equals(newPos)) mineRetargetBack++;
                         lastLeft = miningPos;
@@ -646,7 +646,7 @@ public class MineAndCollectTask extends ResourceTask {
                 return mod.getBlockScanner().isBlockAtPosition(b, _blocks) && WorldHelper.canBreak(b);
             }
             if (obj instanceof ItemEntity drop) {
-                Item item = drop.getStack().getItem();
+                Item item = drop.getItem().getItem();
                 if (_targets != null) {
                     for (ItemTarget target : _targets) {
                         if (target.matches(item)) return true;
@@ -693,5 +693,5 @@ public class MineAndCollectTask extends ResourceTask {
 
     /** Target-block re-choices, how far the last one jumped, and how many went straight BACK. */
     public static volatile int mineRetarget, mineRetargetCm, mineRetargetBack;
-    private static net.minecraft.util.math.BlockPos lastLeft = null;
+    private static net.minecraft.core.BlockPos lastLeft = null;
 }

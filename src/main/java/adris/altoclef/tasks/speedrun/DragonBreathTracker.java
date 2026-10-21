@@ -7,8 +7,8 @@ import adris.altoclef.tasks.movement.CustomBaritoneGoalTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
-import net.minecraft.entity.AreaEffectCloudEntity;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.entity.AreaEffectCloud;
+import net.minecraft.core.BlockPos;
 
 import java.util.HashSet;
 
@@ -17,7 +17,7 @@ public class DragonBreathTracker {
 
     public void updateBreath(AltoClef mod) {
         breathBlocks.clear();
-        for (AreaEffectCloudEntity cloud : mod.getEntityTracker().getTrackedEntities(AreaEffectCloudEntity.class)) {
+        for (AreaEffectCloud cloud : mod.getEntityTracker().getTrackedEntities(AreaEffectCloud.class)) {
             for (BlockPos bad : WorldHelper.getBlocksTouchingBox(cloud.getBoundingBox())) {
                 breathBlocks.add(bad);
             }
@@ -67,10 +67,10 @@ public class DragonBreathTracker {
         protected AltoGoal newAltoGoal(AltoClef mod) {
             return new AltoGoal.FleeLive(
                     () -> breathBlocks.stream()
-                            .map(b -> new net.minecraft.util.math.Vec3d(
+                            .map(b -> new net.minecraft.world.phys.Vec3(
                                     b.getX() + 0.5, b.getY(), b.getZ() + 0.5))
                             .collect(java.util.stream.Collectors.toList()),
-                    () -> mod.getPlayer() == null ? null : mod.getPlayer().getPos(),
+                    () -> mod.getPlayer() == null ? null : mod.getPlayer().position(),
                     10);
         }
 

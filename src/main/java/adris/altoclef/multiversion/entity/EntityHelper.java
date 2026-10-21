@@ -1,24 +1,24 @@
 package adris.altoclef.multiversion.entity;
 
 import adris.altoclef.mixins.PortalManagerAccessor;
-import net.minecraft.block.NetherPortalBlock;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.dimension.NetherPortal;
+import net.minecraft.world.level.block.NetherPortalBlock;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.portal.PortalShape;
 
 public class EntityHelper {
 
     //#if MC >= 12100
     public static boolean isInNetherPortal(Entity entity) {
-       return (entity.portalManager != null && ((PortalManagerAccessor)entity.portalManager).accessPortal() instanceof NetherPortalBlock && entity.portalManager.isInPortal())
+       return (entity.portalProcess != null && ((PortalManagerAccessor)entity.portalProcess).accessPortal() instanceof NetherPortalBlock && entity.portalProcess.isInsidePortalThisTick())
                || entity.getPortalCooldown() > 0;
     }
     //#endif
 
     //#if MC <= 11605
-    //$$ public static Vec3d getEyePos(Entity entity) {
-    //$$     return new Vec3d(entity.getX(), entity.getEyeY(), entity.getZ());
+    //$$ public static Vec3 getEyePos(Entity entity) {
+    //$$     return new Vec3(entity.getX(), entity.getEyeY(), entity.getZ());
     //$$ }
     //$$
     //$$ public static ChunkPos getChunkPos(Entity entity) {

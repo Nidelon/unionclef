@@ -9,11 +9,11 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ClipContext;
 
 import java.util.function.Predicate;
 
@@ -49,7 +49,7 @@ public class CollectObsidianTask extends ResourceTask {
     protected void onResourceStart(AltoClef mod) {
         mod.getBehaviour().push();
         // Only source blocks fill a bucket; ray-trace to sources for any bucket interaction.
-        mod.getBehaviour().setRayTracingFluidHandling(RaycastContext.FluidHandling.SOURCE_ONLY);
+        mod.getBehaviour().setRayTracingFluidHandling(net.minecraft.world.level.ClipContext.Fluid.SOURCE_ONLY);
     }
 
     @Override
@@ -75,15 +75,15 @@ public class CollectObsidianTask extends ResourceTask {
         // converting more of the basin before mining resumes. Drops on the ground are collected
         // regardless (a dropped item needs no safe stand).
         Predicate<BlockPos> lavaSafe = (p -> {
-            for (BlockPos n : new BlockPos[]{p.up(), p.down(), p.north(), p.south(), p.east(), p.west()}) {
+            for (BlockPos n : new BlockPos[]{p.above(), p.below(), p.north(), p.south(), p.east(), p.west()}) {
                 if (mod.getWorld().getBlockState(n).getFluidState()
-                        .isIn(net.minecraft.registry.tag.FluidTags.LAVA)) return false;
+                        .is(net.minecraft.tags.FluidTags.LAVA)) return false;
             }
             return true;
         });
         // Mine obsidian that already exists (from a flood, or found naturally) or was dropped.
         Predicate<BlockPos> goodObsidian = (blockPos ->
-                blockPos.isWithinDistance(mod.getPlayer().getPos(), 800)
+                blockPos.closerThan(BlockPos.containing(mod.getPlayer().position()), 800)
                         && WorldHelper.canBreak(blockPos) && lavaSafe.test(blockPos));
         if (!floodBusy && (mod.getBlockScanner().anyFound(goodObsidian, Blocks.OBSIDIAN)
                 || mod.getEntityTracker().itemDropped(Items.OBSIDIAN))) {

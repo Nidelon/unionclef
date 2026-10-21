@@ -16,10 +16,10 @@ import kaptainwutax.tungsten.helpers.DistanceCalculator;
 import kaptainwutax.tungsten.helpers.movement.StreightMovementHelper;
 import kaptainwutax.tungsten.helpers.render.RenderHelper;
 import kaptainwutax.tungsten.path.calculators.ActionCosts;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 public class BlockSpacePathFinder {
 
@@ -101,7 +101,7 @@ public class BlockSpacePathFinder {
 	protected static final double MIN_DIST_PATH = 5;
 	
 	
-	public static void find(WorldView world, Vec3d target, PlayerEntity player) {
+	public static void find(LevelReader world, Vec3 target, Player player) {
 		bsFindCalls++;
 		if(active)return;
 		active = true;
@@ -125,16 +125,16 @@ public class BlockSpacePathFinder {
 		thread.start();
 	}
 	
-	public static Optional<List<BlockNode>> search(WorldView world, Vec3d target, PlayerEntity player) {
+	public static Optional<List<BlockNode>> search(LevelReader world, Vec3 target, Player player) {
 		return search(world, target, false, player);
 	}
 
-	public static Optional<List<BlockNode>> search(WorldView world, BlockNode start, Vec3d target, PlayerEntity player) {
+	public static Optional<List<BlockNode>> search(LevelReader world, BlockNode start, Vec3 target, Player player) {
 		return search(world, start, target, false, player);
 	}
 	
-	private static Optional<List<BlockNode>> search(WorldView world, Vec3d target, boolean generateDeep, PlayerEntity player) {
-		BlockPos startPos = player.getBlockPos();
+	private static Optional<List<BlockNode>> search(LevelReader world, Vec3 target, boolean generateDeep, Player player) {
+		BlockPos startPos = player.blockPosition();
 		Goal goal = new Goal((int) target.x, (int) target.y, (int) target.z);
 
 		// If standing inside a non-air block (fence, pane, chain, etc.),
@@ -163,11 +163,11 @@ public class BlockSpacePathFinder {
 	 * straight down to the landing cell -> a small radius sweep. Returns the input
 	 * unchanged when it is already standable or nothing better exists.
 	 */
-	private static BlockPos snapToSupport(WorldView world, PlayerEntity player, BlockPos startPos) {
+	private static BlockPos snapToSupport(LevelReader world, Player player, BlockPos startPos) {
 		if (isStandable(world, startPos)) return startPos;
 
 		// 1) cells under the collision-box FOOTPRINT (the edge-standing case)
-		net.minecraft.util.math.Box box = player.getBoundingBox();
+		net.minecraft.world.phys.AABB box = player.getBoundingBox();
 		double[][] corners = {
 			{box.minX, box.minZ}, {box.minX, box.maxZ},
 			{box.maxX, box.minZ}, {box.maxX, box.maxZ},
@@ -175,16 +175,16 @@ public class BlockSpacePathFinder {
 		BlockPos best = null;
 		double bestDist = Double.MAX_VALUE;
 		for (double[] c : corners) {
-			BlockPos cand = BlockPos.ofFloored(c[0], startPos.getY(), c[1]);
+			BlockPos cand = BlockPos.containing(c[0], startPos.getY(), c[1]);
 			if (cand.equals(startPos) || !isStandable(world, cand)) continue;
-			double d = cand.toCenterPos().squaredDistanceTo(player.getEntityPos());
+			double d = net.minecraft.world.phys.Vec3.atCenterOf(cand).distanceToSqr(player.position());
 			if (d < bestDist) { bestDist = d; best = cand; }
 		}
 		if (best != null) return best;
 
 		// 2) airborne (falling / jumping): the cell we are about to land on
 		for (int dy = 1; dy <= 8; dy++) {
-			BlockPos cand = startPos.down(dy);
+			BlockPos cand = startPos.below(dy);
 			if (isStandable(world, cand)) return cand;
 		}
 
@@ -200,7 +200,7 @@ public class BlockSpacePathFinder {
 			for (int dx = -r; dx <= r; dx++) {
 				for (int dz = -r; dz <= r; dz++) {
 					for (int dy = 0; dy >= -2; dy--) {
-						BlockPos cand = startPos.add(dx, dy, dz);
+						BlockPos cand = startPos.offset(dx, dy, dz);
 						if (isStandable(world, cand)) return cand;
 					}
 				}
@@ -210,21 +210,21 @@ public class BlockSpacePathFinder {
 	}
 
 	/** Solid floor below + room for the body — the block-space notion of "can stand here". */
-	private static boolean isStandable(WorldView world, BlockPos pos) {
-		return !world.getBlockState(pos.down()).getCollisionShape(world, pos.down()).isEmpty()
+	private static boolean isStandable(LevelReader world, BlockPos pos) {
+		return !world.getBlockState(pos.below()).getCollisionShape(world, pos.below()).isEmpty()
 				&& world.getBlockState(pos).getCollisionShape(world, pos).isEmpty()
-				&& world.getBlockState(pos.up()).getCollisionShape(world, pos.up()).isEmpty();
+				&& world.getBlockState(pos.above()).getCollisionShape(world, pos.above()).isEmpty();
 	}
 
 	/**
 	 * Find the nearest passable start position by checking cardinal
 	 * directions first, then up/down. Returns original pos if nothing found.
 	 */
-	private static BlockPos findNearestAirStart(WorldView world, BlockPos pos) {
+	private static BlockPos findNearestAirStart(LevelReader world, BlockPos pos) {
 		// Cardinal directions first (escape sideways from thin blocks)
 		BlockPos[] candidates = {
 			pos.north(), pos.south(), pos.east(), pos.west(),
-			pos.up(), pos.down()
+			pos.above(), pos.below()
 		};
 		for (BlockPos candidate : candidates) {
 			if (world.getBlockState(candidate).isAir()
@@ -236,17 +236,17 @@ public class BlockSpacePathFinder {
 		for (int dx = -2; dx <= 2; dx++) {
 			for (int dz = -2; dz <= 2; dz++) {
 				if (dx == 0 && dz == 0) continue;
-				BlockPos candidate = pos.add(dx, 0, dz);
+				BlockPos candidate = pos.offset(dx, 0, dz);
 				if (world.getBlockState(candidate).isAir()
 						|| BlockShapeChecker.getShapeVolume(candidate, world) == 0) {
 					return candidate;
 				}
 			}
 		}
-		return pos.up(); // fallback: original behavior
+		return pos.above(); // fallback: original behavior
 	}
 	
-	private static Optional<List<BlockNode>> search(WorldView world, BlockNode start, Vec3d target, boolean generateDeep, PlayerEntity player) {
+	private static Optional<List<BlockNode>> search(LevelReader world, BlockNode start, Vec3 target, boolean generateDeep, Player player) {
 		Goal goal = new Goal((int) target.x, (int) target.y, (int) target.z);
 		boolean failing = true;
         int numNodes = 0;
@@ -281,7 +281,7 @@ public class BlockSpacePathFinder {
 		// let a close goal complete at all, because isPathComplete carried a `&& !failing` that
 		// upstream does not have; that conjunct is gone and completion no longer depends on it.)
 		if (kaptainwutax.tungsten.TungstenConfig.get().smartMoves
-				&& start.getPos().squaredDistanceTo(target) <= MIN_DIST_PATH * MIN_DIST_PATH) {
+				&& start.getPos().distanceToSqr(target) <= MIN_DIST_PATH * MIN_DIST_PATH) {
 			failing = false;
 		}
 
@@ -346,7 +346,7 @@ public class BlockSpacePathFinder {
 			bsLoopIters++;
 			BlockNode next = openSet.removeLowest();
 			{
-				double dsq = next.getPos().squaredDistanceTo(target);
+				double dsq = next.getPos().distanceToSqr(target);
 				int cm = (int) Math.min(Math.sqrt(dsq) * 100.0, 2_000_000_000.0);
 				if (bsClosestCm == 0 || cm < bsClosestCm) bsClosestCm = cm;
 			}
@@ -361,7 +361,7 @@ public class BlockSpacePathFinder {
 			// mirror image). Note this is per SEARCH: bsClosestCm above is a lifetime minimum
 			// over the whole run and cannot answer a question about one halt.
 			{
-				double dsq = next.getPos().squaredDistanceTo(target);
+				double dsq = next.getPos().distanceToSqr(target);
 				if (dsq < closestDistSq) { closestDistSq = dsq; closestToGoal = next; }
 			}
 			if(isPathComplete(next, target)) {
@@ -499,7 +499,7 @@ public class BlockSpacePathFinder {
 	 * varies exactly one thing.
 	 */
 	private static Optional<List<BlockNode>> salvage(Optional<List<BlockNode>> handedBack,
-			BlockNode closestToGoal, BlockNode start, WorldView world, String why) {
+			BlockNode closestToGoal, BlockNode start, LevelReader world, String why) {
 		// ⛔ A STUB IS MEASURED IN BLOCKS, NOT IN NODES. The first version of this asked whether the
 		// guide had two nodes or fewer, which is wrong twice over: stringPull() deletes every
 		// intermediate cell whose corner can be cut, so a healthy thirty-block straight walk collapses
@@ -532,7 +532,7 @@ public class BlockSpacePathFinder {
 		return Optional.of(path);
 	}
 	
-	protected static Optional<List<BlockNode>> bestSoFar(boolean logInfo, int numNodes, BlockNode startNode, WorldView world) {
+	protected static Optional<List<BlockNode>> bestSoFar(boolean logInfo, int numNodes, BlockNode startNode, LevelReader world) {
         if (startNode == null) {
             return Optional.empty();
         }
@@ -587,7 +587,7 @@ public class BlockSpacePathFinder {
 	 * at this repair guessed it — see TungstenConfig#searchHeuristicScale for that measurement.
 	 * It is passed down rather than read here so one search uses one yardstick throughout.
 	 */
-	private static double computeHeuristic(Vec3d position, Vec3d target, WorldView world, double heuristicScale) {
+	private static double computeHeuristic(Vec3 position, Vec3 target, LevelReader world, double heuristicScale) {
 		double xzMultiplier = 1/*.2*/;
 	    double dx = (target.x - position.x)*xzMultiplier;
 	    double dy = 0;
@@ -611,13 +611,13 @@ public class BlockSpacePathFinder {
 	 * meant "almost three times a step" and 5.8 meant "nearly seven". Converting rather than
 	 * re-typing the numbers keeps the water landscape where it was measured.
 	 */
-	private static double edgeCost(BlockNode child, WorldView world) {
+	private static double edgeCost(BlockNode child, LevelReader world) {
 	    double cost = child.actionCost;
 
 		if (BlockStateChecker.isAnyWater(child.getBlockState(world))) {
 			cost += 1.8 * ActionCosts.WALK_ONE_BLOCK_COST;
 		}
-		if (BlockStateChecker.isAnyWater(world.getBlockState(child.getBlockPos().up()))) {
+		if (BlockStateChecker.isAnyWater(world.getBlockState(child.getBlockPos().above()))) {
 			cost += 5.8 * ActionCosts.WALK_ONE_BLOCK_COST;
 		}
 
@@ -631,7 +631,7 @@ public class BlockSpacePathFinder {
 		// motion check stopped it one step too late and it went in. Same price, same definition.
 		BlockPos cp = child.getBlockPos();
 		if (kaptainwutax.tungsten.path.RouteHazards.lavaBeside(world, cp.getX(), cp.getY(), cp.getZ(),
-				new BlockPos.Mutable())) {
+				new net.minecraft.core.BlockPos.MutableBlockPos())) {
 			cost += kaptainwutax.tungsten.path.RouteHazards.LAVA_MARGIN_MULT * ActionCosts.WALK_ONE_BLOCK_COST;
 		}
 
@@ -639,8 +639,8 @@ public class BlockSpacePathFinder {
 	}
 
 	/** Upstream's relaxation body, run only once the guard has passed (AStarPathFinder.java:145-147). */
-	private static void updateNode(BlockNode current, BlockNode child, double tentativeCost, Vec3d target,
-			WorldView world, double heuristicScale) {
+	private static void updateNode(BlockNode current, BlockNode child, double tentativeCost, Vec3 target,
+			LevelReader world, double heuristicScale) {
 	    double estimatedCostToGoal = computeHeuristic(child.getPos(), target, world, heuristicScale);
 
 	    child.previous = current;
@@ -649,7 +649,7 @@ public class BlockSpacePathFinder {
 	    child.combinedCost = tentativeCost + estimatedCostToGoal;
 	}
 	
-	private static double getDistFromStartSq(BlockNode n, Vec3d start) {
+	private static double getDistFromStartSq(BlockNode n, Vec3 start) {
         // The original computed the Y and Z diffs from start.x (copy-paste bug) —
         // garbage distances. Correcting it alone regresses the blind-scan search
         // (course A depends on the garbage-driven partial paths), so the correct
@@ -672,11 +672,11 @@ public class BlockSpacePathFinder {
 	 * not yet got MIN_DIST_PATH clear of its own start would pop the goal, decline to recognise
 	 * it, and keep going until it ran out of nodes next to the thing it was sent to.
 	 */
-	private static boolean isPathComplete(BlockNode node, Vec3d target) {
-        return node.getPos().squaredDistanceTo(target) < 1.0D;
+	private static boolean isPathComplete(BlockNode node, Vec3 target) {
+        return node.getPos().distanceToSqr(target) < 1.0D;
     }
 	
-	private static List<BlockNode> generatePath(BlockNode node, WorldView world) {
+	private static List<BlockNode> generatePath(BlockNode node, LevelReader world) {
 		BlockNode n = node;
 		List<BlockNode> path = new ArrayList<>();
 
@@ -686,7 +686,7 @@ public class BlockSpacePathFinder {
 //		        boolean isWater = BlockStateChecker.isAnyWater(state);
 		        BlockNode lastN = path.getLast();
 //		        boolean canGetFromLastNToCurrent = StreightMovementHelper.isPossible(world, lastN.getBlockPos(), n.getBlockPos());
-		        double heightDiff = DistanceCalculator.getJumpHeight(lastN.getPos(true).getY(), n.getPos(true).getY());
+		        double heightDiff = DistanceCalculator.getJumpHeight(lastN.getPos(true).y(), n.getPos(true).y());
 //				if (!canGetFromLastNToCurrent) {
 						path.add(n);
 //						if (n.previous != null) path.add(n.previous);
@@ -713,7 +713,7 @@ public class BlockSpacePathFinder {
 			BlockNode p = path.get(j-1);
 
 	        boolean canGetFromLastNToCurrent = StreightMovementHelper.isPossible(TungstenModDataContainer.world, pi.getBlockPos(), pj.getBlockPos());
-	        double heightDiff = p.previous == null ? 0 : DistanceCalculator.getJumpHeight(p.previous.getPos(true).getY(), p.getPos(true).getY());
+	        double heightDiff = p.previous == null ? 0 : DistanceCalculator.getJumpHeight(p.previous.getPos(true).y(), p.getPos(true).y());
 
 	        // NEVER SMOOTH AWAY A NODE THAT CARRIES WORK. String-pulling deletes intermediate
 	        // nodes whose corner can be cut — but a node also carries the break/place plan for

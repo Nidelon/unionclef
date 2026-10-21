@@ -3,10 +3,10 @@ package adris.altoclef.ui;
 import adris.altoclef.AltoClef;
 import adris.altoclef.multiversion.InGameHudVer;
 import adris.altoclef.multiversion.DrawContextWrapper;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.client.gui.Font;
+import com.mojang.blaze3d.vertex.PoseStack;
 import adris.altoclef.multiversion.ColorHelperVer;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,10 +18,10 @@ import java.util.List;
 public class AltoClefTickChart {
 
 
-    protected final TextRenderer textRenderer;
+    protected final Font textRenderer;
     protected final List<Long> list = new ArrayList<>();
 
-    public AltoClefTickChart(TextRenderer textRenderer) {
+    public AltoClefTickChart(Font textRenderer) {
         this.textRenderer = textRenderer;
     }
 
@@ -77,8 +77,8 @@ public class AltoClefTickChart {
 
 
     protected void drawBorderedText(DrawContextWrapper context, String string, int x, int y) {
-        // TODO [1.21.11] MatrixStack replaced with Matrix3x2fStack — scale API different
-        context.fill(x, y, x + this.textRenderer.getWidth(string)/2 + 1, y + this.textRenderer.fontHeight/2+1, 0x90505050);
+        // TODO [1.21.11] PoseStack replaced with Matrix3x2fStack — scale API different
+        context.fill(x, y, x + this.textRenderer.width(string)/2 + 1, y + this.textRenderer.lineHeight/2+1, 0x90505050);
         context.drawText(this.textRenderer, string, x + 1, y + 1, 0xE9E9E9, false);
     }
 
@@ -108,10 +108,10 @@ public class AltoClefTickChart {
     }
 
     private static int lerp(float delta, int start, int end) {
-        int i = (int) MathHelper.lerp(delta, ColorHelperVer.getAlpha(start), ColorHelperVer.getAlpha(end));
-        int j = (int) MathHelper.lerp(delta, ColorHelperVer.getRed(start), ColorHelperVer.getRed(end));
-        int k = (int) MathHelper.lerp(delta, ColorHelperVer.getGreen(start), ColorHelperVer.getGreen(end));
-        int l = (int) MathHelper.lerp(delta, ColorHelperVer.getBlue(start), ColorHelperVer.getBlue(end));
+        int i = (int) Mth.lerp(delta, ColorHelperVer.getAlpha(start), ColorHelperVer.getAlpha(end));
+        int j = (int) Mth.lerp(delta, ColorHelperVer.getRed(start), ColorHelperVer.getRed(end));
+        int k = (int) Mth.lerp(delta, ColorHelperVer.getGreen(start), ColorHelperVer.getGreen(end));
+        int l = (int) Mth.lerp(delta, ColorHelperVer.getBlue(start), ColorHelperVer.getBlue(end));
         return ColorHelperVer.getArgb(i, j, k, l);
     }
 

@@ -5,9 +5,9 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.goals.AltoGoal;
 import adris.altoclef.util.helpers.BaritoneHelper;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.SkeletonEntity;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.skeleton.Skeleton;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -42,9 +42,9 @@ public class RunAwayFromHostilesTask extends CustomBaritoneGoalTask {
         Nav.cancel();
         return new AltoGoal.FleeLive(
                 () -> hostiles(mod).stream()
-                        .map(e -> new net.minecraft.util.math.Vec3d(e.getX(), e.getY(), e.getZ()))
+                        .map(e -> new net.minecraft.world.phys.Vec3(e.getX(), e.getY(), e.getZ()))
                         .collect(Collectors.toList()),
-                () -> mod.getPlayer() == null ? null : mod.getPlayer().getPos(),
+                () -> mod.getPlayer() == null ? null : mod.getPlayer().position(),
                 distanceToRun);
     }
 
@@ -53,10 +53,10 @@ public class RunAwayFromHostilesTask extends CustomBaritoneGoalTask {
         // Retain threats through the requested separation and the flee goal's two-block
         // destination margin. A fixed detection radius can otherwise end a longer retreat early.
         Stream<LivingEntity> stream = mod.getEntityTracker().getTrackedHostiles().stream()
-                .filter(hostile -> hostile.isInRange(mod.getPlayer(), distanceToRun + 2));
+                .filter(hostile -> hostile.closerThan(mod.getPlayer(), distanceToRun + 2));
         synchronized (BaritoneHelper.MINECRAFT_LOCK) {
             if (!includeSkeletons) {
-                stream = stream.filter(hostile -> !(hostile instanceof SkeletonEntity));
+                stream = stream.filter(hostile -> !(hostile instanceof Skeleton));
             }
             return stream.collect(Collectors.toList());
         }

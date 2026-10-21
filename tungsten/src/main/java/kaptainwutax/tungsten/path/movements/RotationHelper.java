@@ -2,21 +2,21 @@ package kaptainwutax.tungsten.path.movements;
 
 import java.util.Optional;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.block.AbstractFireBlock;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.SlabBlock;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.util.shape.VoxelShapes;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.BaseFireBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Baritone's aim maths, reach gate and raytrace, copied into tungsten.
@@ -33,7 +33,7 @@ import net.minecraft.world.WorldView;
  * <p>{@code baritone/} is a source reference and is not compiled, and shredder owns the {@code
  * baritone.*} package (AGENTS.md) — so this file may only reference tungsten and Minecraft. Where
  * baritone's yarn names have moved on since that tree was migrated, the compiled shredder copy of
- * the same file is the oracle: {@code entity.getWorld()} -> {@code entity.getEntityWorld()} and
+ * the same file is the oracle: {@code entity.getWorld()} -> {@code entity.level()} and
  * {@code player.getPos()} -> {@code player.getEntityPos()} (shredder RayTraceUtils.java:63,
  * VecUtils.java:108). Positions are read as {@code getX()/getY()/getZ()}, which is the same number
  * as {@code getEntityPos().x/.y/.z} without depending on which interface declares it.
@@ -77,20 +77,20 @@ public final class RotationHelper {
      * The order is load-bearing: Down is tried before Up, so a block that can be reached from
      * underneath is aimed at from underneath.
      */
-    private static final Vec3d[] BLOCK_SIDE_MULTIPLIERS = new Vec3d[]{
-            new Vec3d(0.5, 0, 0.5), // Down
-            new Vec3d(0.5, 1, 0.5), // Up
-            new Vec3d(0.5, 0.5, 0), // North
-            new Vec3d(0.5, 0.5, 1), // South
-            new Vec3d(0, 0.5, 0.5), // West
-            new Vec3d(1, 0.5, 0.5)  // East
+    private static final Vec3[] BLOCK_SIDE_MULTIPLIERS = new Vec3[]{
+            new Vec3(0.5, 0, 0.5), // Down
+            new Vec3(0.5, 1, 0.5), // Up
+            new Vec3(0.5, 0.5, 0), // North
+            new Vec3(0.5, 0.5, 1), // South
+            new Vec3(0, 0.5, 0.5), // West
+            new Vec3(1, 0.5, 0.5)  // East
     };
 
     /**
      * RayTraceUtils.java:33. {@code NONE} means fluids are transparent to the trace, which is why a
      * block under water can still be aimed at and placed against.
      */
-    public static RaycastContext.FluidHandling fluidHandling = RaycastContext.FluidHandling.NONE;
+    public static net.minecraft.world.level.ClipContext.Fluid fluidHandling = net.minecraft.world.level.ClipContext.Fluid.NONE;
 
     /** baritone Settings.java:781 {@code remainWithExistingLookDirection}, default true. */
     private static final boolean REMAIN_WITH_EXISTING_LOOK_DIRECTION = true;
@@ -104,7 +104,7 @@ public final class RotationHelper {
 
     /** IPlayerContext.java:97-99. */
     public static Rotation playerRotations(Entity entity) {
-        return new Rotation(entity.getYaw(), entity.getPitch());
+        return new Rotation(entity.getYRot(1.0f), entity.getXRot(1.0f));
     }
 
     /**
@@ -112,8 +112,8 @@ public final class RotationHelper {
      * would destroy the standing-eye (1.62) versus sneaking-eye (1.27) separation that every
      * {@code wouldSneak} raytrace and the backplace pitch depend on.
      */
-    public static Vec3d playerHead(Entity entity) {
-        return new Vec3d(entity.getX(), entity.getY() + entity.getStandingEyeHeight(), entity.getZ());
+    public static Vec3 playerHead(Entity entity) {
+        return new Vec3(entity.getX(), entity.getY() + entity.getEyeHeight(), entity.getZ());
     }
 
     /**
@@ -132,11 +132,11 @@ public final class RotationHelper {
      * docs/BARITONE-PORT-SPEC.md: clamp the vanilla attribute to baritone's 4.5 default, so a
      * server that hands out a longer reach does not make the gate optimistic.
      */
-    public static double blockReachDistance(PlayerEntity player) {
+    public static double blockReachDistance(Player player) {
         if (player == null) {
             return BLOCK_REACH_DISTANCE;
         }
-        return Math.min(player.getBlockInteractionRange(), BLOCK_REACH_DISTANCE);
+        return Math.min(player.blockInteractionRange(), BLOCK_REACH_DISTANCE);
     }
 
     /**
@@ -144,7 +144,7 @@ public final class RotationHelper {
      * player's CURRENT rotations, recomputed on the spot. This is the one and only promotion to
      * "click now" in the ported placement path; never forge a {@link BlockHitResult}.
      */
-    public static HitResult liveHit(PlayerEntity player) {
+    public static HitResult liveHit(Player player) {
         return liveHit(player, playerRotations(player), blockReachDistance(player));
     }
 
@@ -153,7 +153,7 @@ public final class RotationHelper {
      * reach (which is every per-tick caller). Pass the CURRENT rotations: a live hit computed from a
      * wished-for rotation is not a crosshair test, it is the peek, and the two must not be confused.
      */
-    public static HitResult liveHit(PlayerEntity player, Rotation rotation, double blockReachDistance) {
+    public static HitResult liveHit(Player player, Rotation rotation, double blockReachDistance) {
         return rayTraceTowards(player, rotation, blockReachDistance);
     }
 
@@ -163,14 +163,14 @@ public final class RotationHelper {
      * ticks, which is exactly when SUCCESS is tested, and standing on a slab puts the feet in the
      * cell above the slab's own.
      */
-    public static BetterBlockPos playerFeet(PlayerEntity player) {
+    public static BetterBlockPos playerFeet(Player player) {
         // TODO find a better way to deal with soul sand!!!!!
         BetterBlockPos feet = new BetterBlockPos(player.getX(), player.getY() + 0.1251, player.getZ());
 
         // sometimes when calling this from another thread or while world is null, it'll throw a
         // NullPointerException that causes the game to immediately crash. catch it and ignore it.
         try {
-            if (player.getEntityWorld().getBlockState(feet).getBlock() instanceof SlabBlock) {
+            if (player.level().getBlockState(feet).getBlock() instanceof SlabBlock) {
                 return feet.above(); // tungsten's BetterBlockPos spells up() as above()
             }
         } catch (NullPointerException ignored) {}
@@ -179,7 +179,7 @@ public final class RotationHelper {
     }
 
     /** IPlayerContext.java:110-116. */
-    public static Optional<BlockPos> getSelectedBlock(PlayerEntity player) {
+    public static Optional<BlockPos> getSelectedBlock(Player player) {
         HitResult result = liveHit(player);
         if (result != null && result.getType() == HitResult.Type.BLOCK) {
             return Optional.of(((BlockHitResult) result).getBlockPos());
@@ -188,7 +188,7 @@ public final class RotationHelper {
     }
 
     /** IPlayerContext.java:118-120. */
-    public static boolean isLookingAt(PlayerEntity player, BlockPos pos) {
+    public static boolean isLookingAt(Player player, BlockPos pos) {
         return getSelectedBlock(player).equals(Optional.of(pos));
     }
 
@@ -225,16 +225,16 @@ public final class RotationHelper {
     }
 
     /** RotationUtils.java:105-107. */
-    public static Rotation calcRotationFromVec3d(Vec3d orig, Vec3d dest, Rotation current) {
+    public static Rotation calcRotationFromVec3d(Vec3 orig, Vec3 dest, Rotation current) {
         return wrapAnglesToRelative(current, calcRotationFromVec3d(orig, dest));
     }
 
     /** RotationUtils.java:116-125. */
-    private static Rotation calcRotationFromVec3d(Vec3d orig, Vec3d dest) {
+    private static Rotation calcRotationFromVec3d(Vec3 orig, Vec3 dest) {
         double[] delta = {orig.x - dest.x, orig.y - dest.y, orig.z - dest.z};
-        double yaw = MathHelper.atan2(delta[0], -delta[2]);
+        double yaw = Mth.atan2(delta[0], -delta[2]);
         double dist = Math.sqrt(delta[0] * delta[0] + delta[2] * delta[2]);
-        double pitch = MathHelper.atan2(delta[1], dist);
+        double pitch = Mth.atan2(delta[1], dist);
         return new Rotation(
                 (float) (yaw * RAD_TO_DEG),
                 (float) (pitch * RAD_TO_DEG)
@@ -242,12 +242,12 @@ public final class RotationHelper {
     }
 
     /** RotationUtils.java:133-139. */
-    public static Vec3d calcLookDirectionFromRotation(Rotation rotation) {
-        float flatZ = MathHelper.cos((-rotation.getYaw() * DEG_TO_RAD_F) - (float) Math.PI);
-        float flatX = MathHelper.sin((-rotation.getYaw() * DEG_TO_RAD_F) - (float) Math.PI);
-        float pitchBase = -MathHelper.cos(-rotation.getPitch() * DEG_TO_RAD_F);
-        float pitchHeight = MathHelper.sin(-rotation.getPitch() * DEG_TO_RAD_F);
-        return new Vec3d(flatX * pitchBase, pitchHeight, flatZ * pitchBase);
+    public static Vec3 calcLookDirectionFromRotation(Rotation rotation) {
+        float flatZ = Mth.cos((-rotation.getYaw() * DEG_TO_RAD_F) - (float) Math.PI);
+        float flatX = Mth.sin((-rotation.getYaw() * DEG_TO_RAD_F) - (float) Math.PI);
+        float pitchBase = -Mth.cos(-rotation.getPitch() * DEG_TO_RAD_F);
+        float pitchHeight = Mth.sin(-rotation.getPitch() * DEG_TO_RAD_F);
+        return new Vec3(flatX * pitchBase, pitchHeight, flatZ * pitchBase);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -255,17 +255,17 @@ public final class RotationHelper {
     // ------------------------------------------------------------------------------------------
 
     /** RotationUtils.java:152-154. */
-    public static Optional<Rotation> reachable(PlayerEntity player, BlockPos pos) {
+    public static Optional<Rotation> reachable(Player player, BlockPos pos) {
         return reachable(player, pos, false);
     }
 
     /** RotationUtils.java:156-158. */
-    public static Optional<Rotation> reachable(PlayerEntity player, BlockPos pos, boolean wouldSneak) {
+    public static Optional<Rotation> reachable(Player player, BlockPos pos, boolean wouldSneak) {
         return reachable(player, pos, blockReachDistance(player), wouldSneak);
     }
 
     /** RotationUtils.java:172-174. */
-    public static Optional<Rotation> reachable(PlayerEntity player, BlockPos pos, double blockReachDistance) {
+    public static Optional<Rotation> reachable(Player player, BlockPos pos, double blockReachDistance) {
         return reachable(player, pos, blockReachDistance, false);
     }
 
@@ -275,8 +275,8 @@ public final class RotationHelper {
      * the six side centres interpolated across the block's OUTLINE shape (not its collision shape —
      * that is what you can click, and it is why a fence or a slab is aimed at correctly).
      */
-    public static Optional<Rotation> reachable(PlayerEntity player, BlockPos pos, double blockReachDistance, boolean wouldSneak) {
-        WorldView world = player.getEntityWorld();
+    public static Optional<Rotation> reachable(Player player, BlockPos pos, double blockReachDistance, boolean wouldSneak) {
+        LevelReader world = player.level();
         if (REMAIN_WITH_EXISTING_LOOK_DIRECTION && isLookingAt(player, pos)) {
             /*
              * why add 0.0001?
@@ -303,15 +303,15 @@ public final class RotationHelper {
         }
 
         BlockState state = world.getBlockState(pos);
-        VoxelShape shape = state.getOutlineShape(world, pos);
+        VoxelShape shape = state.getShape(world, pos);
         if (shape.isEmpty()) {
-            shape = VoxelShapes.fullCube();
+            shape = Shapes.block();
         }
-        for (Vec3d sideOffset : BLOCK_SIDE_MULTIPLIERS) {
-            double xDiff = shape.getMin(Direction.Axis.X) * sideOffset.x + shape.getMax(Direction.Axis.X) * (1 - sideOffset.x);
-            double yDiff = shape.getMin(Direction.Axis.Y) * sideOffset.y + shape.getMax(Direction.Axis.Y) * (1 - sideOffset.y);
-            double zDiff = shape.getMin(Direction.Axis.Z) * sideOffset.z + shape.getMax(Direction.Axis.Z) * (1 - sideOffset.z);
-            possibleRotation = reachableOffset(player, pos, new Vec3d(pos.getX(), pos.getY(), pos.getZ()).add(xDiff, yDiff, zDiff), blockReachDistance, wouldSneak);
+        for (Vec3 sideOffset : BLOCK_SIDE_MULTIPLIERS) {
+            double xDiff = shape.min(Direction.Axis.X) * sideOffset.x + shape.max(Direction.Axis.X) * (1 - sideOffset.x);
+            double yDiff = shape.min(Direction.Axis.Y) * sideOffset.y + shape.max(Direction.Axis.Y) * (1 - sideOffset.y);
+            double zDiff = shape.min(Direction.Axis.Z) * sideOffset.z + shape.max(Direction.Axis.Z) * (1 - sideOffset.z);
+            possibleRotation = reachableOffset(player, pos, new Vec3(pos.getX(), pos.getY(), pos.getZ()).add(xDiff, yDiff, zDiff), blockReachDistance, wouldSneak);
             if (possibleRotation.isPresent()) {
                 return possibleRotation;
             }
@@ -322,15 +322,15 @@ public final class RotationHelper {
         // at that range, so the ray must be hitting something else -- record what, by name, at
         // the centre aim, and let a run say whether it is the tree's own leaves.
         try {
-            Vec3d eyes = wouldSneak ? inferSneakingEyePosition(player) : player.getCameraPosVec(1.0F);
-            Rotation aim = calcRotationFromVec3d(eyes, Vec3d.ofCenter(pos), playerRotations(player));
+            Vec3 eyes = wouldSneak ? inferSneakingEyePosition(player) : player.getEyePosition(1.0F);
+            Rotation aim = calcRotationFromVec3d(eyes, net.minecraft.world.phys.Vec3.atCenterOf(pos), playerRotations(player));
             HitResult r = rayTraceTowards(player, peekRotation(aim), blockReachDistance, wouldSneak);
             // A LAST VALUE IS NOT A DISTRIBUTION. The first version of this kept only the most
             // recent hit, and two runs disagreed -- leaves in one, MISS in the other -- which was
             // read as "MISS dominates" on the strength of a single snapshot. It is not knowable
             // that way. Count the kinds instead, so the shares are the answer.
             if (r != null && r.getType() == HitResult.Type.BLOCK) {
-                blockedBy = net.minecraft.registry.Registries.BLOCK.getId(
+                blockedBy = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(
                         world.getBlockState(((BlockHitResult) r).getBlockPos()).getBlock()).toString();
                 // REMEMBER WHERE, WHATEVER IT IS.
                 // This used to record the position for LEAVES only and null it for anything else,
@@ -342,7 +342,7 @@ public final class RotationHelper {
                 // The kinds stay counted separately; only the position is now unconditional.
                 // Deciding what may be cleared belongs to the caller, which knows the job.
                 blockedPos = ((BlockHitResult) r).getBlockPos();
-                if (world.getBlockState(blockedPos).isIn(net.minecraft.registry.tag.BlockTags.LEAVES)) {
+                if (world.getBlockState(blockedPos).is(net.minecraft.tags.BlockTags.LEAVES)) {
                     rayLeaves++;
                 } else {
                     rayOtherBlock++;
@@ -363,14 +363,14 @@ public final class RotationHelper {
     /** Shares of what the failed reach ray hit: leaves, some other block, or nothing at all. */
     public static volatile int rayLeaves, rayOtherBlock, rayMiss;
     /** Where the leaves that stopped the last reach ray are, or null if it was not leaves. */
-    public static volatile net.minecraft.util.math.BlockPos blockedPos;
+    public static volatile net.minecraft.core.BlockPos blockedPos;
 
     /**
      * RotationUtils.java:233-248. Note which eye is used: the SNEAKING eye when {@code wouldSneak},
      * so the answer is about the tick in which the bot will actually be sneaking.
      */
-    public static Optional<Rotation> reachableOffset(PlayerEntity player, BlockPos pos, Vec3d offsetPos, double blockReachDistance, boolean wouldSneak) {
-        Vec3d eyes = wouldSneak ? inferSneakingEyePosition(player) : player.getCameraPosVec(1.0F);
+    public static Optional<Rotation> reachableOffset(Player player, BlockPos pos, Vec3 offsetPos, double blockReachDistance, boolean wouldSneak) {
+        Vec3 eyes = wouldSneak ? inferSneakingEyePosition(player) : player.getEyePosition(1.0F);
         Rotation rotation = calcRotationFromVec3d(eyes, offsetPos, playerRotations(player));
         Rotation actualRotation = peekRotation(rotation);
         HitResult result = rayTraceTowards(player, actualRotation, blockReachDistance, wouldSneak);
@@ -378,7 +378,7 @@ public final class RotationHelper {
             if (((BlockHitResult) result).getBlockPos().equals(pos)) {
                 return Optional.of(rotation);
             }
-            if (player.getEntityWorld().getBlockState(pos).getBlock() instanceof AbstractFireBlock && ((BlockHitResult) result).getBlockPos().equals(pos.down())) {
+            if (player.level().getBlockState(pos).getBlock() instanceof BaseFireBlock && ((BlockHitResult) result).getBlockPos().equals(pos.below())) {
                 return Optional.of(rotation);
             }
         }
@@ -386,8 +386,8 @@ public final class RotationHelper {
     }
 
     /** RotationUtils.java:259-261. */
-    public static Optional<Rotation> reachableCenter(PlayerEntity player, BlockPos pos, double blockReachDistance, boolean wouldSneak) {
-        return reachableOffset(player, pos, calculateBlockCenter(player.getEntityWorld(), pos), blockReachDistance, wouldSneak);
+    public static Optional<Rotation> reachableCenter(Player player, BlockPos pos, double blockReachDistance, boolean wouldSneak) {
+        return reachableOffset(player, pos, calculateBlockCenter(player.level(), pos), blockReachDistance, wouldSneak);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -406,21 +406,21 @@ public final class RotationHelper {
      * reason the placement gate can be honest.
      */
     public static HitResult rayTraceTowards(Entity entity, Rotation rotation, double blockReachDistance, boolean wouldSneak) {
-        Vec3d start;
+        Vec3 start;
         if (wouldSneak) {
             start = inferSneakingEyePosition(entity);
         } else {
-            start = entity.getCameraPosVec(1.0F); // do whatever is correct
+            start = entity.getEyePosition(1.0F); // do whatever is correct
         }
 
-        Vec3d direction = calcLookDirectionFromRotation(rotation);
-        Vec3d end = start.add(
+        Vec3 direction = calcLookDirectionFromRotation(rotation);
+        Vec3 end = start.add(
                 direction.x * blockReachDistance,
                 direction.y * blockReachDistance,
                 direction.z * blockReachDistance
         );
-        // shredder RayTraceUtils.java:63 — getEntityWorld(), not getWorld(), in this MC version
-        return entity.getEntityWorld().raycast(new RaycastContext(start, end, RaycastContext.ShapeType.OUTLINE, fluidHandling, entity));
+        // shredder RayTraceUtils.java:63 — level(), not getWorld(), in this MC version
+        return entity.level().clip(new ClipContext(start, end, net.minecraft.world.level.ClipContext.Block.OUTLINE, fluidHandling, entity));
     }
 
     /**
@@ -428,8 +428,8 @@ public final class RotationHelper {
      * tick before the pose actually changes — that one-tick lead is the whole trick behind the
      * backplace (docs/BARITONE-PORT-SPEC.md, "The sneak KEY is not the sneak POSE").
      */
-    public static Vec3d inferSneakingEyePosition(Entity entity) {
-        return new Vec3d(entity.getX(), entity.getY() + eyeHeight(true), entity.getZ());
+    public static Vec3 inferSneakingEyePosition(Entity entity) {
+        return new Vec3(entity.getX(), entity.getY() + eyeHeight(true), entity.getZ());
     }
 
     // ------------------------------------------------------------------------------------------
@@ -441,22 +441,22 @@ public final class RotationHelper {
      * when you want to hit a block (break it, or click its face); for a slab or a fence it is not
      * the cell centre.
      */
-    public static Vec3d calculateBlockCenter(WorldView world, BlockPos pos) {
+    public static Vec3 calculateBlockCenter(LevelReader world, BlockPos pos) {
         BlockState b = world.getBlockState(pos);
         VoxelShape shape = b.getCollisionShape(world, pos);
         if (shape.isEmpty()) {
             return getBlockPosCenter(pos);
         }
-        double xDiff = (shape.getMin(Direction.Axis.X) + shape.getMax(Direction.Axis.X)) / 2;
-        double yDiff = (shape.getMin(Direction.Axis.Y) + shape.getMax(Direction.Axis.Y)) / 2;
-        double zDiff = (shape.getMin(Direction.Axis.Z) + shape.getMax(Direction.Axis.Z)) / 2;
+        double xDiff = (shape.min(Direction.Axis.X) + shape.max(Direction.Axis.X)) / 2;
+        double yDiff = (shape.min(Direction.Axis.Y) + shape.max(Direction.Axis.Y)) / 2;
+        double zDiff = (shape.min(Direction.Axis.Z) + shape.max(Direction.Axis.Z)) / 2;
         if (Double.isNaN(xDiff) || Double.isNaN(yDiff) || Double.isNaN(zDiff)) {
             throw new IllegalStateException(b + " " + pos + " " + shape);
         }
-        if (b.getBlock() instanceof AbstractFireBlock) { //look at bottom of fire when putting it out
+        if (b.getBlock() instanceof BaseFireBlock) { //look at bottom of fire when putting it out
             yDiff = 0;
         }
-        return new Vec3d(
+        return new Vec3(
                 pos.getX() + xDiff,
                 pos.getY() + yDiff,
                 pos.getZ() + zDiff
@@ -467,7 +467,7 @@ public final class RotationHelper {
      * VecUtils.java:76-78 — the geometric cell centre. This is the one to aim at when walking
      * towards a cell or placing against it.
      */
-    public static Vec3d getBlockPosCenter(BlockPos pos) {
-        return new Vec3d(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+    public static Vec3 getBlockPosCenter(BlockPos pos) {
+        return new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
     }
 }

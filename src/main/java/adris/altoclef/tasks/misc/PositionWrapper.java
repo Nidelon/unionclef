@@ -2,10 +2,10 @@ package adris.altoclef.tasks.misc;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.function.BiPredicate;
 
@@ -14,16 +14,16 @@ import java.util.function.BiPredicate;
  * Supports custom validation predicates for each position type
  */
 public class PositionWrapper {
-    private final Vec3d position;
+    private final Vec3 position;
     private final Entity entity;
     private final BlockPos blockPos;
     private final boolean hasPosition;
-    private final BiPredicate<AltoClef, Vec3d> positionValidator;
+    private final BiPredicate<AltoClef, Vec3> positionValidator;
     private final BiPredicate<AltoClef, Entity> entityValidator;
     private final BiPredicate<AltoClef, BlockPos> blockPosValidator;
 
-    private PositionWrapper(Vec3d position, Entity entity, BlockPos blockPos, boolean hasPosition,
-                          BiPredicate<AltoClef, Vec3d> positionValidator,
+    private PositionWrapper(Vec3 position, Entity entity, BlockPos blockPos, boolean hasPosition,
+                          BiPredicate<AltoClef, Vec3> positionValidator,
                           BiPredicate<AltoClef, Entity> entityValidator,
                           BiPredicate<AltoClef, BlockPos> blockPosValidator) {
         this.position = position;
@@ -35,13 +35,13 @@ public class PositionWrapper {
         this.blockPosValidator = blockPosValidator;
     }
 
-    public static PositionWrapper ofVec3d(Vec3d pos) {
+    public static PositionWrapper ofVec3d(Vec3 pos) {
         return new PositionWrapper(pos, null, null, true,
                 (mod, p) -> !mod.getBlockScanner().isUnreachable(new BlockPos((int)p.x, (int)p.y, (int)p.z)),
                 null, null);
     }
 
-    public static PositionWrapper ofVec3d(Vec3d pos, BiPredicate<AltoClef, Vec3d> validator) {
+    public static PositionWrapper ofVec3d(Vec3 pos, BiPredicate<AltoClef, Vec3> validator) {
         return new PositionWrapper(pos, null, null, true, validator, null, null);
     }
 
@@ -81,14 +81,14 @@ public class PositionWrapper {
         }
         if (blockPos != null) {
             return blockPosValidator != null ? blockPosValidator.test(mod, blockPos) :
-                   (MinecraftClient.getInstance().world != null && !MinecraftClient.getInstance().world.isAir(blockPos));
+                   (Minecraft.getInstance().level != null && !Minecraft.getInstance().level.isEmptyBlock(blockPos));
         }
         return getPos() != null;
     }
 
-    public Vec3d getPos() {
+    public Vec3 getPos() {
         if (position != null) return position;
-        if (entity != null) return entity.getPos();
+        if (entity != null) return entity.position();
         if (blockPos != null) return WorldHelper.toVec3d(blockPos);
         return null;
     }

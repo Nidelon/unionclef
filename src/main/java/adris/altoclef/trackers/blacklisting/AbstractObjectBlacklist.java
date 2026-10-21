@@ -4,7 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.StorageHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,7 +29,7 @@ public abstract class AbstractObjectBlacklist<T> {
             entries.put(item, entry);
         }
         BlacklistEntry entry = entries.get(item);
-        double newDistance = getPos(item).squaredDistanceTo(mod.getPlayer().getPos());
+        double newDistance = getPos(item).distanceToSqr(mod.getPlayer().position());
         MiningRequirement newTool = StorageHelper.getCurrentMiningRequirement();
         // A CRAWL IS NOT A CHANGE OF CIRCUMSTANCES.
         // The reset exists so that "I failed at this from thirty blocks away" does not condemn a
@@ -131,7 +131,7 @@ public abstract class AbstractObjectBlacklist<T> {
         return entry != null && entry.deliberate;
     }
 
-    protected abstract Vec3d getPos(T item);
+    protected abstract Vec3 getPos(T item);
 
     /**
      * ⛔ A TARGET IS NEVER CONDEMNED FOR GOOD (G63, 2026-09-12).

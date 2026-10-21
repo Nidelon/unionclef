@@ -7,7 +7,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import com.mojang.authlib.GameProfile;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.TungstenMod;
@@ -19,18 +19,18 @@ import kaptainwutax.tungsten.task.FollowEntityTask;
 import kaptainwutax.tungsten.task.FollowPlayerTask;
 import kaptainwutax.tungsten.task.PunkPlayerTask;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockSpacePathFinder;
-import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
-@Mixin(ClientPlayerEntity.class)
-public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity {
+@Mixin(LocalPlayer.class)
+public abstract class MixinClientPlayerEntity extends AbstractClientPlayer {
 
-	// MC 1.21: AbstractClientPlayerEntity constructor takes (ClientWorld, GameProfile) only
+	// MC 1.21: AbstractClientPlayer constructor takes (ClientLevel, GameProfile) only
 	// PlayerPublicKey was removed in MC 1.20.5
-	public MixinClientPlayerEntity(ClientWorld world, GameProfile profile) {
+	public MixinClientPlayerEntity(ClientLevel world, GameProfile profile) {
 		super(world, profile);
 	}
 
@@ -45,18 +45,18 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
      * including jobs that never captured it. Its pre-login default was true,
      * enabling creative flight in survival after the first empty replay.
      */
-    @org.spongepowered.asm.mixin.injection.Redirect(method = "tickMovement", at = @At(
+    @org.spongepowered.asm.mixin.injection.Redirect(method = "tick", at = @At(
             value = "FIELD", target = "Lnet/minecraft/entity/player/PlayerAbilities;allowFlying:Z",
             opcode = org.objectweb.asm.Opcodes.GETFIELD))
-    private boolean tungsten$allowManualFlight(net.minecraft.entity.player.PlayerAbilities abilities) {
-        return abilities.allowFlying && !tungsten$wasDriving;
+    private boolean tungsten$allowManualFlight(net.minecraft.world.entity.player.Abilities abilities) {
+        return abilities.mayfly && !tungsten$wasDriving;
     }
 
 	@Inject(method = "tick", at = @At("HEAD"))
 	public void start(CallbackInfo ci) {
 		if (TungstenMod.runKeyBinding == null) return; // tungsten not initialized yet
 		// aim-jitter telemetry: record yaw each tick so a stand test can quantify shake
-		kaptainwutax.tungsten.util.AimSampler.record(((ClientPlayerEntity)(Object)this).getYaw());
+		kaptainwutax.tungsten.util.AimSampler.record(((LocalPlayer)(Object)this).getYRot(1.0f));
 		// TRIED: advancing the aim on the TICK path as well as the render frame. MEASURED WORSE,
 		// REVERTED. The tick-vs-frame ratio is real (6 fps = 0.30 aim steps per game tick, so the
 		// crosshair is unchanged on most gate checks), but acting on it here does not help:
@@ -71,25 +71,25 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 		// is what the yaw ACTUALLY does between a setTarget and the gate check — instrument that
 		// residual before touching this again.
 		//#if MC < 12111
-		//$$ FollowEntityTask.tick(this.getWorld(), (ClientPlayerEntity)(Object)this);
-		//$$ FollowPlayerTask.tick(this.getWorld(), (ClientPlayerEntity)(Object)this);
-		//$$ PunkPlayerTask.tick(this.getWorld(), (ClientPlayerEntity)(Object)this);
-		//$$ kaptainwutax.tungsten.task.RunAwayTask.tick(this.getWorld(), (ClientPlayerEntity)(Object)this);
+		//$$ FollowEntityTask.tick(this.getWorld(), (LocalPlayer)(Object)this);
+		//$$ FollowPlayerTask.tick(this.getWorld(), (LocalPlayer)(Object)this);
+		//$$ PunkPlayerTask.tick(this.getWorld(), (LocalPlayer)(Object)this);
+		//$$ kaptainwutax.tungsten.task.RunAwayTask.tick(this.getWorld(), (LocalPlayer)(Object)this);
 		//#else
 		// Damage accounting FIRST and unconditionally: altoclef's own tracker hangs off its chain
 		// loop, which never runs on a course the agent drives with tungsten primitives — bow_flee
 		// reported dmgTaken=0.0 hits=0/0/0/0 through five deaths.
-		kaptainwutax.tungsten.combat.DamageWatch.tick((ClientPlayerEntity)(Object)this);
-		FollowEntityTask.tick(this.getEntityWorld(), (ClientPlayerEntity)(Object)this);
-		FollowPlayerTask.tick(this.getEntityWorld(), (ClientPlayerEntity)(Object)this);
-		PunkPlayerTask.tick(this.getEntityWorld(), (ClientPlayerEntity)(Object)this);
-		kaptainwutax.tungsten.task.RunAwayTask.tick(this.getEntityWorld(), (ClientPlayerEntity)(Object)this);
+		kaptainwutax.tungsten.combat.DamageWatch.tick((LocalPlayer)(Object)this);
+		FollowEntityTask.tick(this.level(), (LocalPlayer)(Object)this);
+		FollowPlayerTask.tick(this.level(), (LocalPlayer)(Object)this);
+		PunkPlayerTask.tick(this.level(), (LocalPlayer)(Object)this);
+		kaptainwutax.tungsten.task.RunAwayTask.tick(this.level(), (LocalPlayer)(Object)this);
 		//#endif
 
 		// pipelined navigation: walk this leg while the next one is planned from
 		// its tail (must tick BEFORE the walker so a finished leg is replaced in
 		// the same tick and the bot never pauses at a seam)
-		kaptainwutax.tungsten.task.FastNavigator.tick((ClientPlayerEntity)(Object)this);
+		kaptainwutax.tungsten.task.FastNavigator.tick((LocalPlayer)(Object)this);
 
 		// PORTED BARITONE MOVEMENTS — ONE OWNER OF THE TICK. A MovementQueue leg is a chain of
 		// MovementTraverse objects, each owning its whole one-block step: the body, the keys, the
@@ -100,33 +100,33 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 		// return: while the queue runs, the walker, the two build primitives, the crossing and the
 		// physics executor do not run at all. Ticked here, after the navigator that starts it and
 		// before the walker it replaces (spec unit 2's wiring).
-		kaptainwutax.tungsten.path.movements.MovementQueue.tick((ClientPlayerEntity)(Object)this);
+		kaptainwutax.tungsten.path.movements.MovementQueue.tick((LocalPlayer)(Object)this);
 		boolean tungsten$movementOwnsTick = kaptainwutax.tungsten.path.movements.MovementQueue.isRunning();
 
 		if (!tungsten$movementOwnsTick) {
 			// BFS walker: immediate movement while physics A* computes
-			BlockPathWalker.tick((ClientPlayerEntity)(Object)this);
+			BlockPathWalker.tick((LocalPlayer)(Object)this);
 		}
 
 		// bow-shot primitive (aim + charge + release)
-		kaptainwutax.tungsten.task.BowShooter.tick((ClientPlayerEntity)(Object)this);
+		kaptainwutax.tungsten.task.BowShooter.tick((LocalPlayer)(Object)this);
 
 		// shield-block primitive (hold use for N ticks)
-		kaptainwutax.tungsten.task.ShieldBlocker.tick((ClientPlayerEntity)(Object)this);
+		kaptainwutax.tungsten.task.ShieldBlocker.tick((LocalPlayer)(Object)this);
 
 		if (!tungsten$movementOwnsTick) {
 			// sneak-bridge primitive (epic parkour block placing)
-			kaptainwutax.tungsten.task.BridgeTask.tick((ClientPlayerEntity)(Object)this);
+			kaptainwutax.tungsten.task.BridgeTask.tick((LocalPlayer)(Object)this);
 
 			// pillar-up primitive (place under self + jump to reach a raised goal — #46)
-			kaptainwutax.tungsten.task.PillarTask.tick((ClientPlayerEntity)(Object)this);
+			kaptainwutax.tungsten.task.PillarTask.tick((LocalPlayer)(Object)this);
 
 			// swim-out primitive (climb out of water onto a raised bank — the water counterpart to
 			// pillaring, which cannot work without footing) — G24
-			kaptainwutax.tungsten.task.SwimOutTask.tick((ClientPlayerEntity)(Object)this);
+			kaptainwutax.tungsten.task.SwimOutTask.tick((LocalPlayer)(Object)this);
 
 			// slime crossing primitive (hold heading + sprint across a whole bounce chain)
-			kaptainwutax.tungsten.task.SlimeBounceTask.tick((ClientPlayerEntity)(Object)this);
+			kaptainwutax.tungsten.task.SlimeBounceTask.tick((LocalPlayer)(Object)this);
 		}
 
 		// MEASURED WORSE, REVERTED. Ticking the executor whenever it merely HOLDS a route — armed
@@ -137,7 +137,7 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 		// right cure is, it is not "tick it anyway"; see C5.15.
 		if(TungstenModDataContainer.isExecutorRunning() && !tungsten$movementOwnsTick) {
 			try {
-				TungstenModDataContainer.EXECUTOR.tick((ClientPlayerEntity)(Object)this, MinecraftClient.getInstance().options);
+				TungstenModDataContainer.EXECUTOR.tick((LocalPlayer)(Object)this, Minecraft.getInstance().options);
 			} catch (Exception e) {
 				Debug.logMessage("Tungsten executor tick failed, stopping executor to prevent freeze.");
 				e.printStackTrace();
@@ -181,7 +181,7 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 				&& !tungsten$movementOwnsTick
 				&& !TungstenModDataContainer.isExecutorRunning()
 				&& !kaptainwutax.tungsten.task.BlockPathWalker.isRunning()) {
-			kaptainwutax.tungsten.task.RunAwayTask.driveAwayRaw(this.getEntityWorld(), (ClientPlayerEntity)(Object)this);
+			kaptainwutax.tungsten.task.RunAwayTask.driveAwayRaw(this.level(), (LocalPlayer)(Object)this);
 		}
 
 		// THE ARROW DODGE HAD THE SAME DEFECT AS THE FLEE KEYS ABOVE, AND NOBODY HAD MOVED IT YET.
@@ -207,7 +207,7 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 		// comment warns against widening it carelessly (it must not arm during BridgeTask,
 		// PillarTask or the walker, which stand at a rim ON PURPOSE), so it wants a measurement
 		// on a course with an actual drop rather than a one-line edit made on sight.
-		kaptainwutax.tungsten.task.ProjectileDodge.tick((ClientPlayerEntity)(Object)this);
+		kaptainwutax.tungsten.task.ProjectileDodge.tick((LocalPlayer)(Object)this);
 
 		// AFTER every writer, so the keys recorded are the ones the game is about to read rather
 		// than the ones some layer asked for. That distinction is the whole history of this method:
@@ -217,9 +217,9 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 		// pressed a direction the tick would reach the game with the legs idle, and an idle tick
 		// costs five times what a sprint tick gains (ApproachLatch). Placed BEFORE the trace so the
 		// trace records what the game will actually read.
-		kaptainwutax.tungsten.combat.ApproachLatch.tick((ClientPlayerEntity)(Object)this);
+		kaptainwutax.tungsten.combat.ApproachLatch.tick((LocalPlayer)(Object)this);
 
-		kaptainwutax.tungsten.combat.CombatTrace.sample((ClientPlayerEntity)(Object)this);
+		kaptainwutax.tungsten.combat.CombatTrace.sample((LocalPlayer)(Object)this);
 
 		// BowShooter added 2026-08-09: THE RANGED PHASE HAD NO VOID GUARD AT ALL.
 		// Sampling both guards every 15 s through an allround run:
@@ -250,7 +250,7 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 		// Exposure is counted here, not inside RunAwayTask, because the task returns early on
 		// its hold and search paths -- so counting there measured only the ticks that reached
 		// the bottom of it, and read 0 on a run whose closest approach was 2.72 blocks.
-		kaptainwutax.tungsten.task.RunAwayTask.countExposure((ClientPlayerEntity)(Object)this);
+		kaptainwutax.tungsten.task.RunAwayTask.countExposure((LocalPlayer)(Object)this);
 
 		// ProjectileDodge added 2026-08-12: it drives sprint and direction keys and was in NONE of
 		// the conditions that arm this guard, so on every mob course a sidestep ran with no void
@@ -283,12 +283,12 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 			if (kaptainwutax.tungsten.task.BlockPathWalker.isFollowingRoute()) {
 				kaptainwutax.tungsten.task.BlockPathWalker.guardYieldedToRoute++;
 			} else {
-				kaptainwutax.tungsten.combat.VoidGuard.protect((ClientPlayerEntity)(Object)this, this.getEntityWorld());
+				kaptainwutax.tungsten.combat.VoidGuard.protect((LocalPlayer)(Object)this, this.level());
 			}
 		}
 
 		// Keys AFTER the guard: the state the player ticks with, not the state the drive asked for.
-		kaptainwutax.tungsten.task.RunAwayTask.countKeysAfterGuard((ClientPlayerEntity)(Object)this);
+		kaptainwutax.tungsten.task.RunAwayTask.countKeysAfterGuard((LocalPlayer)(Object)this);
 
 		// LEAKED-INPUT RELEASE: a task (VoidGuard edge-sneak during flee/punk, SafetySystem's
 		// combat edge-sneak) can setPressed(true) and end without releasing, leaving SHIFT /
@@ -316,21 +316,21 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 				|| kaptainwutax.tungsten.task.SlimeBounceTask.isActive()
 				|| (TungstenModDataContainer.PATHFINDER != null && TungstenModDataContainer.PATHFINDER.active.get());
 		if (tungsten$wasDriving && !tungsten$driving) {
-			var opts = MinecraftClient.getInstance().options;
+			var opts = Minecraft.getInstance().options;
 			if (opts != null) {
 				// Release ONLY the keys a task forces that the human player won't be holding
 				// (sneak/attack/use). Leaving WASD/sprint/jump alone avoids clobbering the
 				// user's own held movement on this single transition tick — while still
 				// clearing the reported stuck SHIFT.
-				opts.sneakKey.setPressed(false);
-				opts.attackKey.setPressed(false);
-				opts.useKey.setPressed(false);
+				opts.keyShift.setDown(false);
+				opts.keyAttack.setDown(false);
+				opts.keyUse.setDown(false);
 			}
 		}
 		tungsten$wasDriving = tungsten$driving;
 
 		if(!this.getAbilities().flying) {
-			Agent.INSTANCE = Agent.of((ClientPlayerEntity)(Object)this, MinecraftClient.getInstance().options);
+			Agent.INSTANCE = Agent.of((LocalPlayer)(Object)this, Minecraft.getInstance().options);
 			// This per-tick physics simulation exists ONLY to feed the verbose drift log
 			// (the non-executor compare below has no side effect). Running it every tick
 			// pegged the client at ~400% CPU for nothing when not debugging. The executor's
@@ -340,26 +340,26 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 				//#if MC < 12111
 				//$$ Agent.INSTANCE.tick(this.getWorld());
 				//#else
-				Agent.INSTANCE.tick(this.getEntityWorld());
+				Agent.INSTANCE.tick(this.level());
 				//#endif
 			}
 		}
 
-		if(TungstenMod.runKeyBinding.isPressed() && !TungstenModDataContainer.PATHFINDER.active.get() && !TungstenModDataContainer.isExecutorRunning()) {
+		if(TungstenMod.runKeyBinding.isDown() && !TungstenModDataContainer.PATHFINDER.active.get() && !TungstenModDataContainer.isExecutorRunning()) {
 			//#if MC < 12111
 			//$$ TungstenModDataContainer.PATHFINDER.find(this.getWorld(), TungstenMod.TARGET, TungstenMod.mc.player);
 			//#else
-			TungstenModDataContainer.PATHFINDER.find(this.getEntityWorld(), TungstenMod.TARGET, TungstenMod.mc.player);
+			TungstenModDataContainer.PATHFINDER.find(this.level(), TungstenMod.TARGET, TungstenMod.mc.player);
 			//#endif
 		}
-		if(TungstenMod.runBlockSearchKeyBinding.isPressed() && !TungstenModDataContainer.PATHFINDER.active.get()) {
+		if(TungstenMod.runBlockSearchKeyBinding.isDown() && !TungstenModDataContainer.PATHFINDER.active.get()) {
 			//#if MC < 12111
 			//$$ BlockSpacePathFinder.find(getWorld(), TungstenMod.TARGET, TungstenMod.mc.player);
 			//#else
-			BlockSpacePathFinder.find(getEntityWorld(), TungstenMod.TARGET, TungstenMod.mc.player);
+			BlockSpacePathFinder.find(level(), TungstenMod.TARGET, TungstenMod.mc.player);
 			//#endif
 		}
-		if (TungstenMod.pauseKeyBinding.isPressed()) {
+		if (TungstenMod.pauseKeyBinding.isDown()) {
 			try {
 
 	        	if((TungstenModDataContainer.PATHFINDER.active.get() || TungstenModDataContainer.isExecutorRunning())) {
@@ -386,9 +386,9 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 		// depend on (the same "noteStop/stopBy accounting" bug class already found and fixed twice
 		// elsewhere this session, in FollowEntityTask's dangling-if and PathFinder/RunAwayTask's
 		// dead comment fragments).
-		if (TungstenMod.createGoalKeyBinding.isPressed()) {
-			BlockPos cameraBlockPos = TungstenMod.mc.gameRenderer.getCamera().getBlockPos();
-			TungstenMod.TARGET = new Vec3d(cameraBlockPos.getX() + 0.5, cameraBlockPos.getY() - 1, cameraBlockPos.getZ() + 0.5);
+		if (TungstenMod.createGoalKeyBinding.isDown()) {
+			BlockPos cameraBlockPos = TungstenMod.mc.gameRenderer.mainCamera().blockPosition();
+			TungstenMod.TARGET = new Vec3(cameraBlockPos.getX() + 0.5, cameraBlockPos.getY() - 1, cameraBlockPos.getZ() + 0.5);
 			TungstenMod.markGotoTarget();
 		}
 	}
@@ -399,27 +399,27 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 		// frame a ported Movement declared at HEAD has been consumed by travel()/updateVelocity by
 		// now, and it must not survive into a tick nobody set it for.
 		kaptainwutax.tungsten.path.movements.Movement.clearMotionFrame();
-		ClientPlayerEntity self = (ClientPlayerEntity)(Object)this;
+		LocalPlayer self = (LocalPlayer)(Object)this;
 		//#if MC < 12111
 		//$$ // MC 1.21: Input has no playerInput field; build TungstenPlayerInput from input fields
 		//$$ TungstenPlayerInput currentInput = new TungstenPlayerInput(
-			//$$ self.input.movementForward > 0,
-			//$$ self.input.movementForward < 0,
-			//$$ self.input.movementSideways > 0,
-			//$$ self.input.movementSideways < 0,
-			//$$ self.input.jumping,
-			//$$ self.input.sneaking,
+			//$$ self.input.forward > 0,
+			//$$ self.input.forward < 0,
+			//$$ self.input.left > 0,
+			//$$ self.input.left < 0,
+			//$$ self.input.jump,
+			//$$ self.input.shift,
 			//$$ self.isSprinting()
 		//$$ );
 		//#else
 		TungstenPlayerInput currentInput = new TungstenPlayerInput(
-		    self.input.playerInput.forward(),
-		    self.input.playerInput.backward(),
-		    self.input.playerInput.left(),
-		    self.input.playerInput.right(),
-		    self.input.playerInput.jump(),
-		    self.input.playerInput.sneak(),
-		    self.input.playerInput.sprint()
+		    self.input.keyPresses.forward(),
+		    self.input.keyPresses.backward(),
+		    self.input.keyPresses.left(),
+		    self.input.keyPresses.right(),
+		    self.input.keyPresses.jump(),
+		    self.input.keyPresses.shift(),
+		    self.input.keyPresses.sprint()
 		);
 		//#endif
 		if (TungstenModDataContainer.isExecutorRunning() && TungstenModDataContainer.EXECUTOR.getCurrentTick() > 0) {
@@ -430,17 +430,17 @@ public abstract class MixinClientPlayerEntity extends AbstractClientPlayerEntity
 		}
 	}
 
-	@Inject(method="getPitch", at=@At("RETURN"), cancellable = true)
+	@Inject(method="getXRot", at=@At("RETURN"), cancellable = true)
 	public void getPitch(float tickDelta, CallbackInfoReturnable<Float> ci) {
 		if(TungstenModDataContainer.isExecutorRunning()) {
-			ci.setReturnValue(super.getPitch(tickDelta));
+			ci.setReturnValue(super.getXRot(tickDelta));
 		}
 	}
 
-	@Inject(method="getYaw", at=@At("RETURN"), cancellable = true)
+	@Inject(method="getYRot", at=@At("RETURN"), cancellable = true)
 	public void getYaw(float tickDelta, CallbackInfoReturnable<Float> ci) {
 		if(TungstenModDataContainer.isExecutorRunning()) {
-			ci.setReturnValue(super.getYaw(tickDelta));
+			ci.setReturnValue(super.getYRot(tickDelta));
 		}
 	}
 

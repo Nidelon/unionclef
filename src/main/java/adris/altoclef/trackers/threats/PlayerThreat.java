@@ -1,7 +1,7 @@
 package adris.altoclef.trackers.threats;
 
 import adris.altoclef.util.time.TimerReal;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,9 +28,9 @@ public class PlayerThreat {
     public float lastDamageAmount = 0;
     public float cumulativeDamage = 0;
     public float lastHealth = 20.0f;
-    public Vec3d lastPos;
+    public Vec3 lastPos;
     public WeaponThreat weaponThreat = WeaponThreat.Harmless;
-    public Vec3d lastRotationVec;
+    public Vec3 lastRotationVec;
     public boolean sneak = false;
     public int sneakRate = 0;
     public final TimerReal shiftTimer = new TimerReal(3);

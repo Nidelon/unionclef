@@ -6,7 +6,7 @@ import kaptainwutax.tungsten.path.Node;
 import kaptainwutax.tungsten.path.PathInput;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode;
 import kaptainwutax.tungsten.render.Color;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Batched slime-bounce trajectory: one macro-move covering the whole arc,
@@ -28,7 +28,7 @@ public class SlimeBounceMove {
 	private static final double COST_PER_TICK = 0.1;
 
 	public static Node generateMove(Node parent, BlockNode nextBlockNode) {
-		WorldView world = TungstenModDataContainer.world;
+		LevelReader world = TungstenModDataContainer.world;
 		float desiredYaw = (float) DirectionHelper.calcYawFromVec3d(
 				parent.agent.getPos(), nextBlockNode.getPos(true));
 

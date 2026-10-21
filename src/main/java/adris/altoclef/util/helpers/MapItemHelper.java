@@ -8,8 +8,8 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import javax.imageio.ImageIO;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.ItemStack;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.util.Util;
 
 
@@ -42,7 +42,7 @@ public class MapItemHelper {
     }
 
     public static void saveImageFile(byte[] bytes_img, File screenshot) {
-        Util.getIoWorkerExecutor().execute(() -> {
+        Util.ioPool().execute(() -> {
             try {
                 BufferedImage buffered_img = ImageComparer.byte2BufferedImage(bytes_img);
                 if (buffered_img != null) {

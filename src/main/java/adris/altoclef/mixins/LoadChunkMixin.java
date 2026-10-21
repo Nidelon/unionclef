@@ -3,11 +3,11 @@ package adris.altoclef.mixins;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChunkLoadEvent;
 import adris.altoclef.eventbus.events.ChunkUnloadEvent;
-import net.minecraft.client.world.ClientChunkManager;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.chunk.WorldChunk;
+import net.minecraft.client.multiplayer.ClientChunkCache;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.LevelChunk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -21,7 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.BitSet;
 import java.util.function.Consumer;
 
-@Mixin(ClientChunkManager.class)
+@Mixin(ClientChunkCache.class)
 public class LoadChunkMixin {
 
     /**
@@ -35,17 +35,17 @@ public class LoadChunkMixin {
      * @param ci       The callback info returnable object.
      */
     @Inject(
-            method = "loadChunkFromPacket",
+            method = "replaceWithPacketData",
             at = @At("RETURN")
     )
     //#if MC >= 12111
-    //$$ private void onLoadChunk(int x, int z, PacketByteBuf buf, java.util.Map nbt, Consumer<net.minecraft.network.packet.s2c.play.ChunkData.BlockEntityVisitor> consumer, CallbackInfoReturnable<WorldChunk> cir) {
+    //$$ private void onLoadChunk(int x, int z, FriendlyByteBuf buf, java.util.Map nbt, Consumer<net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData.BlockEntityTagOutput> consumer, CallbackInfoReturnable<LevelChunk> cir) {
     //#elseif MC >= 11800
-    private void onLoadChunk(int x, int z, PacketByteBuf buf, NbtCompound nbt, Consumer<net.minecraft.network.packet.s2c.play.ChunkData.BlockEntityVisitor> consumer, CallbackInfoReturnable<WorldChunk> cir) {
+    private void onLoadChunk(int x, int z, FriendlyByteBuf buf, java.util.Map nbt, Consumer<net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData.BlockEntityTagOutput> consumer, CallbackInfoReturnable<LevelChunk> cir) {
     //#elseif MC >= 11701
-    //$$ private void onLoadChunk(int x, int z, net.minecraft.world.biome.source.BiomeArray biomes, PacketByteBuf buf, NbtCompound nbt, BitSet bitSet, CallbackInfoReturnable<WorldChunk> cir) {
+    //$$ private void onLoadChunk(int x, int z, net.minecraft.world.biome.source.BiomeArray biomes, FriendlyByteBuf buf, CompoundTag nbt, BitSet bitSet, CallbackInfoReturnable<LevelChunk> cir) {
     //#else
-    //$$ private void onLoadChunk(int x, int z, BiomeArray biomes, PacketByteBuf buf, NbtCompound tag, int verticalStripBitmask, boolean complete, CallbackInfoReturnable<WorldChunk> cir) {
+    //$$ private void onLoadChunk(int x, int z, BiomeArray biomes, FriendlyByteBuf buf, CompoundTag tag, int verticalStripBitmask, boolean complete, CallbackInfoReturnable<LevelChunk> cir) {
     //#endif
         // Publish a ChunkLoadEvent with the return value of the method as the argument
         EventBus.publish(new ChunkLoadEvent(cir.getReturnValue()));
@@ -58,7 +58,7 @@ public class LoadChunkMixin {
      * @param ci  The callback info object.
      */
     @Inject(
-            method = "unload",
+            method = "drop",
             at = @At("TAIL")
     )
     //#if MC > 12001

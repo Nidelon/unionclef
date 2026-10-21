@@ -1,9 +1,9 @@
 package kaptainwutax.tungsten.combat;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.HostileEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.Monster;
 
 /**
  * A tick-by-tick record of one fight: how far away the target was, who owned the legs, and which
@@ -113,22 +113,22 @@ public final class CombatTrace {
      * Record one tick. Never throws: an instrument must not be the thing that breaks a fight, which
      * is the same guard {@code noticeDraws} carries for the same reason.
      */
-    public static synchronized void sample(ClientPlayerEntity player) {
+    public static synchronized void sample(LocalPlayer player) {
         if (!kaptainwutax.tungsten.TungstenConfig.get().combatTrace) {
             return;
         }
         try {
-            MinecraftClient mc = MinecraftClient.getInstance();
-            if (player == null || mc == null || mc.options == null || mc.world == null) {
+            Minecraft mc = Minecraft.getInstance();
+            if (player == null || mc == null || mc.options == null || mc.level == null) {
                 return;
             }
             Entity nearest = null;
             double bestSq = Double.MAX_VALUE;
-            for (Entity e : mc.world.getEntities()) {
-                if (!(e instanceof HostileEntity) || !e.isAlive()) {
+            for (Entity e : mc.level.entitiesForRendering()) {
+                if (!(e instanceof Monster) || !e.isAlive()) {
                     continue;
                 }
-                double d2 = e.squaredDistanceTo(player);
+                double d2 = e.distanceToSqr(player);
                 if (d2 < bestSq) {
                     bestSq = d2;
                     nearest = e;
@@ -155,12 +155,12 @@ public final class CombatTrace {
             // holding a distance at which it could never hit -- true, but off by the metric.
             double dist = TriggerBot.eyeToHitbox(player, nearest);
             String keys = ""
-                    + (mc.options.forwardKey.isPressed() ? "F" : ".")
-                    + (mc.options.backKey.isPressed() ? "B" : ".")
-                    + (mc.options.leftKey.isPressed() ? "L" : ".")
-                    + (mc.options.rightKey.isPressed() ? "R" : ".")
-                    + (mc.options.sprintKey.isPressed() ? "S" : ".")
-                    + (mc.options.jumpKey.isPressed() ? "J" : ".");
+                    + (mc.options.keyUp.isDown() ? "F" : ".")
+                    + (mc.options.keyDown.isDown() ? "B" : ".")
+                    + (mc.options.keyLeft.isDown() ? "L" : ".")
+                    + (mc.options.keyRight.isDown() ? "R" : ".")
+                    + (mc.options.keySprint.isDown() ? "S" : ".")
+                    + (mc.options.keyJump.isDown() ? "J" : ".");
             // ⛔ MONOTONIC COUNTERS, DIFFED BY THE READER -- NOT controlledThisTick.
             // That flag looks exactly right for this and cannot be used here: DamageWatch clears it
             // in ITS tick, so whether it still reads true at the final-word position depends on an
@@ -188,8 +188,8 @@ public final class CombatTrace {
                     CombatController.cqEntry,
                     TriggerBot.gPassed,
                     CombatController.lastStage == null ? "-" : CombatController.lastStage.name(),
-                    Math.sqrt(player.getVelocity().x * player.getVelocity().x
-                            + player.getVelocity().z * player.getVelocity().z),
+                    Math.sqrt(player.getDeltaMovement().x * player.getDeltaMovement().x
+                            + player.getDeltaMovement().z * player.getDeltaMovement().z),
                     player.hurtTime,
                     walker ? 1 : 0, queue ? 1 : 0, exec ? 1 : 0,
                     hostPathing ? 1 : 0, hostPrio, hostTask,
@@ -202,8 +202,8 @@ public final class CombatTrace {
                     // control is a fraction of ground), and sneak (which caps speed outright and
                     // is pressed by the edge guard as a LAYER, so it can ride along unnoticed).
                     player.isSprinting() ? 1 : 0,
-                    player.isOnGround() ? 1 : 0,
-                    player.isSneaking() ? 1 : 0,
+                    player.onGround() ? 1 : 0,
+                    player.isShiftKeyDown() ? 1 : 0,
                     // ⛔ getVelocity() IS NOT TRAVEL SPEED FOR THE LOCAL PLAYER. The client applies
                     // its own movement to POSITION and the velocity field does not reliably follow,
                     // so a conclusion drawn from it ("the bot makes 54% of sprint speed") can be an

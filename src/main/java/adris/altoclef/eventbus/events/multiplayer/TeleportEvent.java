@@ -1,14 +1,14 @@
 package adris.altoclef.eventbus.events.multiplayer;
 
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 
 public class TeleportEvent {
-    public PlayerEntity entity;
-    public Vec3d from;
-    public Vec3d to;
+    public Player entity;
+    public Vec3 from;
+    public Vec3 to;
 
-    public TeleportEvent(PlayerEntity entity, Vec3d tpFrom, Vec3d tpTo) {
+    public TeleportEvent(Player entity, Vec3 tpFrom, Vec3 tpTo) {
         this.entity = entity;
         this.to = tpTo;
         this.from = tpFrom;

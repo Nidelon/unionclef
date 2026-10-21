@@ -2,7 +2,7 @@ package adris.altoclef.util.helpers;
 
 import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.path.calculators.ActionCosts;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 public class BaritoneHelper {
 
@@ -24,7 +24,7 @@ public class BaritoneHelper {
      */
     private static final double COST_HEURISTIC = 3.563;
 
-    public static double calculateGenericHeuristic(Vec3d start, Vec3d target) {
+    public static double calculateGenericHeuristic(Vec3 start, Vec3 target) {
         return calculateGenericHeuristic(start.x, start.y, start.z, target.x, target.y, target.z);
     }
 

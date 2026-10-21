@@ -9,8 +9,8 @@ import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.helpers.PlayerFit;
 import kaptainwutax.tungsten.path.calculators.ActionCosts;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.WorldView;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * A fast, honest block-space planner: baritone-class A* over cells, built so the
@@ -216,7 +216,7 @@ public final class FastPlanner {
          */
         public java.util.List<kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode>
                 toBlockNodes(kaptainwutax.tungsten.path.blockSpaceSearchAssist.Goal goal,
-                             net.minecraft.entity.player.PlayerEntity player) {
+                             net.minecraft.world.entity.player.Player player) {
             java.util.List<kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode> out =
                     new ArrayList<>(path.size());
             for (Waypoint w : path) {
@@ -280,7 +280,7 @@ public final class FastPlanner {
      * more than a tick's budget, and freezing the client to compute it would
      * cost exactly the fps this planner exists to save.
      */
-    public static void planAsync(WorldView world, BlockPos start, BlockPos goal,
+    public static void planAsync(LevelReader world, BlockPos start, BlockPos goal,
                                  long budgetMs, java.util.function.Consumer<Result> onReady) {
         Thread t = new Thread(() -> {
             try {
@@ -370,12 +370,12 @@ public final class FastPlanner {
      * {@link #plan} call, exactly like the state memo beside it; null outside a search, and the
      * hazard gate is simply inert then.
      */
-    private static final ThreadLocal<WorldView> SEARCH_WORLD = new ThreadLocal<>();
+    private static final ThreadLocal<LevelReader> SEARCH_WORLD = new ThreadLocal<>();
 
     /**
      * Blocks in the pocket THE EXECUTOR CAN REACH, captured as {@link StartState#placeable()}.
      *
-     * <p>This counted every {@link net.minecraft.item.BlockItem} in the inventory, which is wider
+     * <p>This counted every {@link net.minecraft.world.item.BlockItem} in the inventory, which is wider
      * than the executor: tungsten never manipulates the inventory itself. What it can select on its
      * own is the HOTBAR — {@code MovementHelperB.selectThrowaway} (MovementHelperB.java:1010-1028)
      * walks slots 0..getHotbarSize()-1 and calls setSelectedSlot — and the main-hand test that gates
@@ -394,17 +394,17 @@ public final class FastPlanner {
      * would never be equipped. Narrowing that needs the whitelist exposed from altoclef's side — a
      * tungsten module cannot see it — which is a change to another file.
      */
-    public static int countPlaceable(net.minecraft.entity.player.PlayerEntity player) {
+    public static int countPlaceable(net.minecraft.world.entity.player.Player player) {
         if (player == null) return 0;
         if (!TungstenConfig.get().allowPlace) return 0;
         boolean brainRestocks = kaptainwutax.tungsten.TungstenModDataContainer.equipBlockHook != null;
-        int hotbar = net.minecraft.entity.player.PlayerInventory.getHotbarSize();
+        int hotbar = net.minecraft.world.entity.player.Inventory.getSelectionSize();
         int n = 0;
         var inv = player.getInventory();
-        for (int i = 0; i < inv.size(); i++) {
+        for (int i = 0; i < inv.getContainerSize(); i++) {
             // slots past the hotbar are the brain's to hand over; tungsten cannot select them
             if (i >= hotbar && !brainRestocks) continue;
-            var st = inv.getStack(i);
+            var st = inv.getItem(i);
             // G62: the count is of what the selector and the restock will actually place -- a full
             // solid cube, not a torch, a sapling, a bed or a chest (the overcount the note above
             // left knowingly is closed by sharing the predicate rather than exposing a list).
@@ -430,8 +430,8 @@ public final class FastPlanner {
      * World and mining-tool snapshots remain separate thread-safety work (C4.1).
      */
     public record StartState(boolean onGround, boolean touchingWater, boolean climbing,
-                             net.minecraft.util.math.Vec3d position,
-                             net.minecraft.util.math.Box boundingBox, int placeable) {}
+                             net.minecraft.world.phys.Vec3 position,
+                             net.minecraft.world.phys.AABB boundingBox, int placeable) {}
 
     /** Capture on the client thread, including callers entering from a gateway or PathFinder.
      * FastNavigator captures explicitly before dispatch, so its worker never waits for a tick.
@@ -439,8 +439,8 @@ public final class FastPlanner {
     public static StartState captureStartState() {
         var client = TungstenMod.mc;
         if (client == null) return new StartState(false, false, false,
-                net.minecraft.util.math.Vec3d.ZERO, null, 0);
-        if (!client.isOnThread()) {
+                net.minecraft.world.phys.Vec3.ZERO, null, 0);
+        if (!client.isSameThread()) {
             try {
                 return client.submit(FastPlanner::captureStartState).get();
             } catch (InterruptedException e) {
@@ -452,11 +452,11 @@ public final class FastPlanner {
         }
         var player = client.player;
         if (player == null) return new StartState(false, false, false,
-                net.minecraft.util.math.Vec3d.ZERO, null, 0);
+                net.minecraft.world.phys.Vec3.ZERO, null, 0);
         // isClimbing reads the entity's cached BlockState. Off-thread it can become null
         // between the cache update and use (retained Flee audit, 2026-10-02).
-        return new StartState(player.isOnGround(), player.isTouchingWater(), player.isClimbing(),
-                player.getEntityPos(), player.getBoundingBox(), countPlaceable(player));
+        return new StartState(player.onGround(), player.isInWater(), player.onClimbable(),
+                player.position(), player.getBoundingBox(), countPlaceable(player));
     }
 
     /**
@@ -506,27 +506,27 @@ public final class FastPlanner {
      * no blocks to pillar (2026-09-11). The miner's own arrival test (LookHelper.getReach) is
      * reach + line of sight, so the planner completes on the same thing.
      */
-    public static boolean reachGoalSatisfied(WorldView world, int fx, int fy, int fz, BlockPos block) {
+    public static boolean reachGoalSatisfied(LevelReader world, int fx, int fy, int fz, BlockPos block) {
         if (adjacentToBlock(fx, fy, fz, block)) return true;
         double ex = fx + 0.5, ey = fy + 1.62, ez = fz + 0.5;
         double cx = block.getX() + 0.5, cy = block.getY() + 0.5, cz = block.getZ() + 0.5;
         double dx = cx - ex, dy = cy - ey, dz = cz - ez;
         if (dx * dx + dy * dy + dz * dz > REACH_GOAL_DIST * REACH_GOAL_DIST) return false;
-        net.minecraft.entity.player.PlayerEntity p = TungstenMod.mc == null ? null : TungstenMod.mc.player;
+        net.minecraft.world.entity.player.Player p = TungstenMod.mc == null ? null : TungstenMod.mc.player;
         if (p == null) return false;
         try {
-            net.minecraft.util.hit.BlockHitResult hit = world.raycast(new net.minecraft.world.RaycastContext(
-                    new net.minecraft.util.math.Vec3d(ex, ey, ez), new net.minecraft.util.math.Vec3d(cx, cy, cz),
-                    net.minecraft.world.RaycastContext.ShapeType.COLLIDER,
-                    net.minecraft.world.RaycastContext.FluidHandling.NONE, p));
-            return hit != null && hit.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK
+            net.minecraft.world.phys.BlockHitResult hit = world.clip(new net.minecraft.world.level.ClipContext(
+                    new net.minecraft.world.phys.Vec3(ex, ey, ez), new net.minecraft.world.phys.Vec3(cx, cy, cz),
+                    net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                    net.minecraft.world.level.ClipContext.Fluid.NONE, p));
+            return hit != null && hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK
                     && hit.getBlockPos().equals(block);
         } catch (Throwable t) {
             return false;
         }
     }
 
-    public static Result plan(WorldView world, BlockPos start, BlockPos goal, long budgetMs) {
+    public static Result plan(LevelReader world, BlockPos start, BlockPos goal, long budgetMs) {
         return plan(world, start, goal, budgetMs, null);
     }
 
@@ -535,7 +535,7 @@ public final class FastPlanner {
      *                   ({@link #adjacentToBlock}) instead of on {@code goal} itself -- pass the
      *                   block as {@code goal} too, so the heuristic pulls toward it.
      */
-    public static Result plan(WorldView world, BlockPos start, BlockPos goal, long budgetMs,
+    public static Result plan(LevelReader world, BlockPos start, BlockPos goal, long budgetMs,
                               BlockPos reachBlock) {
         return plan(world, start, goal, budgetMs, reachBlock, false);
     }
@@ -548,13 +548,13 @@ public final class FastPlanner {
      *                  action asked to stand IN that sand cell, and the tolerance answered "already
      *                  there" with a one-cell plan for the rest of the run.
      */
-    public static Result plan(WorldView world, BlockPos start, BlockPos goal, long budgetMs,
+    public static Result plan(LevelReader world, BlockPos start, BlockPos goal, long budgetMs,
                               BlockPos reachBlock, boolean exactGoal) {
         return plan(world, start, goal, budgetMs, reachBlock, exactGoal, captureStartState());
     }
 
     /** Plan using player inputs already captured on the client thread. */
-    public static Result plan(WorldView world, BlockPos start, BlockPos goal, long budgetMs,
+    public static Result plan(LevelReader world, BlockPos start, BlockPos goal, long budgetMs,
                               BlockPos reachBlock, boolean exactGoal, StartState startState) {
         return planInternal(world, start, goal, budgetMs, reachBlock, exactGoal, null,
                 java.util.Objects.requireNonNull(startState, "startState"));
@@ -564,7 +564,7 @@ public final class FastPlanner {
      * No point heuristic is valid for an arbitrary condition, so this is a bounded Dijkstra search.
      * Callers must require complete=true; a partial result does not establish a satisfying cell.
      */
-    public static Result planToCondition(WorldView world, BlockPos start,
+    public static Result planToCondition(LevelReader world, BlockPos start,
                                          java.util.function.Predicate<BlockPos> condition, long budgetMs) {
         return planToCondition(world, start, condition, null, budgetMs, captureStartState());
     }
@@ -583,14 +583,14 @@ public final class FastPlanner {
      * the budget runs out first, makes the partial pick a cell that got CLOSER to it, which a plain
      * Dijkstra cannot: its only heuristic is zero, so every partial is the start itself.
      */
-    public static Result planToCondition(WorldView world, BlockPos start,
+    public static Result planToCondition(LevelReader world, BlockPos start,
                                          java.util.function.Predicate<BlockPos> condition,
                                          CellHeuristic heuristic, long budgetMs) {
         return planToCondition(world, start, condition, heuristic, budgetMs, captureStartState());
     }
 
     /** Condition search using player inputs already captured on the client thread. */
-    public static Result planToCondition(WorldView world, BlockPos start,
+    public static Result planToCondition(LevelReader world, BlockPos start,
                                          java.util.function.Predicate<BlockPos> condition,
                                          CellHeuristic heuristic, long budgetMs, StartState startState) {
         java.util.Objects.requireNonNull(condition, "condition");
@@ -603,7 +603,7 @@ public final class FastPlanner {
         }
     }
 
-    private static Result planInternal(WorldView world, BlockPos start, BlockPos goal, long budgetMs,
+    private static Result planInternal(LevelReader world, BlockPos start, BlockPos goal, long budgetMs,
                                        BlockPos reachBlock, boolean exactGoal,
                                        java.util.function.Predicate<BlockPos> condition,
                                        StartState startState) {
@@ -672,7 +672,7 @@ public final class FastPlanner {
         // Memoise the geometry reads for the duration of this search (see PlayerFit).
         kaptainwutax.tungsten.helpers.PlayerFit.beginCachedRead();
         try {
-        BlockPos.Mutable scratch = new BlockPos.Mutable();
+        net.minecraft.core.BlockPos.MutableBlockPos scratch = new net.minecraft.core.BlockPos.MutableBlockPos();
 
         while (!open.isEmpty()) {
             if ((expanded & 0x3F) == 0 && System.currentTimeMillis() - t0 > budgetMs) break;
@@ -858,13 +858,13 @@ public final class FastPlanner {
     /** SAY WHICH CELL THE SEARCH REFUSED TO LEAVE, AND WHY. A start with no support produced a
      *  one-node plan 653 times in ninety seconds on tree_drop, and every counter around it said
      *  "no support" without naming the cell or the block under it. */
-    private static void noteChildlessStart(WorldView world, BlockPos start,
+    private static void noteChildlessStart(LevelReader world, BlockPos start,
                                            StartState startState,
-                                           BlockPos.Mutable scratch) {
+                                           net.minecraft.core.BlockPos.MutableBlockPos scratch) {
         long now = System.currentTimeMillis();
         if (now - lastChildlessNoteMs < 2000L) return;
         lastChildlessNoteMs = now;
-        BlockPos below = start.down();
+        BlockPos below = start.below();
         String under = String.valueOf(world.getBlockState(below).getBlock());
         scratch.set(start.getX(), start.getY(), start.getZ());
         double sup = PlayerFit.supportTop(world, scratch);
@@ -877,8 +877,8 @@ public final class FastPlanner {
 
     // ── move generation ──────────────────────────────────────────────────────
 
-    private static void expand(WorldView world, Node from, double support, BlockPos goal,
-                               NodeMap map, Heap open, BlockPos.Mutable scratch, int placeBudget) {
+    private static void expand(LevelReader world, Node from, double support, BlockPos goal,
+                               NodeMap map, Heap open, net.minecraft.core.BlockPos.MutableBlockPos scratch, int placeBudget) {
         // A solid pool bottom does not turn swimming into ground movement.
         // Ground stepping also offers parkour, whose dry sprint range cannot be
         // assumed while submerged. Water strokes and bank exits live in special().
@@ -941,8 +941,8 @@ public final class FastPlanner {
      * simulates the real player, so it is the part of the system that can actually hold
      * itself against a ladder, swim, or ride a bounce.
      */
-    private static void special(WorldView world, Node from, BlockPos goal,
-                                NodeMap map, Heap open, BlockPos.Mutable scratch) {
+    private static void special(LevelReader world, Node from, BlockPos goal,
+                                NodeMap map, Heap open, net.minecraft.core.BlockPos.MutableBlockPos scratch) {
         // DIAGNOSTIC: measured that water/slime routes come out incomplete with ZERO
         // flagged waypoints, i.e. these moves never reach the plan. Print what this
         // generator actually sees rather than assuming which branch is at fault.
@@ -1245,7 +1245,7 @@ public final class FastPlanner {
                             int lx = from.x + e[0] * lr, lz = from.z + e[1] * lr;
                             if (!PlayerFit.bodyFits(world, lx + 0.5, ly, lz + 0.5)) continue;
                             // Ask about the LANDING cell: supportTop() already looks at
-                            // cell.down(), so testing one lower accepts a cell whose real
+                            // cell.below(), so testing one lower accepts a cell whose real
                             // floor is a block further down and aims physics into mid-air.
                             scratch.set(lx, ly, lz);
                             if (Double.isNaN(PlayerFit.supportTop(world, scratch))) continue;
@@ -1268,11 +1268,11 @@ public final class FastPlanner {
     // BACKGROUND thread. Measured cost: 2.2-2.4 ms PER NODE, which is why a pool cannot be
     // crossed inside a 250 ms budget. A plain memo for the duration of one search is the
     // cheap half of the off-thread snapshot this planner really wants (C4.1 / TODO #11).
-    private static final ThreadLocal<java.util.HashMap<Long, net.minecraft.block.BlockState>>
+    private static final ThreadLocal<java.util.HashMap<Long, net.minecraft.world.level.block.state.BlockState>>
             STATE_CACHE = ThreadLocal.withInitial(java.util.HashMap::new);
 
-    private static net.minecraft.block.BlockState cachedState(WorldView w, int x, int y, int z,
-                                                              BlockPos.Mutable s) {
+    private static net.minecraft.world.level.block.state.BlockState cachedState(LevelReader w, int x, int y, int z,
+                                                              net.minecraft.core.BlockPos.MutableBlockPos s) {
         long key = (((long) x & 0x3FFFFFFL) << 38) | (((long) z & 0x3FFFFFFL) << 12)
                 | ((long) (y + 2048) & 0xFFFL);
         var cache = STATE_CACHE.get();
@@ -1284,31 +1284,31 @@ public final class FastPlanner {
         return st;
     }
 
-    private static boolean canExitWater(WorldView world, Node from, int x, int y, int z,
-                                        BlockPos.Mutable scratch) {
+    private static boolean canExitWater(LevelReader world, Node from, int x, int y, int z,
+                                        net.minecraft.core.BlockPos.MutableBlockPos scratch) {
         return !hazardAt(world, x, y - 1, z, scratch)
                 && PlayerFit.waterExitClear(world, new BlockPos(from.x, from.y, from.z),
                         new BlockPos(x, y, z));
     }
 
-    private static boolean isLadder(WorldView w, int x, int y, int z, BlockPos.Mutable s) {
-        return cachedState(w, x, y, z, s).getBlock() instanceof net.minecraft.block.LadderBlock;
+    private static boolean isLadder(LevelReader w, int x, int y, int z, net.minecraft.core.BlockPos.MutableBlockPos s) {
+        return cachedState(w, x, y, z, s).getBlock() instanceof net.minecraft.world.level.block.LadderBlock;
     }
 
-    private static boolean isWater(WorldView w, int x, int y, int z, BlockPos.Mutable s) {
+    private static boolean isWater(LevelReader w, int x, int y, int z, net.minecraft.core.BlockPos.MutableBlockPos s) {
         // Surface lava swims like water while the lava escape has asked for it (RouteHazards.lavaSwim).
         return kaptainwutax.tungsten.helpers.BlockStateChecker.isAnyWater(cachedState(w, x, y, z, s))
                 || kaptainwutax.tungsten.path.RouteHazards.swimmableLava(w, x, y, z, s);
     }
 
-    private static boolean isSlime(WorldView w, int x, int y, int z, BlockPos.Mutable s) {
+    private static boolean isSlime(LevelReader w, int x, int y, int z, net.minecraft.core.BlockPos.MutableBlockPos s) {
         s.set(x, y, z);
-        return w.getBlockState(s).getBlock() instanceof net.minecraft.block.SlimeBlock;
+        return w.getBlockState(s).getBlock() instanceof net.minecraft.world.level.block.SlimeBlock;
     }
 
     /** One horizontal move, trying the same level, one up, and drops. */
-    private static void step(WorldView world, Node from, double support, int dx, int dz,
-                             BlockPos goal, NodeMap map, Heap open, BlockPos.Mutable scratch,
+    private static void step(LevelReader world, Node from, double support, int dx, int dz,
+                             BlockPos goal, NodeMap map, Heap open, net.minecraft.core.BlockPos.MutableBlockPos scratch,
                              double baseCost, int placeBudget) {
         int nx = from.x + dx, nz = from.z + dz;
 
@@ -1415,17 +1415,17 @@ public final class FastPlanner {
      * feature was already complete (BlockNode.toBreak -> PathFinder.truncateAtBreaks ->
      * PathExecutor.tickBreaking); only the producer was missing.
      */
-    private static void breakThrough(WorldView world, Node from, int dx, int dz,
+    private static void breakThrough(LevelReader world, Node from, int dx, int dz,
                                      BlockPos goal, NodeMap map, Heap open,
-                                     BlockPos.Mutable scratch) {
+                                     net.minecraft.core.BlockPos.MutableBlockPos scratch) {
         if (dx != 0 && dz != 0) return;                       // cardinal only
         if (!TungstenConfig.get().allowBreak) return;
-        net.minecraft.entity.player.PlayerEntity player = TungstenMod.mc.player;
+        net.minecraft.world.entity.player.Player player = TungstenMod.mc.player;
         if (player == null) return;
 
         int nx = from.x + dx, nz = from.z + dz;
         // There must be a floor on the far side to land on. supportTop(cell) already looks
-        // at cell.down(), so the cell to ask about is the DESTINATION, not the one below it
+        // at cell.below(), so the cell to ask about is the DESTINATION, not the one below it
         // — asking one level too low made this return on every single call (the course floor
         // has nothing under it), which is why the move never fired even once.
         scratch.set(nx, from.y, nz);
@@ -1449,7 +1449,7 @@ public final class FastPlanner {
             // never the cheaper route — leave climbables to special().
             if (isLadder(world, cell.getX(), cell.getY(), cell.getZ(), scratch)) return;
             if (!kaptainwutax.tungsten.path.RouteHazards.blocksBody(world.getBlockState(cell), world, cell)) continue;
-            net.minecraft.block.BlockState st = world.getBlockState(cell);
+            net.minecraft.world.level.block.state.BlockState st = world.getBlockState(cell);
             if (!kaptainwutax.tungsten.path.BreakRules.canBreak(world, cell, st)) return;
             // ⛔ SUPERSEDED 2026-09-15 (docs/BARITONE-GAPS.md G8) — this comment used to say
             // strVsBlock prices only the currently EQUIPPED item, with no way to simulate a
@@ -1486,21 +1486,21 @@ public final class FastPlanner {
      * surface for iron/diamond (docs/BARITONE-GAPS.md G1). Chaining it digs a straight shaft;
      * combined with breakThrough it tunnels down-and-along.
      */
-    private static void breakDown(WorldView world, Node from, BlockPos goal,
-                                  NodeMap map, Heap open, BlockPos.Mutable scratch) {
+    private static void breakDown(LevelReader world, Node from, BlockPos goal,
+                                  NodeMap map, Heap open, net.minecraft.core.BlockPos.MutableBlockPos scratch) {
         if (!TungstenConfig.get().allowBreak) return;
-        net.minecraft.entity.player.PlayerEntity player = TungstenMod.mc.player;
+        net.minecraft.world.entity.player.Player player = TungstenMod.mc.player;
         if (player == null) return;
         int fx = from.x, fz = from.z, fy = from.y;
         // The block the bot stands on is (fx, fy-1, fz). Mine it, fall one, land on (fx, fy-2, fz).
         BlockPos floorCell = new BlockPos(fx, fy - 1, fz);
         // A LADDER IS A ROUTE, NOT A FLOOR — never mine it out from under yourself.
         if (isLadder(world, fx, fy - 1, fz, scratch)) return;
-        net.minecraft.block.BlockState st = world.getBlockState(floorCell);
+        net.minecraft.world.level.block.state.BlockState st = world.getBlockState(floorCell);
         if (st.getCollisionShape(world, floorCell).isEmpty()) return;   // already open, nothing to dig
         if (!kaptainwutax.tungsten.path.BreakRules.canBreak(world, floorCell, st)) return;
         // After dropping, feet sit at fy-1 standing on (fy-2). That landing must be a real,
-        // non-hazard floor — supportTop(cell) inspects cell.down(), so ask about (fx, fy-1, fz).
+        // non-hazard floor — supportTop(cell) inspects cell.below(), so ask about (fx, fy-1, fz).
         scratch.set(fx, fy - 1, fz);
         if (Double.isNaN(PlayerFit.supportTop(world, scratch))) return; // no safe floor below -> would keep falling / void
         if (hazardAt(world, fx, fy - 2, fz, scratch)) return;          // lava/magma/etc under the block we'd break
@@ -1523,11 +1523,11 @@ public final class FastPlanner {
      * above your head + the destination feet/head) or DOWN through an overhang, so the search can
      * carve a route rather than only tunnel flat. dyStep = +1 or -1..-MAX_FALL.
      */
-    private static void breakStair(WorldView world, Node from, int dx, int dz, int dyStep,
-                                   BlockPos goal, NodeMap map, Heap open, BlockPos.Mutable scratch) {
+    private static void breakStair(LevelReader world, Node from, int dx, int dz, int dyStep,
+                                   BlockPos goal, NodeMap map, Heap open, net.minecraft.core.BlockPos.MutableBlockPos scratch) {
         if (dx != 0 && dz != 0) return;                       // cardinal only
         if (!TungstenConfig.get().allowBreak) return;
-        net.minecraft.entity.player.PlayerEntity player = TungstenMod.mc.player;
+        net.minecraft.world.entity.player.Player player = TungstenMod.mc.player;
         if (player == null) return;
         int nx = from.x + dx, nz = from.z + dz, ny = from.y + dyStep;
         // Destination feet = (nx, ny, nz); must have a solid floor to stand on below it.
@@ -1554,8 +1554,8 @@ public final class FastPlanner {
                 BlockPos cell = new BlockPos(nx, y, nz);
                 var shape = world.getBlockState(cell).getCollisionShape(world, cell);
                 // Keep landing slabs and shapes entirely above the swept body.
-                if (!shape.isEmpty() && (y + shape.getMax(net.minecraft.util.math.Direction.Axis.Y) <= landing
-                        || y + shape.getMin(net.minecraft.util.math.Direction.Axis.Y) >= departure + PlayerFit.HEIGHT))
+                if (!shape.isEmpty() && (y + shape.max(net.minecraft.core.Direction.Axis.Y) <= landing
+                        || y + shape.min(net.minecraft.core.Direction.Axis.Y) >= departure + PlayerFit.HEIGHT))
                     continue;
                 // Baritone MovementDescend.dynamicFallCost requires the lower fall
                 // column to be open. Only the source head/feet/one-below cells
@@ -1570,7 +1570,7 @@ public final class FastPlanner {
         for (BlockPos cell : cells) {
             if (isLadder(world, cell.getX(), cell.getY(), cell.getZ(), scratch)) return;
             if (!kaptainwutax.tungsten.path.RouteHazards.blocksBody(world.getBlockState(cell), world, cell)) continue;
-            net.minecraft.block.BlockState st = world.getBlockState(cell);
+            net.minecraft.world.level.block.state.BlockState st = world.getBlockState(cell);
             if (!kaptainwutax.tungsten.path.BreakRules.canBreak(world, cell, st)) return;
             double t = kaptainwutax.tungsten.path.movements.MovementHelperB
                     .getMiningDurationTicks(world, player, cell.getX(), cell.getY(), cell.getZ(),
@@ -1595,9 +1595,9 @@ public final class FastPlanner {
      * complete (BlockNode.hasPlaces -> PathFinder.truncateAtBreaks -> the executor's place
      * queue); only the planner had no way to ask.
      */
-    private static void placeAcross(WorldView world, Node from, int dx, int dz, double support,
+    private static void placeAcross(LevelReader world, Node from, int dx, int dz, double support,
                                     BlockPos goal, NodeMap map, Heap open,
-                                    BlockPos.Mutable scratch, int placeBudget) {
+                                    net.minecraft.core.BlockPos.MutableBlockPos scratch, int placeBudget) {
         if (from.placedDepth >= placeBudget) return;   // no more blocks in the pocket
         if (dx != 0 && dz != 0) return;                          // cardinal only
         int nx = from.x + dx, nz = from.z + dz;
@@ -1657,8 +1657,8 @@ public final class FastPlanner {
      * The receiving side is the same one bridging uses (toPlace -> the executor's place
      * queue), and PillarTask already performs the manoeuvre when navigation asks for it.
      */
-    private static void pillarUp(WorldView world, Node from, BlockPos goal,
-                                 NodeMap map, Heap open, BlockPos.Mutable scratch, int placeBudget) {
+    private static void pillarUp(LevelReader world, Node from, BlockPos goal,
+                                 NodeMap map, Heap open, net.minecraft.core.BlockPos.MutableBlockPos scratch, int placeBudget) {
         if (from.placedDepth >= placeBudget) return;   // no more blocks in the pocket
         int upY = from.y + 1;
         // Room for the body one block higher, and nothing already occupying our own cell.
@@ -1698,7 +1698,7 @@ public final class FastPlanner {
         // (MovementPillar.updateState: "!(fr instanceof AirBlock || canBeReplaced) -> CLICK_LEFT").
         // Price that break here and list the cell, so the route is honest about the dig; the
         // navigator's hand-off mines it before PillarTask starts (FastNavigator, G82).
-        net.minecraft.block.BlockState feetSt = cachedState(world, from.x, from.y, from.z, scratch);
+        net.minecraft.world.level.block.state.BlockState feetSt = cachedState(world, from.x, from.y, from.z, scratch);
         boolean branchClearance = TungstenConfig.get().pillarUsesBranchClearance;
         boolean feetCleared = branchClearance && branchCleared(from, feet);
         List<BlockPos> clear = null;
@@ -1709,10 +1709,10 @@ public final class FastPlanner {
             // a dig's destination whose break the dig already priced, and round 43 relaxed a
             // clear-first tower from every such cell (planPillarIn=0/74009 on one playthrough).
             if (feetSt.getCollisionShape(world, feet)
-                    .getMax(net.minecraft.util.math.Direction.Axis.Y) > 0.5) return;
-            if (!feetSt.isReplaceable()) {
+                    .max(net.minecraft.core.Direction.Axis.Y) > 0.5) return;
+            if (!feetSt.canBeReplaced()) {
                 if (!TungstenConfig.get().allowBreak) return;
-                net.minecraft.entity.player.PlayerEntity player = TungstenMod.mc.player;
+                net.minecraft.world.entity.player.Player player = TungstenMod.mc.player;
                 if (player == null) return;
                 if (!kaptainwutax.tungsten.path.BreakRules.canBreak(world, feet, feetSt)) return;
                 clearTicks = kaptainwutax.tungsten.path.movements.MovementHelperB
@@ -1737,7 +1737,7 @@ public final class FastPlanner {
         // The body can fit through a plant while its outline blocks the placement ray.
         // Price and execute that clearance before handing the column to PillarTask.
         for (int dy = 1; dy <= 2; dy++) {
-            BlockPos cell = feet.up(dy);
+            BlockPos cell = feet.above(dy);
             // Baritone MovementPillar.java:258-266 clears a non-replaceable source
             // before placing. Our previous step already scheduled these explicit
             // outline removals: carry them forward just as branchPlaced carries
@@ -1795,25 +1795,25 @@ public final class FastPlanner {
      * fluid clause asks what is under our feet, and on a route that has bridged its way out over
      * water that block exists in the plan rather than in the world (see {@link #branchPlaced}).
      */
-    private static boolean pillarImpossible(WorldView world, Node node, BlockPos.Mutable scratch) {
+    private static boolean pillarImpossible(LevelReader world, Node node, net.minecraft.core.BlockPos.MutableBlockPos scratch) {
         int x = node.x, y = node.y, z = node.z;
-        net.minecraft.block.BlockState fromState = cachedState(world, x, y, z, scratch);
-        net.minecraft.block.Block from = fromState.getBlock();
-        boolean ladder = from == net.minecraft.block.Blocks.LADDER
-                || from == net.minecraft.block.Blocks.VINE;
-        net.minecraft.block.BlockState fromDown = cachedState(world, x, y - 1, z, scratch);
-        net.minecraft.block.Block below = fromDown.getBlock();
+        net.minecraft.world.level.block.state.BlockState fromState = cachedState(world, x, y, z, scratch);
+        net.minecraft.world.level.block.Block from = fromState.getBlock();
+        boolean ladder = from == net.minecraft.world.level.block.Blocks.LADDER
+                || from == net.minecraft.world.level.block.Blocks.VINE;
+        net.minecraft.world.level.block.state.BlockState fromDown = cachedState(world, x, y - 1, z, scratch);
+        net.minecraft.world.level.block.Block below = fromDown.getBlock();
         if (!ladder) {
             // MovementPillar.java:153-155 — you cannot tower off a ladder or vine onto a block.
-            if (below == net.minecraft.block.Blocks.LADDER
-                    || below == net.minecraft.block.Blocks.VINE) return true;
+            if (below == net.minecraft.world.level.block.Blocks.LADDER
+                    || below == net.minecraft.world.level.block.Blocks.VINE) return true;
             // MovementPillar.java:156-158 — nor off a bottom slab.
-            if (below instanceof net.minecraft.block.SlabBlock
-                    && fromDown.get(net.minecraft.block.SlabBlock.TYPE)
-                        == net.minecraft.block.enums.SlabType.BOTTOM) return true;
+            if (below instanceof net.minecraft.world.level.block.SlabBlock
+                    && fromDown.getValue(net.minecraft.world.level.block.SlabBlock.TYPE)
+                        == net.minecraft.world.level.block.state.properties.SlabType.BOTTOM) return true;
         }
         // MovementPillar.java:160-162 — a vine with nothing behind it cannot be climbed.
-        if (from == net.minecraft.block.Blocks.VINE
+        if (from == net.minecraft.world.level.block.Blocks.VINE
                 && !kaptainwutax.tungsten.path.movements.MovementPillar.hasAgainst(world, x, y, z)) {
             return true;
         }
@@ -1821,7 +1821,7 @@ public final class FastPlanner {
         // redundant with bodyFits: an open gate has no collision shape, so the body fits and the
         // executor still refuses.
         if (cachedState(world, x, y + 2, z, scratch).getBlock()
-                instanceof net.minecraft.block.FenceGateBlock) return true;
+                instanceof net.minecraft.world.level.block.FenceGateBlock) return true;
         // MovementPillar.java:186-191 — standing IN a fluid with no face under us to place against.
         // (Upstream's second half is assumeWalkOnWater, hardcoded false here as there.)
         if (kaptainwutax.tungsten.path.movements.MovementHelperB.isLiquid(fromState)
@@ -1830,8 +1830,8 @@ public final class FastPlanner {
                 && !branchPlaced(node, x, y - 1, z)) return true;
         // MovementPillar.java:192-195 — a lily pad or carpet over a fluid: to go up you would have
         // to break the thing you are standing on.
-        return (from == net.minecraft.block.Blocks.LILY_PAD
-                    || from instanceof net.minecraft.block.CarpetBlock)
+        return (from == net.minecraft.world.level.block.Blocks.LILY_PAD
+                    || from instanceof net.minecraft.world.level.block.CarpetBlock)
                 && !fromDown.getFluidState().isEmpty();
     }
 
@@ -1870,8 +1870,8 @@ public final class FastPlanner {
     }
 
     /** Jump across up to MAX_JUMP_GAP empty cells onto a standable landing. */
-    private static void parkour(WorldView world, Node from, double support, int dx, int dz,
-                                BlockPos goal, NodeMap map, Heap open, BlockPos.Mutable scratch) {
+    private static void parkour(LevelReader world, Node from, double support, int dx, int dz,
+                                BlockPos goal, NodeMap map, Heap open, net.minecraft.core.BlockPos.MutableBlockPos scratch) {
         if (dx != 0 && dz != 0) return;               // straight jumps only
         // the body must clear the takeoff cell at jump height
         scratch.set(from.x, from.y, from.z);
@@ -1899,8 +1899,8 @@ public final class FastPlanner {
     }
 
     /** Is the body able to pass through the neighbouring cell (diagonal guard)? */
-    private static boolean sideClear(WorldView world, Node from, int dx, int dz,
-                                     double support, BlockPos.Mutable scratch) {
+    private static boolean sideClear(LevelReader world, Node from, int dx, int dz,
+                                     double support, net.minecraft.core.BlockPos.MutableBlockPos scratch) {
         scratch.set(from.x + dx, from.y, from.z + dz);
         return PlayerFit.passableAt(world, scratch, support);
     }
@@ -1983,7 +1983,7 @@ public final class FastPlanner {
      * (BlockStateChecker.isAnyLava, and a working predicate in CombatPathfinder.isHazard) and
      * this class called neither.
      */
-    private static boolean hazardAt(WorldView w, int x, int y, int z, BlockPos.Mutable s) {
+    private static boolean hazardAt(LevelReader w, int x, int y, int z, net.minecraft.core.BlockPos.MutableBlockPos s) {
         // One definition, shared with the executors' per-tick check (RouteHazards) -- a planner and
         // an executor that disagree about what is lethal is how a "safe" route kills the body.
         if (!kaptainwutax.tungsten.path.RouteHazards.hazard(cachedState(w, x, y, z, s))) return false;
@@ -2004,9 +2004,9 @@ public final class FastPlanner {
      * discretely cell to cell, so it has no drift to price.
      */
     private static double hazardProximityPenalty(int x, int y, int z) {
-        WorldView w = SEARCH_WORLD.get();
+        LevelReader w = SEARCH_WORLD.get();
         if (w == null) return 0.0;
-        BlockPos.Mutable s = new BlockPos.Mutable();
+        net.minecraft.core.BlockPos.MutableBlockPos s = new net.minecraft.core.BlockPos.MutableBlockPos();
         // ⛔ LAVA IS PRICED FOR WHAT A DRIFT INTO IT COSTS, NOT LIKE MAGMA (G108 nether, 2026-09-24).
         // One margin price for every hazard assumed the drift it prices costs the same everywhere.
         // It does not: a foot into magma is 1-2 health, a foot into lava in the nether is the run.
@@ -2038,15 +2038,15 @@ public final class FastPlanner {
     /** How many blocks' walk a cell next to lava is worth avoiding. See hazardProximityPenalty. */
     private static final double LAVA_MARGIN_MULT = kaptainwutax.tungsten.path.RouteHazards.LAVA_MARGIN_MULT;
 
-    private static boolean lavaAt(WorldView w, int x, int y, int z, BlockPos.Mutable s) {
+    private static boolean lavaAt(LevelReader w, int x, int y, int z, net.minecraft.core.BlockPos.MutableBlockPos s) {
         return kaptainwutax.tungsten.helpers.BlockStateChecker.isAnyLava(cachedState(w, x, y, z, s));
     }
 
     /** Body cell, head cell, or the surface we would stand on. */
     private static boolean hazardousDestination(int x, int y, int z) {
-        WorldView w = SEARCH_WORLD.get();
+        LevelReader w = SEARCH_WORLD.get();
         if (w == null) return false;              // not inside a search — gate is inert
-        BlockPos.Mutable s = new BlockPos.Mutable();
+        net.minecraft.core.BlockPos.MutableBlockPos s = new net.minecraft.core.BlockPos.MutableBlockPos();
         return hazardAt(w, x, y, z, s) || hazardAt(w, x, y + 1, z, s)
                 || hazardAt(w, x, y - 1, z, s);
     }
@@ -2236,13 +2236,13 @@ public final class FastPlanner {
      * is water or a ladder (both unstandable on purpose, with their own move generator), or
      * when nothing better is found.
      */
-    private static BlockPos snapStartToSupport(WorldView world, BlockPos start, StartState startState) {
-        BlockPos.Mutable m = new BlockPos.Mutable();
+    private static BlockPos snapStartToSupport(LevelReader world, BlockPos start, StartState startState) {
+        net.minecraft.core.BlockPos.MutableBlockPos m = new net.minecraft.core.BlockPos.MutableBlockPos();
         m.set(start);
         if (!Double.isNaN(PlayerFit.supportTop(world, m))) return start;
         if (isWater(world, start.getX(), start.getY(), start.getZ(), m)
                 || isLadder(world, start.getX(), start.getY(), start.getZ(), m)) return start;
-        net.minecraft.util.math.Box box = startState.boundingBox();
+        net.minecraft.world.phys.AABB box = startState.boundingBox();
         if (box != null) {
             double[][] corners = {
                 {box.minX, box.minZ}, {box.minX, box.maxZ},
@@ -2251,17 +2251,17 @@ public final class FastPlanner {
             BlockPos best = null;
             double bestDist = Double.MAX_VALUE;
             for (double[] c : corners) {
-                BlockPos cand = BlockPos.ofFloored(c[0], start.getY(), c[1]);
+                BlockPos cand = BlockPos.containing(c[0], start.getY(), c[1]);
                 if (cand.equals(start)) continue;
                 m.set(cand);
                 if (Double.isNaN(PlayerFit.supportTop(world, m))) continue;
-                double d = cand.toCenterPos().squaredDistanceTo(startState.position());
+                double d = net.minecraft.world.phys.Vec3.atCenterOf(cand).distanceToSqr(startState.position());
                 if (d < bestDist) { bestDist = d; best = cand; }
             }
             if (best != null) return best;
         }
         for (int dy = 1; dy <= 8; dy++) {
-            BlockPos cand = start.down(dy);
+            BlockPos cand = start.below(dy);
             m.set(cand);
             if (!Double.isNaN(PlayerFit.supportTop(world, m))) return cand;
         }

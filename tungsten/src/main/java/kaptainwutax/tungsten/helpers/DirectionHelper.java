@@ -1,8 +1,8 @@
 package kaptainwutax.tungsten.helpers;
 
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Helper class to easily complete direction related calculations.
@@ -33,26 +33,26 @@ public class DirectionHelper {
     }
 
 	/**
-     * Calculates the yaw from origin Vec3d to destination Vec3d positions.
+     * Calculates the yaw from origin Vec3 to destination Vec3 positions.
      * 
      * @param orig origin position
      * @param dest destination position
-     * @return yaw value calculated from origin Vec3d to destination Vec3d positions.
+     * @return yaw value calculated from origin Vec3 to destination Vec3 positions.
      */
-	public static double calcYawFromVec3d(Vec3d orig, Vec3d dest) {
+	public static double calcYawFromVec3d(Vec3 orig, Vec3 dest) {
         double[] delta = {orig.x - dest.x, orig.y - dest.y, orig.z - dest.z};
         double yaw = Math.atan2(delta[0], -delta[2]);
         return yaw * 180.0 / Math.PI;
     }
 	
 	/**
-     * Calculates the pitch from origin Vec3d to destination Vec3d positions.
+     * Calculates the pitch from origin Vec3 to destination Vec3 positions.
      * 
      * @param orig origin position
      * @param dest destination position
-     * @return pitch value calculated from origin Vec3d to destination Vec3d positions.
+     * @return pitch value calculated from origin Vec3 to destination Vec3 positions.
      */
-	public static double calcPitchFromVec3d(Vec3d orig, Vec3d dest) {
+	public static double calcPitchFromVec3d(Vec3 orig, Vec3 dest) {
 	    double deltaY = orig.y - dest.y;
 	    double distance = Math.sqrt(Math.pow(orig.x - dest.x, 2) + Math.pow(orig.z - dest.z, 2));
 	    double pitch = Math.atan2(deltaY, distance);
@@ -61,24 +61,24 @@ public class DirectionHelper {
 	
 
 	/**
-     * Calculates the horizontal direction from origin Vec3d to destination Vec3d positions.
+     * Calculates the horizontal direction from origin Vec3 to destination Vec3 positions.
      * 
      * @param orig origin position
      * @param dest destination position
-     * @return horizontal direction calculated from origin Vec3d to destination Vec3d positions.
+     * @return horizontal direction calculated from origin Vec3 to destination Vec3 positions.
      */
 	public static Direction getHorizontalDirectionFromPos(BlockPos orig, BlockPos dest) {
-        return getHorizontalDirectionFromYaw(calcYawFromVec3d(new Vec3d(orig.getX(), orig.getY(), orig.getZ()), new Vec3d(dest.getX(), dest.getY(), dest.getZ())));
+        return getHorizontalDirectionFromYaw(calcYawFromVec3d(new Vec3(orig.getX(), orig.getY(), orig.getZ()), new Vec3(dest.getX(), dest.getY(), dest.getZ())));
     }
 	
 	/**
-     * Calculates the horizontal direction from origin Vec3d to destination Vec3d positions.
+     * Calculates the horizontal direction from origin Vec3 to destination Vec3 positions.
      * 
      * @param orig origin position
      * @param dest destination position
-     * @return horizontal direction calculated from origin Vec3d to destination Vec3d positions.
+     * @return horizontal direction calculated from origin Vec3 to destination Vec3 positions.
      */
-	public static Direction getHorizontalDirectionFromPos(Vec3d orig, Vec3d dest) {
+	public static Direction getHorizontalDirectionFromPos(Vec3 orig, Vec3 dest) {
         return getHorizontalDirectionFromYaw(calcYawFromVec3d(orig, dest));
     }
 	

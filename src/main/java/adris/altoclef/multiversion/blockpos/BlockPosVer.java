@@ -1,14 +1,18 @@
 package adris.altoclef.multiversion.blockpos;
 
 import adris.altoclef.multiversion.Pattern;
-import net.minecraft.util.math.*;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
+import net.minecraft.core.Position;
+import net.minecraft.core.Vec3i;
 import adris.altoclef.multiversion.blockpos.BlockPosHelper;
 
 public class BlockPosVer {
 
 
     public static BlockPos ofFloored(Position pos) {
-        return new BlockPos(MathHelper.floor(pos.getX()), MathHelper.floor(pos.getY()), MathHelper.floor(pos.getZ()));
+        return new BlockPos(Mth.floor(pos.x()), Mth.floor(pos.y()), Mth.floor(pos.z()));
     }
 
 
@@ -91,7 +95,7 @@ public class BlockPosVer {
     @Pattern
     private static Vec3i add(Vec3i blockPos, int x, int y, int z) {
         //#if MC >= 11701
-        return blockPos.add(x,y,z);
+        return blockPos.offset(x,y,z);
         //#else
         //$$ return adris.altoclef.multiversion.blockpos.BlockPosHelper.add(blockPos,x,y,z);
         //#endif

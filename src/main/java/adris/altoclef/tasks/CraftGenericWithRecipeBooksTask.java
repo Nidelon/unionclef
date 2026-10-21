@@ -14,10 +14,10 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.ContainerInput;
 
 import java.util.Optional;
 
@@ -96,22 +96,22 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
                 moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
                 if (moveTo.isPresent()) {
                     // Click the slot to move the item to the player's inventory
-                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                     return null;
                 }
                 // Check if the item can be thrown away
                 if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
                     // Click an undefined slot to throw away the item
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                     return null;
                 }
                 // Find the garbage slot and click it to move the item there
                 garbage = StorageHelper.getGarbageSlot(mod);
                 if (garbage.isPresent()) {
-                    mod.getSlotHandler().clickSlot(garbage.get(), 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                 }
                 // Click an undefined slot to clear the cursor stack
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             } else {
                 // Close the screen
                 StorageHelper.closeScreen();
@@ -138,20 +138,20 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
             moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
             if (moveTo.isPresent()) {
                 // Click the slot to move the item to the player's inventory
-                mod.getSlotHandler().clickSlot(moveTo.get(), 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                 return null;
             }
             // Check if the item can be thrown away
             if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
                 // Click an undefined slot to throw away the item
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 return null;
             }
             // Find the garbage slot and click it to move the item there
             garbage = StorageHelper.getGarbageSlot(mod);
-            garbage.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
+            garbage.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
             // Click an undefined slot to clear the cursor stack
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             return null;
         }
 
@@ -171,10 +171,10 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
         Optional<WrappedRecipeEntry> recipeToSend = JankCraftingRecipeMapping.getMinecraftMappedRecipe(target.getRecipe(), target.getOutputItem());
         if (recipeToSend.isPresent()) {
             if (mod.getSlotHandler().canDoSlotAction()) {
-                ClientPlayerEntity player = MinecraftClient.getInstance().player;
+                LocalPlayer player = Minecraft.getInstance().player;
                 assert player != null;
                 // Click the recipe to send it
-                mod.getController().clickRecipe(player.currentScreenHandler.syncId, recipeToSend.get().asRecipe(), true);
+                // 26.2 takes a RecipeDisplayId here; recipe-book placement is disabled until the id is resolved
                 mod.getSlotHandler().registerSlotAction();
             }
         }
@@ -192,7 +192,7 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
         //$$ // RecipeDisplayEntry.getStacks(ContextParameterMap), and the context itself from
         //$$ // SlotDisplayContexts.createParameters(World) rather than the null the compiler would
         //$$ // have accepted and the runtime would have thrown on.
-        //$$ ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        //$$ LocalPlayer player = Minecraft.getInstance().player;
         //$$ // REVERTED: REFRESHING EVERY TICK IS TOO EXPENSIVE.
         //$$ // Moving the recompute out of this gate meant walking all 109 collections and matching
         //$$ // ingredients for each, every single tick. Measured over three runs: cgSent fell to 0
@@ -207,8 +207,8 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
         //$$ // cgNoScreen 0 always, cgOutReady 0 while the book was healthy and the packet did go.
         //$$ if (player != null && mod.getWorld() != null
         //$$         && !StorageHelper.isPlayerInventoryScreenOpen()) {
-        //$$     MinecraftClient.getInstance().setScreen(
-        //$$             new net.minecraft.client.gui.screen.ingame.InventoryScreen(player));
+        //$$     Minecraft.getInstance().setScreen(
+        //$$             new net.minecraft.client.gui.screens.inventory.InventoryScreen(player));
         //$$     return null;
         //$$ }
         //$$ if (player != null && mod.getWorld() != null && mod.getSlotHandler().canDoSlotAction()) {
@@ -224,7 +224,7 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
         //$$     for (int i = 0; i < player.getInventory().size(); i++) {
         //$$         finder.addInputIfUsable(player.getInventory().getStack(i));
         //$$     }
-        //$$     for (net.minecraft.client.gui.screen.recipebook.RecipeResultCollection col
+        //$$     for (net.minecraft.client.gui.screens.recipebook.RecipeCollection col
         //$$             : player.getRecipeBook().getOrderedResults()) {
         //$$         col.populateRecipes(finder, e -> true);
         //$$         if (col.hasCraftableRecipes()) cgBookCraftable++; else cgBookNone++;
@@ -243,7 +243,7 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
         //$$                     cgScreen = player.currentScreenHandler.getClass().getSimpleName();
         //$$                     cgSent++;   // "the hang is gone" is not "a recipe was sent"
         //$$                     cgLastSent = String.valueOf(
-        //$$                             net.minecraft.registry.Registries.ITEM.getId(target.getOutputItem()));
+        //$$                             net.minecraft.core.registries.BuiltInRegistries.ITEM.getId(target.getOutputItem()));
         //$$                     mod.getController().clickRecipe(
         //$$                             player.currentScreenHandler.syncId, entry.id(), true);
         //$$                     mod.getSlotHandler().registerSlotAction();

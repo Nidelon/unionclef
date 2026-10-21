@@ -13,15 +13,29 @@ import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Rotation;
 import kaptainwutax.tungsten.util.WindMouseRotation;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.Blocks;
-import net.minecraft.fluid.Fluids;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.ClipContext;
 
 import java.util.Optional;
 
@@ -54,8 +68,8 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         AltoClef mod = AltoClef.getInstance();
 
         // Track last safe ground position and try ender pearl save in void/hell-hole
-        if (mod.getPlayer().isOnGround()) {
-            lastGroundBlockPos = mod.getPlayer().getBlockPos();
+        if (mod.getPlayer().onGround()) {
+            lastGroundBlockPos = mod.getPlayer().blockPosition();
             voidFallTimer.reset();
             _fallStartY = Double.MAX_VALUE;
         } else if (isInHellHole(mod)) {
@@ -68,20 +82,20 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
                         && _fallStartY != Double.MAX_VALUE
                         && (_fallStartY - mod.getPlayer().getY()) >= mod.getModSettings().getMinPearlFallDistance()) {
                     Optional<Entity> closestPlayer = mod.getEntityTracker().getClosestEntity(
-                            mod.getPlayer().getPos(),
-                            p -> pearlAllowable(mod, (PlayerEntity) p),
-                            PlayerEntity.class);
+                            mod.getPlayer().position(),
+                            p -> pearlAllowable(mod, (Player) p),
+                            Player.class);
                     if (closestPlayer.isPresent()) {
                         voidFallTimer.reset();
                         Debug.logMessage("Pearl clutch to nearest player!");
-                        setTask(new ThrowEnderPearlSimpleProjectileTask(closestPlayer.get().getBlockPos()));
+                        setTask(new ThrowEnderPearlSimpleProjectileTask(closestPlayer.get().blockPosition()));
                         lastEP = (ThrowEnderPearlSimpleProjectileTask) mainTask;
                         return 100;
                     } else {
                         voidFallTimer.reset();
-                        Debug.logMessage("Pearl clutch to last ground block! Vel: " + mod.getPlayer().getVelocity().getY());
-                        setTask(new ThrowEnderPearlSimpleProjectileTask(lastGroundBlockPos.add(0,
-                                (int) (-0.9 - mod.getPlayer().getVelocity().getY()), 0)));
+                        Debug.logMessage("Pearl clutch to last ground block! Vel: " + mod.getPlayer().getDeltaMovement().y());
+                        setTask(new ThrowEnderPearlSimpleProjectileTask(lastGroundBlockPos.offset(0,
+                                (int) (-0.9 - mod.getPlayer().getDeltaMovement().y()), 0)));
                         lastEP = (ThrowEnderPearlSimpleProjectileTask) mainTask;
                         return 100;
                     }
@@ -103,16 +117,16 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
                     try {
                         // A poured source may be inside a waterlogged slab rather than a water block.
                         var fluid = mod.getWorld().getBlockState(placed).getFluidState();
-                        isPlacedWater = fluid.isOf(Fluids.WATER) && fluid.isStill();
+                        isPlacedWater = fluid.is(Fluids.WATER) && fluid.isSource();
                     } catch (Exception e) {
                         isPlacedWater = false;
                     }
                     //Debug.logInternal("PLACED: " + placed);
-                    if (placed != null && placed.isWithinDistance(mod.getPlayer().getPos(), 5.5) && isPlacedWater) {
+                    if (placed != null && placed.closerThan(BlockPos.containing(mod.getPlayer().position()), 5.5) && isPlacedWater) {
                         BlockPos toInteract = placed;
                         // Allow looking at fluids
                         mod.getBehaviour().push();
-                        mod.getBehaviour().setRayTracingFluidHandling(RaycastContext.FluidHandling.SOURCE_ONLY);
+                        mod.getBehaviour().setRayTracingFluidHandling(net.minecraft.world.level.ClipContext.Fluid.SOURCE_ONLY);
                         Optional<Rotation> reach = LookHelper.getReach(toInteract, Direction.UP);
                         if (reach.isPresent()) {
                             // Request the aim, then click only once the crosshair actually got
@@ -148,13 +162,13 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
             wasPickingUp = false;
             lastMLG = null;
         }
-        if (mod.getPlayer().hasStatusEffect(StatusEffects.LEVITATION) &&
+        if (mod.getPlayer().hasEffect(MobEffects.LEVITATION) &&
                 //#if MC >= 12111
-                //$$ !mod.getPlayer().getItemCooldownManager().isCoolingDown(new net.minecraft.item.ItemStack(Items.CHORUS_FRUIT)) &&
+                //$$ !mod.getPlayer().getItemCooldownManager().isCoolingDown(new net.minecraft.world.item.ItemStack(Items.CHORUS_FRUIT)) &&
                 //#else
-                !mod.getPlayer().getItemCooldownManager().isCoolingDown(Items.CHORUS_FRUIT) &&
+                !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(Items.CHORUS_FRUIT)) &&
                 //#endif
-                mod.getPlayer().getActiveStatusEffects().get(StatusEffects.LEVITATION).getDuration() <= 70 &&
+                mod.getPlayer().getActiveEffectsMap().get(MobEffects.LEVITATION).getDuration() <= 70 &&
                 mod.getItemStorage().hasItemInventoryOnly(Items.CHORUS_FRUIT) &&
                 !mod.getItemStorage().hasItemInventoryOnly(Items.WATER_BUCKET)) {
             doingChorusFruit = true;
@@ -199,21 +213,21 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         if (!mod.getModSettings().shouldAutoMLGBucket()) {
             return false;
         }
-        if (mod.getPlayer().isSwimming() || mod.getPlayer().isTouchingWater() || mod.getPlayer().isOnGround() || mod.getPlayer().isClimbing()) {
+        if (mod.getPlayer().isSwimming() || mod.getPlayer().isInWater() || mod.getPlayer().onGround() || mod.getPlayer().onClimbable()) {
             // We're grounded.
             return false;
         }
-        double ySpeed = mod.getPlayer().getVelocity().y;
+        double ySpeed = mod.getPlayer().getDeltaMovement().y;
         return ySpeed < -0.7;
     }
 
     public boolean isInHellHole(AltoClef mod) {
-        return WorldHelper.isHellHole(mod, mod.getPlayer().getBlockPos());
+        return WorldHelper.isHellHole(mod, mod.getPlayer().blockPosition());
     }
 
-    private boolean pearlAllowable(AltoClef mod, PlayerEntity player) {
+    private boolean pearlAllowable(AltoClef mod, Player player) {
         if (player.equals(mod.getPlayer())) return false;
-        return LookHelper.cleanLineOfSight(player.getPos(), 100)
-                && !WorldHelper.isHellHole(mod, player.getBlockPos());
+        return LookHelper.cleanLineOfSight(player.position(), 100)
+                && !WorldHelper.isHellHole(mod, player.blockPosition());
     }
 }

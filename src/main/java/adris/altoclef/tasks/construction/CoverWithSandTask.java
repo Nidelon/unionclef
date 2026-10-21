@@ -8,9 +8,9 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.block.Blocks;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
 
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -67,16 +67,16 @@ public class CoverWithSandTask extends Task {
 
     private Task coverLavaWithSand(AltoClef mod) {
         Predicate<BlockPos> validLava = blockPos ->
-                mod.getWorld().getBlockState(blockPos).getFluidState().isStill()
-                        && WorldHelper.isAir(blockPos.up())
+                mod.getWorld().getBlockState(blockPos).getFluidState().isSource()
+                        && WorldHelper.isAir(blockPos.above())
                         && (!WorldHelper.isBlock(blockPos.north(), Blocks.LAVA)
                         || !WorldHelper.isBlock(blockPos.south(), Blocks.LAVA)
                         || !WorldHelper.isBlock(blockPos.east(), Blocks.LAVA)
                         || !WorldHelper.isBlock(blockPos.west(), Blocks.LAVA)
-                        || !WorldHelper.isBlock(blockPos.north().up(), Blocks.LAVA)
-                        || !WorldHelper.isBlock(blockPos.south().up(), Blocks.LAVA)
-                        || !WorldHelper.isBlock(blockPos.east().up(), Blocks.LAVA)
-                        || !WorldHelper.isBlock(blockPos.west().up(), Blocks.LAVA));
+                        || !WorldHelper.isBlock(blockPos.north().above(), Blocks.LAVA)
+                        || !WorldHelper.isBlock(blockPos.south().above(), Blocks.LAVA)
+                        || !WorldHelper.isBlock(blockPos.east().above(), Blocks.LAVA)
+                        || !WorldHelper.isBlock(blockPos.west().above(), Blocks.LAVA));
 
         Optional<BlockPos> lava = mod.getBlockScanner().getNearestBlock(validLava, Blocks.LAVA);
         if (lava.isEmpty()) return null;
@@ -86,13 +86,13 @@ public class CoverWithSandTask extends Task {
             timer.reset();
         }
         if (!WorldHelper.isBlock(lavaPos, Blocks.LAVA)
-                || (!WorldHelper.isAir(lavaPos.up()) && !WorldHelper.isFallingBlock(lavaPos.up()))
-                || !mod.getWorld().getBlockState(lavaPos).getFluidState().isStill()) {
+                || (!WorldHelper.isAir(lavaPos.above()) && !WorldHelper.isFallingBlock(lavaPos.above()))
+                || !mod.getWorld().getBlockState(lavaPos).getFluidState().isSource()) {
             lavaPos = lava.get();
             timer.reset();
         }
 
-        return new PlaceBlockTask(lavaPos.up(), Blocks.SAND);
+        return new PlaceBlockTask(lavaPos.above(), Blocks.SAND);
     }
 
     @Override

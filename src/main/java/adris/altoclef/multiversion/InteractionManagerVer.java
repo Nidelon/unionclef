@@ -1,33 +1,33 @@
 package adris.altoclef.multiversion;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.network.ClientPlayerInteractionManager;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.world.World;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.multiplayer.MultiPlayerGameMode;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.level.Level;
 
 public class InteractionManagerVer {
 
 
     @Pattern
-    public ActionResult interactItem(ClientPlayerInteractionManager interactionManager, PlayerEntity player, Hand hand) {
+    public InteractionResult interactItem(MultiPlayerGameMode interactionManager, Player player, InteractionHand hand) {
         //#if MC >= 11904
-        return interactionManager.interactItem(player,hand);
+        return interactionManager.useItem(player,hand);
         //#else
-        //$$ return interactionManager.interactItem(player,MinecraftClient.getInstance().world,hand);
+        //$$ return interactionManager.interactItem(player,Minecraft.getInstance().world,hand);
         //#endif
     }
 
     @Pattern
-    public ActionResult interactBlock(ClientPlayerInteractionManager interactionManager, ClientPlayerEntity player, Hand hand, BlockHitResult hitResult) {
+    public InteractionResult interactBlock(MultiPlayerGameMode interactionManager, LocalPlayer player, InteractionHand hand, BlockHitResult hitResult) {
         //#if MC >= 11904
-        return interactionManager.interactBlock(player,hand, hitResult);
+        return interactionManager.useItemOn(player,hand, hitResult);
         //#else
-        //$$ return interactionManager.interactBlock(player,MinecraftClient.getInstance().world, hand ,hitResult);
+        //$$ return interactionManager.interactBlock(player,Minecraft.getInstance().world, hand ,hitResult);
         //#endif
     }
 

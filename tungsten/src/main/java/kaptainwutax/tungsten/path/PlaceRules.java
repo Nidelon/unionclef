@@ -2,8 +2,8 @@ package kaptainwutax.tungsten.path;
 
 import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.TungstenModDataContainer;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.WorldView;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Central "may we place a block here" policy — the placing counterpart of
@@ -21,23 +21,23 @@ public final class PlaceRules {
 
     /** May we place a block at pos? (Does not check reach or having a block —
      *  that is the caller's concern; this is purely the protection policy.) */
-    public static boolean canPlace(WorldView world, BlockPos pos) {
+    public static boolean canPlace(LevelReader world, BlockPos pos) {
         return canPlace(world, pos, true);
     }
 
     /** Placement after this route has cleared the target. The replaceability
      * check is deferred to the executor's actual world, but placement policy,
      * world border and recent failed-placement memory still apply at planning. */
-    public static boolean canPlaceAfterClearing(WorldView world, BlockPos pos) {
+    public static boolean canPlaceAfterClearing(LevelReader world, BlockPos pos) {
         return canPlace(world, pos, false);
     }
 
-    private static boolean canPlace(WorldView world, BlockPos pos, boolean checkReplaceable) {
+    private static boolean canPlace(LevelReader world, BlockPos pos, boolean checkReplaceable) {
         TungstenConfig cfg = TungstenConfig.get();
         if (!cfg.allowPlace) return false;
         if (refusedRecently(pos)) return false;
         // must be an empty/replaceable cell to place into
-        if (checkReplaceable && world != null && !world.getBlockState(pos).isReplaceable()) return false;
+        if (checkReplaceable && world != null && !world.getBlockState(pos).canBeReplaced()) return false;
         // BARITONE-PORT.md, off-thread-world-access section: baritone checks the world border
         // on every placement (CalculationContext.java:193); tungsten's break side already gets
         // this for free through MovementHelperB.avoidBreaking, the place side never checked it
@@ -98,7 +98,7 @@ public final class PlaceRules {
         if (pos == null) return;
         long now = System.currentTimeMillis();
         refusedUntilMs.entrySet().removeIf(e -> e.getValue() < now);
-        refusedUntilMs.put(pos.toImmutable(), now + REFUSAL_MS);
+        refusedUntilMs.put(pos.immutable(), now + REFUSAL_MS);
     }
 
     public static boolean refusedRecently(BlockPos pos) {

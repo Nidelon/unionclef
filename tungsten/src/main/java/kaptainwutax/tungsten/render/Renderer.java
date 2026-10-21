@@ -1,8 +1,8 @@
 package kaptainwutax.tungsten.render;
 
-import net.minecraft.client.render.BufferBuilder;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 public abstract class Renderer {
 
@@ -10,8 +10,8 @@ public abstract class Renderer {
 
     public abstract BlockPos getPos();
 
-    public Vec3d toVec3d(BlockPos pos) {
-        return new Vec3d(pos.getX(), pos.getY(), pos.getZ());
+    public Vec3 toVec3d(BlockPos pos) {
+        return new Vec3(pos.getX(), pos.getY(), pos.getZ());
     }
 
 }

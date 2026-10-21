@@ -14,12 +14,16 @@ import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
-import net.minecraft.block.*;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.FlowerBlock;
 import adris.altoclef.multiversion.versionedfields.Blocks;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.item.Item;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -43,9 +47,9 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
 
     /** G89: would fetching a wooden pickaxe need the very item this drop is? */
     private static boolean dropFeedsThePickaxe(ItemEntity drop) {
-        if (drop == null || drop.getStack().isEmpty()) return false;
-        Item it = drop.getStack().getItem();
-        if (it == net.minecraft.item.Items.STICK) return true;
+        if (drop == null || drop.getItem().isEmpty()) return false;
+        Item it = drop.getItem().getItem();
+        if (it == net.minecraft.world.item.Items.STICK) return true;
         for (Item p : adris.altoclef.util.helpers.ItemHelper.PLANKS) if (p == it) return true;
         for (Item l : adris.altoclef.util.helpers.ItemHelper.LOG) if (l == it) return true;
         return false;
@@ -137,14 +141,14 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
 
     private static BlockPos[] generateSides(BlockPos pos) {
         return new BlockPos[]{
-                pos.add(1,0,0),
-                pos.add(-1,0,0),
-                pos.add(0,0,1),
-                pos.add(0,0,-1),
-                pos.add(1,0,-1),
-                pos.add(1,0,1),
-                pos.add(-1,0,-1),
-                pos.add(-1,0,1)
+                pos.offset(1,0,0),
+                pos.offset(-1,0,0),
+                pos.offset(0,0,1),
+                pos.offset(0,0,-1),
+                pos.offset(1,0,-1),
+                pos.offset(1,0,1),
+                pos.offset(-1,0,-1),
+                pos.offset(-1,0,1)
         };
     }
 
@@ -174,16 +178,16 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     }
 
     private BlockPos stuckInBlock(AltoClef mod) {
-        BlockPos p = mod.getPlayer().getBlockPos();
+        BlockPos p = mod.getPlayer().blockPosition();
         if (isAnnoying(mod, p)) return p;
-        if (isAnnoying(mod, p.up())) return p.up();
+        if (isAnnoying(mod, p.above())) return p.above();
         BlockPos[] toCheck = generateSides(p);
         for (BlockPos check : toCheck) {
             if (isAnnoying(mod, check)) {
                 return check;
             }
         }
-        BlockPos[] toCheckHigh = generateSides(p.up());
+        BlockPos[] toCheckHigh = generateSides(p.above());
         for (BlockPos check : toCheckHigh) {
             if (isAnnoying(mod, check)) {
                 return check;
@@ -327,7 +331,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
             // and let the task re-plan (re-craft, closer source) instead of walking the map. Best-
             // distance is monotonic, so ordinary wander/oscillation never trips this.
             if (kaptainwutax.tungsten.TungstenConfig.get().dropAbandonWhenNotClosing) {
-                double dsq = _currentDrop.squaredDistanceTo(mod.getPlayer());
+                double dsq = _currentDrop.distanceToSqr(mod.getPlayer());
                 if (dsq < pursuitBestDistSq - 0.25) {
                     pursuitBestDistSq = dsq;
                     pursuitBestMs = System.currentTimeMillis();
@@ -417,7 +421,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                 progressChecker.reset();
                 return null;
             }
-            if (_currentDrop != null && !_currentDrop.getStack().isEmpty()) {
+            if (_currentDrop != null && !_currentDrop.getItem().isEmpty()) {
                 // We might want to get a pickaxe first.
                 if (!isGettingPickaxeFirstFlag && mod.getModSettings().shouldCollectPickaxeFirst()
                         && !StorageHelper.miningRequirementMetInventory(MiningRequirement.WOOD)) {
@@ -433,7 +437,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                         return getPickaxeFirstTask;
                     }
                 }
-                Debug.logMessage(StlHelper.toString(_blacklist, element -> element == null ? "(null)" : element.getStack().getItem().getTranslationKey()));
+                Debug.logMessage(StlHelper.toString(_blacklist, element -> element == null ? "(null)" : element.getItem().getItem().getDescriptionId()));
                 Debug.logMessage("Failed to pick up drop, suggesting it's unreachable.");
                 _blacklist.add(_currentDrop);
                 mod.getEntityTracker().requestEntityUnreachable(_currentDrop);
@@ -492,28 +496,28 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     }
 
     @Override
-    protected Vec3d getPos(AltoClef mod, ItemEntity obj) {
-        if (!obj.isOnGround() && !obj.isTouchingWater()) {
+    protected Vec3 getPos(AltoClef mod, ItemEntity obj) {
+        if (!obj.onGround() && !obj.isInWater()) {
             // Assume we'll land down one or two blocks from here. We could do this more advanced but whatever.
-            BlockPos p = obj.getBlockPos();
-            if (!WorldHelper.isSolidBlock(p.down(3))) {
-                return obj.getPos().subtract(0, 2, 0);
+            BlockPos p = obj.blockPosition();
+            if (!WorldHelper.isSolidBlock(p.below(3))) {
+                return obj.position().subtract(0, 2, 0);
             }
-            return obj.getPos().subtract(0, 1, 0);
+            return obj.position().subtract(0, 1, 0);
         }
-        return obj.getPos();
+        return obj.position();
     }
 
     @Override
-    protected Optional<ItemEntity> getClosestTo(AltoClef mod, Vec3d pos) {
+    protected Optional<ItemEntity> getClosestTo(AltoClef mod, Vec3 pos) {
         return mod.getEntityTracker().getClosestItemDrop(
                 pos,
                 itemTargets);
     }
 
     @Override
-    protected Vec3d getOriginPos(AltoClef mod) {
-        return mod.getPlayer().getPos();
+    protected Vec3 getOriginPos(AltoClef mod) {
+        return mod.getPlayer().position();
     }
 
     @Override
@@ -549,7 +553,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         boolean touching = _mod.getEntityTracker().isCollidingWithPlayer(itemEntity);
         if (touching) {
             if (_freeInventoryIfFull) {
-                if (_mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(itemEntity.getStack(), false).isEmpty()) {
+                if (_mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(itemEntity.getItem(), false).isEmpty()) {
                     return new EnsureFreeInventorySlotTask();
                 }
             }
@@ -610,9 +614,9 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     private static boolean sameDrop(ItemEntity a, ItemEntity b) {
         if (a == b) return true;
         if (a == null || b == null) return false;
-        if (!a.getStack().getItem().equals(b.getStack().getItem())) return false;
+        if (!a.getItem().getItem().equals(b.getItem().getItem())) return false;
         // A drop DRIFTS -- half a block was too tight and the budget never accrued
         // (pursuit=15/0s with dropBudget=0 at a measured stall, where the target moved 82 cm).
-        return a.getPos().squaredDistanceTo(b.getPos()) <= 4.0D;
+        return a.position().distanceToSqr(b.position()) <= 4.0D;
     }
 }

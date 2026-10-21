@@ -1,25 +1,25 @@
 package adris.altoclef.multiversion.world;
 
 import adris.altoclef.multiversion.Pattern;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.world.World;
-import net.minecraft.world.biome.Biome;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
 
 //#if MC >= 11802
-import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.core.Holder;
 //#endif
 
 public class WorldVer {
 
 
 
-    public static boolean isBiomeAtPos(World world, RegistryKey<Biome> biome, BlockPos pos) {
+    public static boolean isBiomeAtPos(Level world, ResourceKey<Biome> biome, BlockPos pos) {
         //#if MC >= 11802
-        RegistryEntry<Biome> b = world.getBiome(pos);
-        return b.matchesKey(biome);
+        Holder<Biome> b = world.getBiome(pos);
+        return b.is(biome);
         //#else
         //$$ Biome b = world.getBiome(pos);
         //$$ return world.getRegistryManager().get(Registry.BIOME_KEY).get(biome) == b;
@@ -28,39 +28,39 @@ public class WorldVer {
 
 
     //#if MC >= 11802
-    public static boolean isBiome(RegistryEntry<Biome> biome1, RegistryKey<Biome> biome2) {
-        return biome1.matchesKey(biome2);
+    public static boolean isBiome(Holder<Biome> biome1, ResourceKey<Biome> biome2) {
+        return biome1.is(biome2);
     }
     //#else
-    //$$ public static boolean isBiome(Biome biome1, RegistryKey<Biome> biome2) {
-    //$$     World world = MinecraftClient.getInstance().world;
+    //$$ public static boolean isBiome(Biome biome1, ResourceKey<Biome> biome2) {
+    //$$     Level world = Minecraft.getInstance().world;
     //$$     return world.getRegistryManager().get(Registry.BIOME_KEY).get(biome2) == biome1;
     //$$ }
     //#endif
 
 
     @Pattern
-    public static int getBottomY(World world) {
+    public static int getBottomY(Level world) {
         //#if MC >= 11701
-        return world.getBottomY();
+        return world.getMinY();
         //#else
         //$$ return adris.altoclef.multiversion.world.WorldHelper.getBottomY(world);
         //#endif
     }
 
     @Pattern
-    public static int getTopY(World world) {
+    public static int getTopY(Level world) {
         //#if MC >= 11701
-        return world.getTopY();
+        return world.getHeight();
         //#else
-        //$$ return adris.altoclef.multiversion.world.WorldHelper.getTopY(world);
+        //$$ return adris.altoclef.multiversion.world.WorldHelper.getHeight(world);
         //#endif
     }
 
     @Pattern
-    private static boolean isOutOfHeightLimit(World world,BlockPos pos) {
+    private static boolean isOutOfHeightLimit(Level world,BlockPos pos) {
         //#if MC >= 11701
-        return world.isOutOfHeightLimit(pos);
+        return world.isOutsideBuildHeight(pos);
         //#else
         //$$ return adris.altoclef.multiversion.world.WorldHelper.isOutOfHeightLimit(world,pos);
         //#endif

@@ -8,7 +8,7 @@ import kaptainwutax.tungsten.agent.Agent;
 import kaptainwutax.tungsten.mixin.AccessorLivingEntity;
 import kaptainwutax.tungsten.task.BlockPathWalker;
 import kaptainwutax.tungsten.task.FastNavigator;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -70,27 +70,27 @@ public final class TaskMovementTrace {
     private static void record(String event, Agent expected) {
         if (!enabled) return;
         try {
-            MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc.player == null || mc.world == null) return;
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player == null || mc.level == null) return;
             var player = mc.player;
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("seq", ++sequence);
             row.put("epochMs", System.currentTimeMillis());
-            row.put("age", player.age);
+            row.put("age", player.tickCount);
             row.put("event", event);
             row.put("pos", List.of(player.getX(), player.getY(), player.getZ()));
-            row.put("vel", List.of(player.getVelocity().x, player.getVelocity().y, player.getVelocity().z));
-            row.put("ground", player.isOnGround());
-            row.put("water", player.isTouchingWater());
+            row.put("vel", List.of(player.getDeltaMovement().x, player.getDeltaMovement().y, player.getDeltaMovement().z));
+            row.put("ground", player.onGround());
+            row.put("water", player.isInWater());
             // Feet touching water does not establish oxygen loss. Keep eye submersion
             // and oxygen in this same client-tick snapshot as keys and task ownership.
-            row.put("submerged", player.isSubmergedInWater());
-            row.put("air", player.getAir());
-            row.put("maxAir", player.getMaxAir());
+            row.put("submerged", player.isUnderWater());
+            row.put("air", player.getAirSupply());
+            row.put("maxAir", player.getMaxAirSupply());
             row.put("lava", player.isInLava());
             row.put("hp", player.getHealth());
-            row.put("yaw", player.getYaw());
-            row.put("pitch", player.getPitch());
+            row.put("yaw", player.getYRot(1.0f));
+            row.put("pitch", player.getXRot(1.0f));
             row.put("sprinting", player.isSprinting());
             if (expected != null) {
                 row.put("replayTick", TungstenModDataContainer.EXECUTOR.getCurrentTick());
@@ -110,13 +110,13 @@ public final class TaskMovementTrace {
                         + (expected.keyJump ? "J" : ".")
                         + (expected.keySneak ? "C" : "."));
             }
-            row.put("keys", "" + (mc.options.forwardKey.isPressed() ? "F" : ".")
-                    + (mc.options.backKey.isPressed() ? "B" : ".")
-                    + (mc.options.leftKey.isPressed() ? "L" : ".")
-                    + (mc.options.rightKey.isPressed() ? "R" : ".")
-                    + (mc.options.sprintKey.isPressed() ? "S" : ".")
-                    + (mc.options.jumpKey.isPressed() ? "J" : ".")
-                    + (mc.options.sneakKey.isPressed() ? "C" : "."));
+            row.put("keys", "" + (mc.options.keyUp.isDown() ? "F" : ".")
+                    + (mc.options.keyDown.isDown() ? "B" : ".")
+                    + (mc.options.keyLeft.isDown() ? "L" : ".")
+                    + (mc.options.keyRight.isDown() ? "R" : ".")
+                    + (mc.options.keySprint.isDown() ? "S" : ".")
+                    + (mc.options.keyJump.isDown() ? "J" : ".")
+                    + (mc.options.keyShift.isDown() ? "C" : "."));
             row.put("walker", BlockPathWalker.isRunning());
             row.put("navigatorLeg", BlockPathWalker.isNavigatorLeg());
             row.put("navigator", FastNavigator.isActive());
@@ -143,7 +143,7 @@ public final class TaskMovementTrace {
                     || kaptainwutax.tungsten.task.FollowPlayerTask.isActive());
             row.put("flee", kaptainwutax.tungsten.task.RunAwayTask.isActive());
             row.put("punk", kaptainwutax.tungsten.task.PunkPlayerTask.isActive());
-            row.put("route", BlockPathWalker.describeAgainstRoute(player.getBlockPos()));
+            row.put("route", BlockPathWalker.describeAgainstRoute(player.blockPosition()));
             row.put("driveAgeMs", System.currentTimeMillis() - CustomBaritoneGoalTask.lastDriveTickMs);
             var chain = AltoClef.getInstance().getTaskRunner().getCurrentTaskChain();
             row.put("tasks", chain == null ? List.of() : chain.getTasks().stream()

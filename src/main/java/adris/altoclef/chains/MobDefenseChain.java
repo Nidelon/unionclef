@@ -27,24 +27,46 @@ import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import kaptainwutax.tungsten.path.movements.Rotation;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.AbstractFireBlock;
-import net.minecraft.block.Block;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.boss.WitherEntity;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.mob.*;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
-import net.minecraft.entity.projectile.*;
-import net.minecraft.entity.projectile.thrown.PotionEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.BaseFireBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.monster.Blaze;
+import net.minecraft.world.entity.monster.spider.CaveSpider;
+import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.zombie.Drowned;
+import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Ghast;
+import net.minecraft.world.entity.monster.hoglin.Hoglin;
+import net.minecraft.world.entity.monster.cubemob.MagmaCube;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.monster.piglin.PiglinBrute;
+import net.minecraft.world.entity.monster.piglin.Piglin;
+import net.minecraft.world.entity.monster.illager.Pillager;
+import net.minecraft.world.entity.monster.skeleton.Skeleton;
+import net.minecraft.world.entity.monster.cubemob.Slime;
+import net.minecraft.world.entity.monster.skeleton.Stray;
+import net.minecraft.world.entity.monster.illager.Vindicator;
+import net.minecraft.world.entity.monster.Witch;
+import net.minecraft.world.entity.monster.skeleton.WitherSkeleton;
+import net.minecraft.world.entity.monster.Zoglin;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.projectile.arrow.Arrow;
+import net.minecraft.world.entity.projectile.hurtingprojectile.DragonFireball;
+import net.minecraft.world.entity.projectile.hurtingprojectile.LargeFireball;
+import net.minecraft.world.entity.projectile.hurtingprojectile.SmallFireball;
+import net.minecraft.world.entity.projectile.arrow.SpectralArrow;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.AbstractThrownPotion;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.Difficulty;
 
 
@@ -342,8 +364,8 @@ public class MobDefenseChain extends SingleTaskChain {
     // chased. Quote the POOLED figure, and treat any first series as provisional.
     private static final double SAFE_KEEP_DISTANCE = 8;
     // EntityTracker already excludes calm Endermen. Angry ones must count as threats at any health.
-    private static final List<Class<? extends Entity>> ignoredMobs = List.of(Entities.WARDEN, WitherEntity.class, BlazeEntity.class,
-            WitherSkeletonEntity.class, HoglinEntity.class, ZoglinEntity.class, PiglinBruteEntity.class, VindicatorEntity.class, MagmaCubeEntity.class);
+    private static final List<Class<? extends Entity>> ignoredMobs = List.of(Entities.WARDEN, WitherBoss.class, Blaze.class,
+            WitherSkeleton.class, Hoglin.class, Zoglin.class, PiglinBrute.class, Vindicator.class, MagmaCube.class);
 
     private static boolean shielding = false;
     private final DragonBreathTracker dragonBreathTracker = new DragonBreathTracker();
@@ -357,7 +379,7 @@ public class MobDefenseChain extends SingleTaskChain {
     /** G61: is the committed fight's controller driving the legs at THIS target right now? The
      *  kill task's mob branch asks before it sprints at a target of its own: one owner of the
      *  legs at a time, and inside 4.5 of a mob this chain has decided to fight, that is tungsten. */
-    public boolean tungstenDrives(net.minecraft.entity.Entity target) {
+    public boolean tungstenDrives(net.minecraft.world.entity.Entity target) {
         return target != null && target == lockedOnEntity && tungstenDrivingMs > 0
                 && System.currentTimeMillis() - tungstenDrivingMs < 500;
     }
@@ -387,7 +409,7 @@ public class MobDefenseChain extends SingleTaskChain {
     private boolean wasPuttingOutFire = false;
     private CustomBaritoneGoalTask runAwayTask;
     /** Flight needs a plan B. See the flee branch for what happens without one. */
-    private net.minecraft.util.math.BlockPos fleeAnchor = null;
+    private net.minecraft.core.BlockPos fleeAnchor = null;
     private int fleeStuckTicks = 0;
     private int fleeSuppressedTicks = 0;
     /** When the current spell of danger-flight began, and when it last bid (see the flee branch). */
@@ -410,8 +432,8 @@ public class MobDefenseChain extends SingleTaskChain {
 
     /** The range at which the annoying-hostile branch takes this mob on (see it for the values). */
     private static double annoyingRangeOf(AltoClef mod, Entity e) {
-        boolean ranged = e instanceof SkeletonEntity || e instanceof WitchEntity || e instanceof PillagerEntity
-                || e instanceof PiglinEntity || e instanceof StrayEntity || e instanceof CaveSpiderEntity;
+        boolean ranged = e instanceof Skeleton || e instanceof Witch || e instanceof Pillager
+                || e instanceof Piglin || e instanceof Stray || e instanceof CaveSpider;
         if (!ranged) return 10;
         return hasShield(mod) ? 20 : 35;
     }
@@ -438,7 +460,7 @@ public class MobDefenseChain extends SingleTaskChain {
      */
     private double suggestedDodgeX, suggestedDodgeZ;
     /** The arrow the heading was taken from; ProjectileDodge.plan simulates the sidestep against it. */
-    private Vec3d suggestedArrowPos, suggestedArrowVel;
+    private Vec3 suggestedArrowPos, suggestedArrowVel;
     private double suggestedArrowGravity;
     /** How long one sidestep runs. An arrow crosses twelve blocks in about eight ticks. */
     private static final int DODGE_HOLD_TICKS = 6;
@@ -472,9 +494,9 @@ public class MobDefenseChain extends SingleTaskChain {
         super(runner);
     }
 
-    public static double getCreeperSafety(Vec3d pos, CreeperEntity creeper) {
-        double distance = creeper.squaredDistanceTo(pos);
-        float fuse = creeper.getClientFuseTime(1);
+    public static double getCreeperSafety(Vec3 pos, Creeper creeper) {
+        double distance = creeper.distanceToSqr(pos);
+        float fuse = creeper.getSwelling(1);
 
         // Not fusing.
         if (fuse <= 0.001f) return distance;
@@ -491,7 +513,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 List<ItemStack> spaceSlots = mod.getItemStorage().getItemStacksPlayerInventory(false);
                 for (ItemStack spaceSlot : spaceSlots) {
                     if (spaceSlot.isEmpty()) {
-                        mod.getSlotHandler().clickSlot(PlayerSlot.getEquipSlot(), 0, SlotActionType.QUICK_MOVE);
+                        mod.getSlotHandler().clickSlot(PlayerSlot.getEquipSlot(), 0, ContainerInput.QUICK_MOVE);
                         return;
                     }
                 }
@@ -508,7 +530,7 @@ public class MobDefenseChain extends SingleTaskChain {
         Item bestSword = getBestSword(mod);
         float damage = bestSword == null ? 0 : meleeDamageOf(bestSword) + 1;
         int shield = hasShield(mod) && bestSword != null ? 3 : 0;
-        return (int) Math.ceil((mod.getPlayer().getArmor() * 3.6 / 20.0) + (damage * 0.8) + shield);
+        return (int) Math.ceil((mod.getPlayer().getArmorValue() * 3.6 / 20.0) + (damage * 0.8) + shield);
     }
 
     /**
@@ -528,11 +550,11 @@ public class MobDefenseChain extends SingleTaskChain {
         List<LivingEntity> threats = new ArrayList<>();
         synchronized (BaritoneHelper.MINECRAFT_LOCK) {
             for (LivingEntity e : mod.getEntityTracker().getHostiles()) {
-                if (!e.isInRange(mod.getPlayer(), SAFE_KEEP_DISTANCE)
+                if (!e.closerThan(mod.getPlayer(), SAFE_KEEP_DISTANCE)
                         || mod.getBehaviour().shouldExcludeFromForcefield(e)
                         || !EntityHelper.isAngryAtPlayer(mod, e)) continue;
                 // A creeper is never fought at melee range (G43); its avoidance lives elsewhere.
-                if (e instanceof CreeperEntity) return false;
+                if (e instanceof Creeper) return false;
                 threats.add(e);
             }
         }
@@ -542,10 +564,10 @@ public class MobDefenseChain extends SingleTaskChain {
     private static int getDangerousnessScore(List<LivingEntity> toDealWithList) {
         int numberOfProblematicEntities = toDealWithList.size();
         for (LivingEntity toDealWith : toDealWithList) {
-            if (toDealWith instanceof EndermanEntity || toDealWith instanceof SlimeEntity || toDealWith instanceof BlazeEntity) {
+            if (toDealWith instanceof EnderMan || toDealWith instanceof Slime || toDealWith instanceof Blaze) {
 
                 numberOfProblematicEntities += 1;
-            } else if (toDealWith instanceof DrownedEntity
+            } else if (toDealWith instanceof Drowned
                     && LivingEntityVer.hasTrident(toDealWith)
             ) {
                 // Drowned with tridents are also REALLY dangerous, maybe we should increase this??
@@ -586,14 +608,14 @@ public class MobDefenseChain extends SingleTaskChain {
             // arrives from the front (the mob we are fighting) or from behind (one that walked
             // round while we fought) decides which fix is even relevant: aim/timing for the
             // former, positioning for the latter. Recorded as four counters rather than argued.
-            net.minecraft.entity.Entity src = null;
+            net.minecraft.world.entity.Entity src = null;
             double best = Double.MAX_VALUE;
             try {
-                for (net.minecraft.entity.Entity e : mod.getWorld().getEntities()) {
-                    if (!(e instanceof net.minecraft.entity.mob.HostileEntity) || !e.isAlive()) {
+                for (net.minecraft.world.entity.Entity e : mod.getWorld().entitiesForRendering()) {
+                    if (!(e instanceof net.minecraft.world.entity.monster.Monster) || !e.isAlive()) {
                         continue;
                     }
-                    double d = e.squaredDistanceTo(mod.getPlayer());
+                    double d = e.distanceToSqr(mod.getPlayer());
                     if (d < best) {
                         best = d;
                         src = e;
@@ -605,7 +627,7 @@ public class MobDefenseChain extends SingleTaskChain {
             if (src != null) {
                 double dx = src.getX() - mod.getPlayer().getX();
                 double dz = src.getZ() - mod.getPlayer().getZ();
-                double yaw = Math.toRadians(mod.getPlayer().getYaw());
+                double yaw = Math.toRadians(mod.getPlayer().getYRot(1.0f));
                 double fwd = -Math.sin(yaw) * dx + Math.cos(yaw) * dz;
                 double side = Math.cos(yaw) * dx + Math.sin(yaw) * dz;
                 if (Math.abs(fwd) >= Math.abs(side)) {
@@ -676,10 +698,10 @@ public class MobDefenseChain extends SingleTaskChain {
      * attacker and direct-source ids). An unknown source counts as an attack, so where the client
      * cannot tell this falls back to what the rule always did.
      */
-    private static boolean damageHadAnAttacker(net.minecraft.entity.LivingEntity self) {
+    private static boolean damageHadAnAttacker(net.minecraft.world.entity.LivingEntity self) {
         if (self == null) return true;
-        net.minecraft.entity.damage.DamageSource src = self.getRecentDamageSource();
-        return src == null || src.getAttacker() != null || src.getSource() != null;
+        net.minecraft.world.damagesource.DamageSource src = self.getLastDamageSource();
+        return src == null || src.getEntity() != null || src.getDirectEntity() != null;
     }
 
     private void stopShielding(AltoClef mod) {
@@ -689,7 +711,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 Optional<Slot> toMoveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false).or(() -> StorageHelper.getGarbageSlot(mod));
                 if (toMoveTo.isPresent()) {
                     Slot garbageSlot = toMoveTo.get();
-                    mod.getSlotHandler().clickSlot(garbageSlot, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(garbageSlot, 0, ContainerInput.PICKUP);
                 }
             }
             mod.getInputControls().release(Input.SNEAK);
@@ -736,7 +758,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // Tick immunity wakeups: clear immunity if HP dropped / entity got hurt
         AbstractKillEntityTask.tickImmunityWakeups(mod.getEntityTracker().getCloseEntities());
         // If something immune attacks us, clear its immunity immediately
-        Entity attacker = mod.getPlayer().getAttacker();
+        Entity attacker = mod.getPlayer().getLastHurtByMob();
         if (attacker != null && AbstractKillEntityTask.hasImmunity(attacker)) {
             AbstractKillEntityTask.clearImmunity(attacker);
         }
@@ -786,7 +808,7 @@ public class MobDefenseChain extends SingleTaskChain {
         Optional<Entity> universallyDangerous = getUniversallyDangerousMob(mod);
         if (universallyDangerous.isPresent() && mod.getPlayer().getHealth() <= 10
                 && fleeSuppressedTicks == 0) {
-            net.minecraft.util.math.BlockPos here = mod.getPlayer().getBlockPos();
+            net.minecraft.core.BlockPos here = mod.getPlayer().blockPosition();
             if (fleeAnchor != null && fleeAnchor.equals(here)) {
                 fleeStuckTicks++;
             } else {
@@ -815,19 +837,19 @@ public class MobDefenseChain extends SingleTaskChain {
         PlayerSlot offhandSlot = PlayerSlot.OFFHAND_SLOT;
         Item offhandItem = StorageHelper.getItemStackInSlot(offhandSlot).getItem();
         // Run away from creepers
-        CreeperEntity blowingUp = getClosestFusingCreeper(mod);
+        Creeper blowingUp = getClosestFusingCreeper(mod);
         if (blowingUp != null) {
             if ((!mod.getFoodChain().isTryingToEat() || mod.getPlayer().getHealth() < 9)
                     && hasShield(mod)
-                    && !mod.getEntityTracker().entityFound(PotionEntity.class)
+                    && !mod.getEntityTracker().entityFound(AbstractThrownPotion.class)
                     //#if MC >= 12111
                     //$$ && !mod.getPlayer().getItemCooldownManager().isCoolingDown(offhandItem.getDefaultStack())
                     //#else
-                    && !mod.getPlayer().getItemCooldownManager().isCoolingDown(offhandItem)
+                    && !mod.getPlayer().getCooldowns().isOnCooldown(offhandItem.getDefaultInstance())
                     //#endif
                     && (Nav.isSafeToCancel())
-                    && blowingUp.getClientFuseTime(blowingUp.getFuseSpeed()) > 0.5) {
-                LookHelper.lookAt(mod, blowingUp.getEyePos());
+                    && blowingUp.getSwelling(blowingUp.getSwellDir()) > 0.5) {
+                LookHelper.lookAt(mod, blowingUp.getEyePosition());
                 ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
                 if (shieldSlot.getItem() != Items.SHIELD) {
                     mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
@@ -838,7 +860,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 doingFunkyStuff = true;
                 runAwayTask = new RunAwayFromCreepersTask(CREEPER_KEEP_DISTANCE);
                 setTask(runAwayTask);
-                mdRet1++; return 50 + blowingUp.getClientFuseTime(1) * 50;
+                mdRet1++; return 50 + blowingUp.getSwelling(1) * 50;
             }
         }
         // Hunger is a request, not ownership of the hand. FoodChain refuses to eat
@@ -862,10 +884,10 @@ public class MobDefenseChain extends SingleTaskChain {
                     //#if MC >= 12111
                     //$$ && !mod.getPlayer().getItemCooldownManager().isCoolingDown(offhandItem.getDefaultStack())
                     //#else
-                    && !mod.getPlayer().getItemCooldownManager().isCoolingDown(offhandItem)
+                    && !mod.getPlayer().getCooldowns().isOnCooldown(offhandItem.getDefaultInstance())
                     //#endif
                     && (Nav.isSafeToCancel())
-                    && !mod.getEntityTracker().entityFound(PotionEntity.class) && projectileIsClose) {
+                    && !mod.getEntityTracker().entityFound(AbstractThrownPotion.class) && projectileIsClose) {
                 ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
                 if (shieldSlot.getItem() != Items.SHIELD) {
                     mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
@@ -890,7 +912,7 @@ public class MobDefenseChain extends SingleTaskChain {
             // other) it took 43 ticks and every one of 8 arrows landed (32 hp). It stays only for
             // the dodgeSearch=false arm.
             if (!kaptainwutax.tungsten.TungstenConfig.get().dodgeSearch
-                    && WorldHelper.isDangerZone(mod, mod.getPlayer().getBlockPos())) {
+                    && WorldHelper.isDangerZone(mod, mod.getPlayer().blockPosition())) {
                 // Danger zone (void/lava/edge): use baritone pathfinding to dodge safely
                 // ⛔ THIS IS THE SUSPECTED FEEDBACK LOOP, AND THIS COUNTS IT.
                 // DodgeProjectilesTask is a PATHING task whose job is to hold ARROW_KEEP_DISTANCE
@@ -924,7 +946,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 // in hand before judging.
                 mdDodgeTaskTicks++;
                 mdDodgeTaskGapMilli += (int) Math.round(
-                        mod.getPlayer().getPos().distanceTo(projectileClosestPos(mod)) * 1000.0);
+                        mod.getPlayer().position().distanceTo(projectileClosestPos(mod)) * 1000.0);
                 runAwayTask = new DodgeProjectilesTask(ARROW_KEEP_DISTANCE_HORIZONTAL, ARROW_KEEP_DISTANCE_VERTICAL);
                 setTask(runAwayTask);
             } else if (suggestedDodgeX != 0 || suggestedDodgeZ != 0) {
@@ -1026,7 +1048,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
         // Player threat: attack players marked for attack
         Optional<Entity> toAttackPlayer = getAttackPlayer(mod);
-        if (toAttackPlayer.isPresent() && toAttackPlayer.get() instanceof PlayerEntity player) {
+        if (toAttackPlayer.isPresent() && toAttackPlayer.get() instanceof Player player) {
             _killTask = new CombatTask(player.getName().getString(), false, true);
             mdFight++;
             setTask(_killTask);
@@ -1043,7 +1065,7 @@ public class MobDefenseChain extends SingleTaskChain {
             List<LivingEntity> hostiles = mod.getEntityTracker().getHostiles();
 
             List<LivingEntity> toDealWithList = new ArrayList<>();
-            CreeperEntity closeCreeper = null;
+            Creeper closeCreeper = null;
 
             synchronized (BaritoneHelper.MINECRAFT_LOCK) {
                 for (LivingEntity hostile : hostiles) {
@@ -1057,7 +1079,7 @@ public class MobDefenseChain extends SingleTaskChain {
                     // for a bot that is walking INTO it. A creeper that is close and can see us is
                     // avoided, not engaged; one further away is left alone.
                     if (kaptainwutax.tungsten.TungstenConfig.get().neverMeleeCreepers
-                            && hostile instanceof CreeperEntity creeperNear) {
+                            && hostile instanceof Creeper creeperNear) {
                         // ⛔ A CREEPER THAT IS ALREADY CLOSE IS AVOIDED WHETHER OR NOT IT "SEES" US
                         // (G70, 2026-09-12). The 22:34 run, 19:44:35 UTC: "tester1 was blown up by
                         // Creeper" at hp 19, mid-climb on a hillside (MovementQueue CLIMB+9, +5),
@@ -1067,13 +1089,13 @@ public class MobDefenseChain extends SingleTaskChain {
                         // distance; the fusing branch above then has thirty ticks and a body that
                         // is still climbing. A creeper inside CREEPER_NEAR_RANGE is a threat on any
                         // terrain, seen or not; the sight test stays for the far half of the range.
-                        boolean nearRegardless = creeperNear.isInRange(mod.getPlayer(), CREEPER_NEAR_RANGE);
+                        boolean nearRegardless = creeperNear.closerThan(mod.getPlayer(), CREEPER_NEAR_RANGE);
                         if ((nearRegardless
-                                || (creeperNear.isInRange(mod.getPlayer(), CREEPER_AVOID_RANGE)
+                                || (creeperNear.closerThan(mod.getPlayer(), CREEPER_AVOID_RANGE)
                                     && LookHelper.seesPlayer(creeperNear, mod.getPlayer(), CREEPER_AVOID_RANGE)))
                                 && (closeCreeper == null
-                                    || creeperNear.squaredDistanceTo(mod.getPlayer())
-                                       < closeCreeper.squaredDistanceTo(mod.getPlayer()))) {
+                                    || creeperNear.distanceToSqr(mod.getPlayer())
+                                       < closeCreeper.distanceToSqr(mod.getPlayer()))) {
                             closeCreeper = creeperNear;
                             if (nearRegardless && !LookHelper.seesPlayer(creeperNear, mod.getPlayer(), CREEPER_AVOID_RANGE)) {
                                 mdCreeperUnseenNear++;
@@ -1082,27 +1104,27 @@ public class MobDefenseChain extends SingleTaskChain {
                         // SAY WHAT THE CHAIN SEES, ONCE A SECOND, WHILE A CREEPER IS IN RANGE: the
                         // death above left no trace at all, and a verdict on a death needs one.
                         long nowC = System.currentTimeMillis();
-                        if (nowC - creeperLogMs > 1000L && creeperNear.isInRange(mod.getPlayer(), CREEPER_AVOID_RANGE)) {
+                        if (nowC - creeperLogMs > 1000L && creeperNear.closerThan(mod.getPlayer(), CREEPER_AVOID_RANGE)) {
                             creeperLogMs = nowC;
                             Debug.logMessage(String.format(
                                     "creeper at %.1f sees=%b fuse=%.2f -> %s",
                                     creeperNear.distanceTo(mod.getPlayer()),
                                     LookHelper.seesPlayer(creeperNear, mod.getPlayer(), CREEPER_AVOID_RANGE),
-                                    creeperNear.getClientFuseTime(1),
+                                    creeperNear.getSwelling(1),
                                     closeCreeper == creeperNear ? "avoid" : "leave"));
                         }
                         continue;
                     }
                     // Under a finished enderman shelter the shelter task fights endermen from where it
                     // stands; chasing one here would walk the body out from under the roof.
-                    if (hostile instanceof EndermanEntity
+                    if (hostile instanceof EnderMan
                             && adris.altoclef.tasks.entity.EndermanShelterTask.holding()) {
                         continue;
                     }
-                    boolean isRangedOrPoisonous = (hostile instanceof SkeletonEntity
-                            || hostile instanceof WitchEntity || hostile instanceof PillagerEntity
-                            || hostile instanceof PiglinEntity || hostile instanceof StrayEntity
-                            || hostile instanceof CaveSpiderEntity);
+                    boolean isRangedOrPoisonous = (hostile instanceof Skeleton
+                            || hostile instanceof Witch || hostile instanceof Pillager
+                            || hostile instanceof Piglin || hostile instanceof Stray
+                            || hostile instanceof CaveSpider);
                     int annoyingRange = 10;
 
                     if (isRangedOrPoisonous) {
@@ -1113,7 +1135,7 @@ public class MobDefenseChain extends SingleTaskChain {
                     }
 
                     // Give each hostile a timer, if they're close for too long deal with them.
-                    if (hostile.isInRange(mod.getPlayer(), annoyingRange) && LookHelper.seesPlayer(hostile, mod.getPlayer(), annoyingRange)) {
+                    if (hostile.closerThan(mod.getPlayer(), annoyingRange) && LookHelper.seesPlayer(hostile, mod.getPlayer(), annoyingRange)) {
 
                         // Skip entities with combat immunity (5 reposition cycles, no damage → 5 min ignore)
                         if (AbstractKillEntityTask.hasImmunity(hostile)) continue;
@@ -1263,7 +1285,7 @@ public class MobDefenseChain extends SingleTaskChain {
                     // Tell the approach latch what we are committed to. It only fires on ticks
                     // where nothing else drove the legs, and only for a few ticks after this
                     // stamp, so it dies with the fight instead of lingering.
-                    kaptainwutax.tungsten.combat.ApproachLatch.stamp(toKill.getPos());
+                    kaptainwutax.tungsten.combat.ApproachLatch.stamp(toKill.position());
                     setTask(new KillEntitiesTask(toKill.getClass()));
                     mdRet6++; return 65;
                 } else {
@@ -1294,7 +1316,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // now lasts while that mob is within the range the chain takes mobs on at (plus a margin),
         // and the kill task is for that mob only.
         if (needsChangeOnAttack && lockedOnEntity != null && lockedOnEntity.isAlive()
-                && lockedOnEntity.squaredDistanceTo(mod.getPlayer())
+                && lockedOnEntity.distanceToSqr(mod.getPlayer())
                    < Math.pow(annoyingRangeOf(mod, lockedOnEntity) + LOCK_RANGE_MARGIN, 2)) {
             mdRet9++;
             final Entity locked = lockedOnEntity;
@@ -1309,7 +1331,7 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     /** Called from ProjectileEvent subscription — instant projectile detection. */
-    public void onProjectileLaunched(AltoClef mod, ProjectileEntity arrowEntity, boolean sticked) {
+    public void onProjectileLaunched(AltoClef mod, Projectile arrowEntity, boolean sticked) {
         if (!sticked)
             mod.getEntityTracker().addProjectile(arrowEntity);
         // ⛔ DO NOT RECORD THE RELEASE RANGE HERE — THIS HOOK BARELY FIRES.
@@ -1329,7 +1351,7 @@ public class MobDefenseChain extends SingleTaskChain {
     public void onPlayerItemUse(AltoClef mod, Entity entity, boolean released) {
         // DISABLED FOR NOW — ported from autoclef, was disabled there too.
         // Enable by removing the `if (false &&` guard when ready to test.
-        if (false && entity instanceof PlayerEntity player && mod.getPlayer() != null) {
+        if (false && entity instanceof Player player && mod.getPlayer() != null) {
             double prob = LookHelper.getLookingProbability(player, mod.getPlayer());
 
             if (prob > 0.96) {
@@ -1337,10 +1359,10 @@ public class MobDefenseChain extends SingleTaskChain {
                 // for the same reason as the live path above: the primitive strafes, it does not
                 // steer. Still dead code behind `if (false &&` -- converted rather than left
                 // referring to a field that no longer exists.
-                Vec3d away = mod.getPlayer().getPos().subtract(player.getPos());
-                Vec3d flat = new Vec3d(away.x, 0, away.z);
-                if (flat.lengthSquared() > 1.0e-6) {
-                    Vec3d across = new Vec3d(-flat.z, 0, flat.x).normalize();
+                Vec3 away = mod.getPlayer().position().subtract(player.position());
+                Vec3 flat = new Vec3(away.x, 0, away.z);
+                if (flat.lengthSqr() > 1.0e-6) {
+                    Vec3 across = new Vec3(-flat.z, 0, flat.x).normalize();
                     suggestedDodgeX = across.x;
                     suggestedDodgeZ = across.z;
                 }
@@ -1401,7 +1423,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
     /** Anything in the pack we can stand on. Without one, height is not an option. */
     private static boolean hasPillarBlock(AltoClef mod) {
-        for (net.minecraft.item.Item b : new net.minecraft.item.Item[]{
+        for (net.minecraft.world.item.Item b : new net.minecraft.world.item.Item[]{
                 Items.COBBLESTONE, Items.DIRT, Items.STONE, Items.NETHERRACK, Items.OAK_PLANKS}) {
             if (mod.getItemStorage().hasItem(b)) {
                 return true;
@@ -1413,21 +1435,21 @@ public class MobDefenseChain extends SingleTaskChain {
     private BlockPos isInsideFireAndOnFire(AltoClef mod) {
         boolean onFire = mod.getPlayer().isOnFire();
         if (!onFire) return null;
-        BlockPos p = mod.getPlayer().getBlockPos();
+        BlockPos p = mod.getPlayer().blockPosition();
         BlockPos[] toCheck = new BlockPos[]{
                 p,
-                p.add(1,0,0),
-                p.add(1,0,-1),
-                p.add(0,0,-1),
-                p.add(-1,0,-1),
-                p.add(-1,0,0),
-                p.add(-1,0,1),
-                p.add(0,0,1),
-                p.add(1,0,1)
+                p.offset(1,0,0),
+                p.offset(1,0,-1),
+                p.offset(0,0,-1),
+                p.offset(-1,0,-1),
+                p.offset(-1,0,0),
+                p.offset(-1,0,1),
+                p.offset(0,0,1),
+                p.offset(1,0,1)
         };
         for (BlockPos check : toCheck) {
             Block b = mod.getWorld().getBlockState(check).getBlock();
-            if (b instanceof AbstractFireBlock) {
+            if (b instanceof BaseFireBlock) {
                 return check;
             }
         }
@@ -1453,10 +1475,10 @@ public class MobDefenseChain extends SingleTaskChain {
         // grade); it plans off the client thread, so the positions are handed over here, once a
         // tick, from the tracker's list.
         try {
-            List<CreeperEntity> cs = mod.getEntityTracker().getTrackedEntities(CreeperEntity.class);
+            List<Creeper> cs = mod.getEntityTracker().getTrackedEntities(Creeper.class);
             double[] xyz = new double[cs.size() * 3];
             int k = 0;
-            for (CreeperEntity c : cs) {
+            for (Creeper c : cs) {
                 if (c == null || !c.isAlive()) continue;
                 xyz[k++] = c.getX(); xyz[k++] = c.getY(); xyz[k++] = c.getZ();
             }
@@ -1472,10 +1494,10 @@ public class MobDefenseChain extends SingleTaskChain {
         Entity nearest = null;
         double nearestSq = Double.MAX_VALUE;
         for (Entity e : entities) {
-            if (!(e instanceof net.minecraft.entity.LivingEntity) || !e.isAlive()) {
+            if (!(e instanceof net.minecraft.world.entity.LivingEntity) || !e.isAlive()) {
                 continue;
             }
-            double d2 = e.squaredDistanceTo(mod.getPlayer());
+            double d2 = e.distanceToSqr(mod.getPlayer());
             if (d2 < nearestSq) {
                 nearestSq = d2;
                 nearest = e;
@@ -1486,13 +1508,13 @@ public class MobDefenseChain extends SingleTaskChain {
                 boolean shouldForce = false;
                 if (mod.getBehaviour().shouldExcludeFromForcefield(entity)) continue;
                 if (AbstractKillEntityTask.hasImmunity(entity)) continue;
-                if (entity instanceof MobEntity) {
+                if (entity instanceof Mob) {
                     if (EntityHelper.isProbablyHostileToPlayer(mod, entity)) {
                         if (LookHelper.seesPlayer(entity, mod.getPlayer(), 10)) {
                             shouldForce = true;
                         }
                     }
-                } else if (entity instanceof FireballEntity) {
+                } else if (entity instanceof LargeFireball) {
                     // Ghast ball
                     shouldForce = true;
                 }
@@ -1519,7 +1541,7 @@ public class MobDefenseChain extends SingleTaskChain {
                     // able to chop wood while swatting. Aim still comes from the aura, and the
                     // angle gate simply refuses until it lands.
                     if (nearest != null && entity == nearest) {
-                        LookHelper.smoothLook(mod, (net.minecraft.entity.LivingEntity) entity);
+                        LookHelper.smoothLook(mod, (net.minecraft.world.entity.LivingEntity) entity);
                         kaptainwutax.tungsten.combat.CombatController.triggerBot.tick(
                                 mod.getPlayer(), entity);
                         mdAuraTungstenTicks++;
@@ -1535,18 +1557,18 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
 
-    private CreeperEntity getClosestFusingCreeper(AltoClef mod) {
+    private Creeper getClosestFusingCreeper(AltoClef mod) {
         double worstSafety = Float.POSITIVE_INFINITY;
-        CreeperEntity target = null;
+        Creeper target = null;
         try {
-            List<CreeperEntity> creepers = mod.getEntityTracker().getTrackedEntities(CreeperEntity.class);
-            for (CreeperEntity creeper : creepers) {
+            List<Creeper> creepers = mod.getEntityTracker().getTrackedEntities(Creeper.class);
+            for (Creeper creeper : creepers) {
                 if (creeper == null) continue;
-                if (creeper.getClientFuseTime(1) < 0.001) continue;
+                if (creeper.getSwelling(1) < 0.001) continue;
 
                 // We want to pick the closest creeper, but FIRST pick creepers about to blow
                 // At max fuse, the cost goes to basically zero.
-                double safety = getCreeperSafety(mod.getPlayer().getPos(), creeper);
+                double safety = getCreeperSafety(mod.getPlayer().position(), creeper);
                 if (safety < worstSafety) {
                     worstSafety = safety;
                     target = creeper;
@@ -1601,13 +1623,13 @@ public class MobDefenseChain extends SingleTaskChain {
      */
     private void noticeArrows(AltoClef mod) {
         try {
-            ClientPlayerEntity self = mod.getPlayer();
+            LocalPlayer self = mod.getPlayer();
             if (self == null) return;
-            Vec3d plyPos = self.getPos();
+            Vec3 plyPos = self.position();
             for (CachedProjectile projectile : mod.getEntityTracker().getProjectiles()) {
                 if (projectile.entityId < 0 || projectile.position == null) continue;
                 if (!seenArrowIds.add(projectile.entityId)) continue;
-                int gap = (int) Math.round(Math.sqrt(projectile.position.squaredDistanceTo(plyPos)) * 1000.0);
+                int gap = (int) Math.round(Math.sqrt(projectile.position.distanceToSqr(plyPos)) * 1000.0);
                 mdArrows++;
                 mdArrowGapMilli += gap;
                 if (gap > mdArrowGapMaxMilli) mdArrowGapMaxMilli = gap;
@@ -1658,17 +1680,17 @@ public class MobDefenseChain extends SingleTaskChain {
         try {
             if (mod == null) return;
             mdLedgerTicks++;
-            ClientPlayerEntity self = mod.getPlayer();
+            LocalPlayer self = mod.getPlayer();
             if (self == null) return;
-            net.minecraft.client.world.ClientWorld world =
-                    net.minecraft.client.MinecraftClient.getInstance().world;
+            net.minecraft.client.multiplayer.ClientLevel world =
+                    net.minecraft.client.Minecraft.getInstance().level;
             if (world == null) return;
             java.util.Set<Integer> present = new java.util.HashSet<>();
-            for (net.minecraft.entity.Entity raw : world.getEntities()) {
+            for (net.minecraft.world.entity.Entity raw : world.entitiesForRendering()) {
                 if (!(raw instanceof LivingEntity)) continue;
                 LivingEntity e = (LivingEntity) raw;
                 if (e == self || !e.isAlive()) continue;
-                if (e.squaredDistanceTo(self) > LEDGER_RANGE_SQ) continue;
+                if (e.distanceToSqr(self) > LEDGER_RANGE_SQ) continue;
                 present.add(e.getId());
                 Float prev = lastTargetHp.put(e.getId(), e.getHealth());
                 if (prev == null || prev <= e.getHealth()) continue;
@@ -1708,7 +1730,7 @@ public class MobDefenseChain extends SingleTaskChain {
                                         // it is a distinct 1.0 source, and with a sword in hand
                                         // and no sprint that is vanilla's un-enchanted sweep.
                                         e.hurtTime,
-                                        Math.sqrt(e.squaredDistanceTo(self)),
+                                        Math.sqrt(e.distanceToSqr(self)),
                                         // AT THE SWING, not when the drop was seen: the hand can
                                         // change in the tick between, and it did -- that is how a
                                         // slot-sync fix got built on a hand read too late.
@@ -1726,8 +1748,8 @@ public class MobDefenseChain extends SingleTaskChain {
                                         // weaponMean says 75.00, but that is a mean over swings
                                         // that passed TriggerBot's gates; a swing sent by any
                                         // other path would never appear in it.
-                                        net.minecraft.registry.Registries.ITEM
-                                                .getId(self.getMainHandStack().getItem()).getPath(),
+                                        net.minecraft.core.registries.BuiltInRegistries.ITEM
+                                                .getKey(self.getMainHandItem().getItem()).getPath(),
                                         self.isSprinting() ? "Y" : "n"));
                             }
                         }
@@ -1755,12 +1777,12 @@ public class MobDefenseChain extends SingleTaskChain {
      */
     private void noticeDraws(AltoClef mod) {
         try {
-            ClientPlayerEntity self = mod.getPlayer();
+            LocalPlayer self = mod.getPlayer();
             if (self == null) return;
             java.util.Set<Integer> stillDrawing = new java.util.HashSet<>();
             boolean inBand = false;
             for (LivingEntity e : mod.getEntityTracker().getHostiles()) {
-                if (!(e instanceof net.minecraft.entity.ai.RangedAttackMob)) continue;
+                if (!(e instanceof net.minecraft.world.entity.monster.RangedAttackMob)) continue;
                 if (e == null || !e.isAlive()) continue;
                 double gap = e.distanceTo(self);
                 if (gap >= 2.5 && gap <= 7.0) inBand = true;
@@ -1804,16 +1826,16 @@ public class MobDefenseChain extends SingleTaskChain {
                     // is recharging would give up avoidance for nothing.
                     boolean swingInHand = false;
                     if (kaptainwutax.tungsten.TungstenConfig.get().combatDodgeYieldsToSwing) {
-                        swingInHand = self.getAttackCooldownProgress(0f) > 0.9f
+                        swingInHand = self.getAttackStrengthScale(0f) > 0.9f
                                 && kaptainwutax.tungsten.combat.TriggerBot.eyeToHitbox(self, e)
                                         <= kaptainwutax.tungsten.combat.TriggerBot.REACH + 1.5;
                     }
                     if (swingInHand) mdDodgeYielded++;
                     if (kaptainwutax.tungsten.TungstenConfig.get().combatDodgeOnDraw && !swingInHand) {
-                        Vec3d fromShooter = self.getPos().subtract(e.getPos());
-                        Vec3d flat = new Vec3d(fromShooter.x, 0, fromShooter.z);
-                        if (flat.lengthSquared() > 1.0e-6) {
-                            Vec3d b = flat.normalize();
+                        Vec3 fromShooter = self.position().subtract(e.position());
+                        Vec3 flat = new Vec3(fromShooter.x, 0, fromShooter.z);
+                        if (flat.lengthSqr() > 1.0e-6) {
+                            Vec3 b = flat.normalize();
                             double side = (mdDraws % 2 == 0) ? 1.0 : -1.0;
                             // ⛔ THIS PATH PASSED A PURE PERPENDICULAR AND THE OTHER ONE DOES NOT,
                             // AND DODGE_PRESS_BIAS's OWN JAVADOC PREDICTS WHAT THAT COSTS: "at 0 the
@@ -1836,9 +1858,9 @@ public class MobDefenseChain extends SingleTaskChain {
                             // still the primary motion and the approach is what it does with the
                             // rest -- which is the constant's stated design, applied where it was
                             // missing rather than re-tuned.
-                            Vec3d perp = new Vec3d(-b.z * side, 0, b.x * side);
-                            Vec3d dodgeDir = perp
-                                    .add(b.multiply(-DODGE_PRESS_BIAS))   // b points AWAY; close in
+                            Vec3 perp = new Vec3(-b.z * side, 0, b.x * side);
+                            Vec3 dodgeDir = perp
+                                    .add(b.scale(-DODGE_PRESS_BIAS))   // b points AWAY; close in
                                     .normalize();
                             kaptainwutax.tungsten.task.ProjectileDodge.hold(
                                     dodgeDir.x, dodgeDir.z, DODGE_HOLD_TICKS);
@@ -1866,19 +1888,19 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     /** Nearest living hostile's position, or our own when there is none — a zero gap then. */
-    private net.minecraft.util.math.Vec3d projectileClosestPos(AltoClef mod) {
+    private net.minecraft.world.phys.Vec3 projectileClosestPos(AltoClef mod) {
         try {
-            ClientPlayerEntity self = mod.getPlayer();
-            net.minecraft.util.math.Vec3d best = self.getPos();
+            LocalPlayer self = mod.getPlayer();
+            net.minecraft.world.phys.Vec3 best = self.position();
             double bestSq = Double.MAX_VALUE;
             for (LivingEntity e : mod.getEntityTracker().getHostiles()) {
                 if (e == null || !e.isAlive()) continue;
-                double d = e.getPos().squaredDistanceTo(self.getPos());
-                if (d < bestSq) { bestSq = d; best = e.getPos(); }
+                double d = e.position().distanceToSqr(self.position());
+                if (d < bestSq) { bestSq = d; best = e.position(); }
             }
             return best;
         } catch (Exception ignored) {
-            return mod.getPlayer().getPos();
+            return mod.getPlayer().position();
         }
     }
 
@@ -1886,39 +1908,39 @@ public class MobDefenseChain extends SingleTaskChain {
         noticeArrows(mod);
         noticeDraws(mod);
         List<CachedProjectile> projectiles = mod.getEntityTracker().getProjectiles();
-        Vec3d plyPos = mod.getPlayer().getPos();
+        Vec3 plyPos = mod.getPlayer().position();
         try {
             for (CachedProjectile projectile : projectiles) {
-                double sqDist = projectile.position.squaredDistanceTo(plyPos);
+                double sqDist = projectile.position.distanceToSqr(plyPos);
                 if (sqDist < 150) {
-                    boolean isGhastBall = projectile.projectileType == FireballEntity.class;
+                    boolean isGhastBall = projectile.projectileType == LargeFireball.class;
                     if (isGhastBall) {
-                        Optional<Entity> ghastBall = mod.getEntityTracker().getClosestEntity(FireballEntity.class);
-                        Optional<Entity> ghast = mod.getEntityTracker().getClosestEntity(GhastEntity.class);
+                        Optional<Entity> ghastBall = mod.getEntityTracker().getClosestEntity(LargeFireball.class);
+                        Optional<Entity> ghast = mod.getEntityTracker().getClosestEntity(Ghast.class);
                         if (ghastBall.isPresent() && ghast.isPresent() && runAwayTask == null
                                 && (Nav.isSafeToCancel())) {
                                                             Nav.pause();
-                            LookHelper.lookAt(mod, ghast.get().getEyePos());
+                            LookHelper.lookAt(mod, ghast.get().getEyePosition());
                         }
                         return false;
                     }
-                    if (projectile.projectileType == DragonFireballEntity.class) {
+                    if (projectile.projectileType == DragonFireball.class) {
                         continue;
                     }
-                    if (projectile.projectileType == ArrowEntity.class || projectile.projectileType == SpectralArrowEntity.class || projectile.projectileType == SmallFireballEntity.class) {
-                        PlayerEntity player = mod.getPlayer();
-                        if (player.squaredDistanceTo(projectile.position) < player.squaredDistanceTo(projectile.position.add(projectile.velocity))) {
+                    if (projectile.projectileType == Arrow.class || projectile.projectileType == SpectralArrow.class || projectile.projectileType == SmallFireball.class) {
+                        Player player = mod.getPlayer();
+                        if (player.distanceToSqr(projectile.position) < player.distanceToSqr(projectile.position.add(projectile.velocity))) {
                             continue;
                         }
                     }
 
-                    Vec3d expectedHit = ProjectileHelper.calculateArrowClosestApproach(projectile, mod.getPlayer());
-                    Vec3d delta = plyPos.subtract(expectedHit);
+                    Vec3 expectedHit = ProjectileHelper.calculateArrowClosestApproach(projectile, mod.getPlayer());
+                    Vec3 delta = plyPos.subtract(expectedHit);
                     double horizontalDistanceSq = delta.x * delta.x + delta.z * delta.z;
                     double verticalDistance = Math.abs(delta.y);
 
                     // Skip stale projectiles with near-zero velocity (despawned/ground-stuck)
-                    if (projectile.velocity.lengthSquared() < 0.001) continue;
+                    if (projectile.velocity.lengthSqr() < 0.001) continue;
 
                     // Use getLookingProbability + wide detection (from autoclef)
                     double lookProb = LookHelper.getLookingProbability(projectile.position, plyPos, projectile.velocity.normalize());
@@ -1946,7 +1968,7 @@ public class MobDefenseChain extends SingleTaskChain {
                         // thing that ends a fight against something that outranges us.
                         // ⛔ KNOWN EDGE CASE, RECORDED NOT PATCHED: A STEEP ARROW GIVES NO HEADING.
                         // perp is built from the arrow's HORIZONTAL components, so for a steeply
-                        // arcing shot both approach zero and this normalize() returns Vec3d.ZERO
+                        // arcing shot both approach zero and this normalize() returns Vec3.ZERO
                         // (Minecraft zeroes below ~1e-4). The heading then collapses, ProjectileDodge
                         // sees fwd=0 and side=0, presses nothing, and the dodge SILENTLY does not
                         // happen -- the same near-zero-vector instability this block was written to
@@ -1957,10 +1979,10 @@ public class MobDefenseChain extends SingleTaskChain {
                         // heading derived from the shooter's bearing when the horizontal flight is
                         // degenerate -- it needs a course where arrows actually arc before it can be
                         // measured, so it is written down rather than guessed at.
-                        Vec3d flight = projectile.velocity.normalize();
-                        Vec3d perp = new Vec3d(-flight.z, 0, flight.x).normalize();
+                        Vec3 flight = projectile.velocity.normalize();
+                        Vec3 perp = new Vec3(-flight.z, 0, flight.x).normalize();
                         // A STEEP ARROW HAS NO HORIZONTAL FLIGHT AND perp COLLAPSES TO ZERO.
-                        // normalize() returns Vec3d.ZERO below ~1e-4, so on an arcing shot fwd and
+                        // normalize() returns Vec3.ZERO below ~1e-4, so on an arcing shot fwd and
                         // side both come out 0, ProjectileDodge presses nothing, and the dodge
                         // SILENTLY does not happen -- the same near-zero-vector failure this block
                         // was written to remove, in a different variable.
@@ -1971,20 +1993,20 @@ public class MobDefenseChain extends SingleTaskChain {
                         //
                         // (It shipped once before and was lost in the revert of the key-release
                         // change, which was committed alongside it. Re-applied on its own.)
-                        if (perp.lengthSquared() < 1.0e-6) {
-                            Vec3d fromShooter = plyPos.subtract(projectile.position);
-                            Vec3d flat = new Vec3d(fromShooter.x, 0, fromShooter.z);
-                            if (flat.lengthSquared() > 1.0e-6) {
-                                Vec3d b = flat.normalize();
-                                perp = new Vec3d(-b.z, 0, b.x);
+                        if (perp.lengthSqr() < 1.0e-6) {
+                            Vec3 fromShooter = plyPos.subtract(projectile.position);
+                            Vec3 flat = new Vec3(fromShooter.x, 0, fromShooter.z);
+                            if (flat.lengthSqr() > 1.0e-6) {
+                                Vec3 b = flat.normalize();
+                                perp = new Vec3(-b.z, 0, b.x);
                             }
                         }
 
                         // Which side? Keep going the way we are already off the line -- that is the
                         // shorter way out of it. When the arrow is dead-on that offset is the same
                         // near-zero vector as above, so it only breaks the tie and never steers.
-                        if (perp.dotProduct(delta) < 0) {
-                            perp = perp.multiply(-1);
+                        if (perp.dot(delta) < 0) {
+                            perp = perp.scale(-1);
                         }
 
                         // The shooter is back up the flight line. Pure perpendicular holds the
@@ -1999,8 +2021,8 @@ public class MobDefenseChain extends SingleTaskChain {
                         // overriding the controller's circle-strafe for those ticks. So the closing
                         // half of the heading fades out as the shot gets close, leaving a pure
                         // sidestep exactly where a sidestep is the only thing that can work.
-                        Vec3d toShooter = projectile.position.subtract(plyPos);
-                        toShooter = new Vec3d(toShooter.x, 0, toShooter.z);
+                        Vec3 toShooter = projectile.position.subtract(plyPos);
+                        toShooter = new Vec3(toShooter.x, 0, toShooter.z);
                         double shotRange = toShooter.length();
                         // ⛔ REVERTED ON A PROPERLY CONTROLLED A/B. The point-blank special case
                         // -- drop the closing bias inside melee reach, on the argument that an
@@ -2013,9 +2035,9 @@ public class MobDefenseChain extends SingleTaskChain {
                         // apart -- exactly what checklist rule 4j was written for, and the cleanest
                         // demonstration of it in the repository.
                         double bias = DODGE_PRESS_BIAS;
-                        Vec3d dodgeDir = toShooter.lengthSquared() < 1.0e-6
+                        Vec3 dodgeDir = toShooter.lengthSqr() < 1.0e-6
                                 ? perp
-                                : perp.add(toShooter.normalize().multiply(bias)).normalize();
+                                : perp.add(toShooter.normalize().scale(bias)).normalize();
 
                         // The heading is kept as a VECTOR now, not a yaw. The primitive that
                         // executes it strafes in the player's own frame, so nothing here has to
@@ -2046,11 +2068,11 @@ public class MobDefenseChain extends SingleTaskChain {
         }
 
         // TODO refactor this into something more reliable for all mobs
-        for (SkeletonEntity skeleton : mod.getEntityTracker().getTrackedEntities(SkeletonEntity.class)) {
-            if (skeleton.distanceTo(mod.getPlayer()) > 10 || !skeleton.canSee(mod.getPlayer())) continue;
+        for (Skeleton skeleton : mod.getEntityTracker().getTrackedEntities(Skeleton.class)) {
+            if (skeleton.distanceTo(mod.getPlayer()) > 10 || !skeleton.hasLineOfSight(mod.getPlayer())) continue;
 
             // when the skeleton is about to shoot (it takes 5 ticks to raise the shield)
-            if (skeleton.getItemUseTime() > 15) {
+            if (skeleton.getTicksUsingItem() > 15) {
                 return true;
             }
         }
@@ -2062,8 +2084,8 @@ public class MobDefenseChain extends SingleTaskChain {
         // Wither skeletons are dangerous because of the wither effect. Oof kinda obvious.
         // If we merely force field them, we will run into them and get the wither effect which will kill us.
 
-        Class<?>[] dangerousMobs = new Class[]{Entities.WARDEN, WitherEntity.class, WitherSkeletonEntity.class,
-                HoglinEntity.class, ZoglinEntity.class, PiglinBruteEntity.class, VindicatorEntity.class};
+        Class<?>[] dangerousMobs = new Class[]{Entities.WARDEN, WitherBoss.class, WitherSkeleton.class,
+                Hoglin.class, Zoglin.class, PiglinBrute.class, Vindicator.class};
 
         double range = SAFE_KEEP_DISTANCE - 2;
 
@@ -2071,7 +2093,7 @@ public class MobDefenseChain extends SingleTaskChain {
             Optional<Entity> entity = mod.getEntityTracker().getClosestEntity(dangerous);
 
             if (entity.isPresent()) {
-                if (entity.get().squaredDistanceTo(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, entity.get())) {
+                if (entity.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, entity.get())) {
                     return entity;
                 }
             }
@@ -2093,13 +2115,13 @@ public class MobDefenseChain extends SingleTaskChain {
      */
     private boolean endangeredByShooter(AltoClef mod) {
         try {
-            ClientPlayerEntity player = mod.getPlayer();
+            LocalPlayer player = mod.getPlayer();
             if (player == null) return false;
             boolean sawShooter = false;
             synchronized (BaritoneHelper.MINECRAFT_LOCK) {
                 for (LivingEntity entity : mod.getEntityTracker().getHostiles()) {
                     if (entity == null || !entity.isAlive()) continue;
-                    if (!entity.isInRange(player, SAFE_KEEP_DISTANCE * 1.5)) continue;
+                    if (!entity.closerThan(player, SAFE_KEEP_DISTANCE * 1.5)) continue;
                     if (mod.getBehaviour().shouldExcludeFromForcefield(entity)) continue;
                     if (!EntityHelper.isAngryAtPlayer(mod, entity)) continue;
                     // RESOLVED, AND THE EARLIER NOTE HERE WAS WRONG -- DO NOT WIDEN THIS. It used
@@ -2114,7 +2136,7 @@ public class MobDefenseChain extends SingleTaskChain {
                     // common case. A shooter outside 12.0 does not make isInDanger true either, so
                     // there is no flee bid at that range for the guard to decline. Nothing to fix;
                     // widening it would only make the two radii disagree.
-                    if (entity instanceof net.minecraft.entity.ai.RangedAttackMob) {
+                    if (entity instanceof net.minecraft.world.entity.monster.RangedAttackMob) {
                         sawShooter = true;
                     } else {
                         // Something in the danger radius hits us with its hands. Flee is still the
@@ -2131,7 +2153,7 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     private boolean isInDanger(AltoClef mod) {
-        boolean witchNearby = mod.getEntityTracker().entityFound(WitchEntity.class);
+        boolean witchNearby = mod.getEntityTracker().entityFound(Witch.class);
         float health = mod.getPlayer().getHealth();
 
         // DANGER REQUIRES A THREAT.
@@ -2144,8 +2166,8 @@ public class MobDefenseChain extends SingleTaskChain {
         // explains the older "no food, six minutes at 1.1 HP" observation — same deadlock.
         // Health is a MULTIPLIER on danger, not danger itself: it now widens the radius at which a
         // real mob counts, and a real mob is still required.
-        if (mod.getPlayer().hasStatusEffect(StatusEffects.WITHER) ||
-                (mod.getPlayer().hasStatusEffect(StatusEffects.POISON) && !witchNearby)) {
+        if (mod.getPlayer().hasEffect(MobEffects.WITHER) ||
+                (mod.getPlayer().hasEffect(MobEffects.POISON) && !witchNearby)) {
             // Damage over time IS an active threat with no mob to point at, so it stays.
             return true;
         }
@@ -2160,7 +2182,7 @@ public class MobDefenseChain extends SingleTaskChain {
         if (WorldHelper.isVulnerable() || health <= 10) {
             // If hostile mobs are nearby...
             try {
-                ClientPlayerEntity player = mod.getPlayer();
+                LocalPlayer player = mod.getPlayer();
                 List<LivingEntity> hostiles = mod.getEntityTracker().getHostiles();
 
                 synchronized (BaritoneHelper.MINECRAFT_LOCK) {
@@ -2169,7 +2191,7 @@ public class MobDefenseChain extends SingleTaskChain {
                     double reach = (health <= 10 && !witchNearby)
                             ? SAFE_KEEP_DISTANCE * 1.5 : SAFE_KEEP_DISTANCE;
                     for (Entity entity : hostiles) {
-                        if (entity.isInRange(player, reach)
+                        if (entity.closerThan(player, reach)
                                 && !mod.getBehaviour().shouldExcludeFromForcefield(entity)
                                 && EntityHelper.isAngryAtPlayer(mod, entity)) {
                             return true;
@@ -2187,7 +2209,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
     public Optional<Entity> getAvoidTarget(AltoClef mod) {
         try {
-            return mod.getEntityTracker().getClosestEntity(mod.getPlayer().getPos(),
+            return mod.getEntityTracker().getClosestEntity(mod.getPlayer().position(),
                     entity -> {
                         if (entity == null) return false;
                         if (mod.getBehaviour().shouldExcludeFromAttack(entity)) return false;
@@ -2199,7 +2221,7 @@ public class MobDefenseChain extends SingleTaskChain {
                         return mod.getDamageTracker().getThreatTable().shouldAvoid(playerName)
                                 && !mod.getDamageTracker().getThreatTable().shouldAttack(playerName);
                     },
-                    PlayerEntity.class);
+                    Player.class);
         } catch (Exception e) {
             Debug.logWarning("Weird multithread exception in getAvoidTarget: " + e.getMessage());
         }
@@ -2208,7 +2230,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
     public Optional<Entity> getAttackPlayer(AltoClef mod) {
         try {
-            return mod.getEntityTracker().getClosestEntity(mod.getPlayer().getPos(),
+            return mod.getEntityTracker().getClosestEntity(mod.getPlayer().position(),
                     entity -> entity != null
                             && entity.getName() != null
                             && !mod.getBehaviour().shouldExcludeFromAttack(entity)
@@ -2216,7 +2238,7 @@ public class MobDefenseChain extends SingleTaskChain {
                             && mod.getEntityTracker().isEntityReachable(entity)
                             && mod.getEntityTracker().isPlayerLoaded(entity.getName().getString())
                             && mod.getDamageTracker().getThreatTable().shouldAttack(entity.getName().getString()),
-                    PlayerEntity.class);
+                    Player.class);
         } catch (Exception e) {
             Debug.logWarning("Weird multithread exception in getAttackPlayer: " + e.getMessage());
         }

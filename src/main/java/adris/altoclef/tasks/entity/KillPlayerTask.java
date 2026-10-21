@@ -8,7 +8,7 @@ import adris.altoclef.util.progresscheck.IProgressChecker;
 import adris.altoclef.util.progresscheck.LinearProgressChecker;
 import adris.altoclef.util.progresscheck.ProgressCheckerRetry;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 
 //#if MC >= 12100
 import adris.altoclef.tasks.stupid.MacePunchTask;
@@ -61,12 +61,12 @@ public class KillPlayerTask extends AbstractKillEntityTask {
                 specialKillTask = null;
             }
             //#if MC >= 12100
-            if (MacePunchTask.canMacePunch(mod, player.get().getPos())) {
+            if (MacePunchTask.canMacePunch(mod, player.get().position())) {
                 specialKillTask = new MacePunchTask(player.get());
                 return specialKillTask;
             }
             //#endif
-            double distSq = player.get().squaredDistanceTo(mod.getPlayer());
+            double distSq = player.get().distanceToSqr(mod.getPlayer());
             if (distSq < 10 * 10) {
                 _distancePlayerCheck.reset();
             } else {
@@ -113,7 +113,7 @@ public class KillPlayerTask extends AbstractKillEntityTask {
                                 }
                                 _pearlTimer.reset();
                                 _rangedTimer.reset();
-                                specialKillTask = new ThrowEnderPearlSimpleProjectileTask(player.get().getBlockPos());
+                                specialKillTask = new ThrowEnderPearlSimpleProjectileTask(player.get().blockPosition());
                                 return specialKillTask;
                             }
                         }

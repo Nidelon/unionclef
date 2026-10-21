@@ -12,13 +12,13 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -73,11 +73,11 @@ public class BeeMovieTask extends Task {
         mod.getBehaviour().push();
         mod.getBehaviour().setExclusivelyMineLogs(true);
         mod.getBehaviour().avoidBlockBreaking(this::isOnPath);
-        mod.getBehaviour().avoidBlockPlacing(block -> isOnPath(block.down()));
+        mod.getBehaviour().avoidBlockPlacing(block -> isOnPath(block.below()));
     }
 
     private boolean isOnPath(BlockPos pos) {
-        BlockPos bottomStart = _start.down();
+        BlockPos bottomStart = _start.below();
         BlockPos delta = pos.subtract(bottomStart);
         return sign(delta.getX()) == sign(_direction.getX())
                 && sign(delta.getY()) == sign(_direction.getY())
@@ -116,20 +116,20 @@ public class BeeMovieTask extends Task {
         int signCounter = 0;
         BlockPos currentSignPos = _start;
         while (true) {
-            assert MinecraftClient.getInstance().world != null;
+            assert Minecraft.getInstance().level != null;
 
             boolean loaded = mod.getChunkTracker().isChunkLoaded(currentSignPos);
 
-            BlockState above = MinecraftClient.getInstance().world.getBlockState(currentSignPos.up());
+            BlockState above = Minecraft.getInstance().level.getBlockState(currentSignPos.above());
             if (loaded && !above.isAir() && above.getBlock() != Blocks.WATER) {
                 setDebugState("Clearing block above to prevent hanging...");
-                return new DestroyBlockTask(currentSignPos.up());
+                return new DestroyBlockTask(currentSignPos.above());
             }
 
-            boolean canPlace = WorldHelper.isSolidBlock(currentSignPos.down());
+            boolean canPlace = WorldHelper.isSolidBlock(currentSignPos.below());
             if (loaded && !canPlace) {
                 setDebugState("Placing block below for sign placement...");
-                return new PlaceStructureBlockTask(currentSignPos.down());
+                return new PlaceStructureBlockTask(currentSignPos.below());
             }
 
             while (_cachedStrings.size() <= signCounter) {
@@ -143,14 +143,14 @@ public class BeeMovieTask extends Task {
                 _cachedStrings.add(next);
             }
 
-            BlockState blockAt = MinecraftClient.getInstance().world.getBlockState(currentSignPos);
+            BlockState blockAt = Minecraft.getInstance().level.getBlockState(currentSignPos);
 
             if (loaded && !isSign(blockAt.getBlock())) {
                 _currentPlace = new PlaceSignTask(currentSignPos, _cachedStrings.get(signCounter));
                 return _currentPlace;
             }
 
-            currentSignPos = currentSignPos.add(_direction);
+            currentSignPos = currentSignPos.offset(_direction);
             signCounter++;
         }
     }
@@ -214,7 +214,7 @@ public class BeeMovieTask extends Task {
                 line.append(c);
                 boolean done = c == '\0';
 
-                if (c == '\n' || MinecraftClient.getInstance().textRenderer.getWidth(line.toString()) > SIGN_TEXT_MAX_WIDTH) {
+                if (c == '\n' || Minecraft.getInstance().font.width(line.toString()) > SIGN_TEXT_MAX_WIDTH) {
                     line.delete(0, line.length());
                     line.append(c);
                     lineCount++;

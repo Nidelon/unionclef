@@ -2,10 +2,10 @@ package adris.altoclef.mixins;
 
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ClientTickEvent;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.world.ClientWorld;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 //#if MC < 12111
-import net.minecraft.client.gui.screen.DownloadingTerrainScreen;
+import net.minecraft.client.gui.screens.LevelLoadingScreen;
 //#endif
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -15,11 +15,11 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 // Changed this from player to client, I hope this doesn't break anything.
-@Mixin(MinecraftClient.class)
+@Mixin(Minecraft.class)
 public final class ClientTickMixin {
 
     @Shadow
-    public ClientWorld world;
+    public ClientLevel level;
 
     @Inject(
             method = "tick",
@@ -31,19 +31,19 @@ public final class ClientTickMixin {
 
     // --- shredder joinWorld world-event bridge (preprocessed for cross-version) ---
 
-    @Inject(method = "joinWorld", at = @At("HEAD"))
+    @Inject(method = "setLevel", at = @At("HEAD"))
     //#if MC < 12111
-    private void shredderPreLoadWorld(ClientWorld world, DownloadingTerrainScreen.WorldEntryReason arg2, CallbackInfo ci) {
+    private void shredderPreLoadWorld(ClientLevel world, CallbackInfo ci) {
     //#else
-    //$$ private void shredderPreLoadWorld(ClientWorld world, CallbackInfo ci) {
+    //$$ private void shredderPreLoadWorld(ClientLevel world, CallbackInfo ci) {
     //#endif
     }
 
-    @Inject(method = "joinWorld", at = @At("RETURN"))
+    @Inject(method = "setLevel", at = @At("RETURN"))
     //#if MC < 12111
-    private void shredderPostLoadWorld(ClientWorld world, DownloadingTerrainScreen.WorldEntryReason arg2, CallbackInfo ci) {
+    private void shredderPostLoadWorld(ClientLevel world, CallbackInfo ci) {
     //#else
-    //$$ private void shredderPostLoadWorld(ClientWorld world, CallbackInfo ci) {
+    //$$ private void shredderPostLoadWorld(ClientLevel world, CallbackInfo ci) {
     //#endif
     }
 

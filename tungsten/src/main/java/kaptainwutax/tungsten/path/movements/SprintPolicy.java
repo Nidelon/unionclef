@@ -7,28 +7,28 @@ import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.Ternary;
 import kaptainwutax.tungsten.util.WindMouseRotation;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.block.AbstractFireBlock;
-import net.minecraft.block.AirBlock;
-import net.minecraft.block.AzaleaBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.DoorBlock;
-import net.minecraft.block.EndPortalBlock;
-import net.minecraft.block.FenceGateBlock;
-import net.minecraft.block.ShulkerBoxBlock;
-import net.minecraft.block.SkullBlock;
-import net.minecraft.block.SnowBlock;
-import net.minecraft.block.TrapdoorBlock;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.option.GameOptions;
-import net.minecraft.entity.ai.pathing.NavigationType;
-import net.minecraft.item.BlockItem;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.Vec3i;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.BaseFireBlock;
+import net.minecraft.world.level.block.AirBlock;
+import net.minecraft.world.level.block.AzaleaBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.EndPortalBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
+import net.minecraft.world.level.block.SkullBlock;
+import net.minecraft.world.level.block.SnowLayerBlock;
+import net.minecraft.world.level.block.TrapDoorBlock;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.Options;
+import net.minecraft.world.level.pathfinder.PathComputationType;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.core.Vec3i;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * The CROSS-MOVEMENT sprint policy — a port of {@code PathExecutor.shouldSprintNextTick}
@@ -70,7 +70,7 @@ import net.minecraft.world.WorldView;
  *
  * <h2>Substitutions (each named at its use site as well)</h2>
  * <ul>
- *   <li>{@code IPlayerContext} -&gt; {@code (WorldView, ClientPlayerEntity)}, the package's standard
+ *   <li>{@code IPlayerContext} -&gt; {@code (LevelReader, LocalPlayer)}, the package's standard
  *       substitution. {@code ctx.playerFeet()} is {@link RotationHelper#playerFeet}.</li>
  *   <li>{@code path.movements()} / {@code pathPosition} -&gt; the queue's {@code List<Movement>} and
  *       its {@code index}. Upstream's {@code path.length()} counts POSITIONS, so
@@ -208,14 +208,14 @@ public final class SprintPolicy {
      * @return never null; see {@link Decision}
      */
     public static Decision shouldSprintNextTick(List<Movement> movements, int index,
-                                                ClientPlayerEntity player) {
+                                                LocalPlayer player) {
         // Not upstream: PathExecutor cannot be called with an out-of-range position or a null
         // player, MovementQueue can (a chain that emptied, a disconnect between ticks). Refusing to
         // sprint is the no-op answer; nothing below is meaningful without a current movement.
         if (movements == null || player == null || index < 0 || index >= movements.size()) {
             return NO;
         }
-        WorldView world = player.getEntityWorld();
+        LevelReader world = player.level();
         if (world == null) {
             return NO;
         }
@@ -303,11 +303,11 @@ public final class SprintPolicy {
                         // traverse (0,0,-1)) would also pass this check we also have to rule out
                         // that case; we can do that by adding the directions, because traverse is
                         // always 1 long like descend and parkour can't jump through
-                        // current.getSrc().down().
+                        // current.getSrc().below().
                         boolean sameFlatDirection =
-                                !current.getDirection().up().add(next.getDirection()).equals(BlockPos.ORIGIN)
-                                        && current.getDirection().up().crossProduct(next.getDirection())
-                                                .equals(BlockPos.ORIGIN);
+                                !current.getDirection().above().offset(next.getDirection()).equals(BlockPos.ZERO)
+                                        && current.getDirection().above().cross(next.getDirection())
+                                                .equals(BlockPos.ZERO);
                         if (sameFlatDirection && !couldPlaceInstead) {
                             // :397. NOT deferred to the caller: this mutates the movement object at
                             // exactly this point in upstream's order, and the very next branch reads
@@ -329,7 +329,7 @@ public final class SprintPolicy {
             if (index < movements.size() - 1) {   // :407, `pathPosition < path.length() - 2`
                 Movement next = movements.get(index + 1);
                 if (next instanceof MovementAscend
-                        && current.getDirection().up().equals(next.getDirection().down())) {
+                        && current.getDirection().above().equals(next.getDirection().below())) {
                     // :409-417 — a descend then an ascend in the same direction. "okay to skip
                     // clearKeys and / or onChangeInPathPosition here since this isn't possible to
                     // repeat, since it's asymmetric" — that comment is about upstream's own
@@ -365,11 +365,11 @@ public final class SprintPolicy {
         if (current instanceof MovementAscend && index != 0) {
             Movement prev = movements.get(index - 1);
             if (prev instanceof MovementDescend
-                    && prev.getDirection().up().equals(current.getDirection().down())) {
+                    && prev.getDirection().above().equals(current.getDirection().below())) {
                 BetterBlockPos center = current.getSrc().above();
                 // :443-445, upstream's comment: playerFeet adds 0.1251 to account for soul sand,
                 // farmland is 0.9375, and the 0.07 is to account for farmland.
-                if (player.getEntityPos().y >= center.getY() - 0.07) {
+                if (player.position().y >= center.getY() - 0.07) {
                     // :446 — force JUMP OFF. This is the descend-to-ascend pair upstream skipped
                     // into above: the body is already high enough, and a jump here would throw it
                     // over the step.
@@ -433,20 +433,20 @@ public final class SprintPolicy {
      * plus {@code PathExecutor.java:239-241}.
      *
      * <p>Upstream feeds {@code sprintNextTick} into a {@code KeyBinding.isPressed()} redirect inside
-     * {@code ClientPlayerEntity.tickMovement} (MixinClientPlayerEntity.java:110-132), i.e. the
+     * {@code LocalPlayer.tickMovement} (MixinClientPlayerEntity.java:110-132), i.e. the
      * decision IS the sprint key for that tick. Tungsten has no such redirect, so the key is written
      * directly — which works because {@code MovementQueue.tick} runs at the HEAD of
-     * {@code ClientPlayerEntity.tick}, before {@code tickMovement} reads it, and nothing else in
+     * {@code LocalPlayer.tick}, before {@code tickMovement} reads it, and nothing else in
      * that mixin touches the sprint key while the queue owns the tick.
      *
      * <p>The {@code setSprinting(false)} is upstream's and is not redundant: "letting go of control
      * doesn't make you stop sprinting actually" (PathExecutor.java:240). Releasing the key alone
      * leaves the entity's sprint flag latched until something else clears it.
      */
-    public static void applySprint(ClientPlayerEntity player, boolean sprint) {
-        GameOptions options = MinecraftClient.getInstance().options;
+    public static void applySprint(LocalPlayer player, boolean sprint) {
+        Options options = Minecraft.getInstance().options;
         if (options != null) {
-            options.sprintKey.setPressed(sprint);
+            options.keySprint.setDown(sprint);
         }
         if (!sprint && player != null) {
             player.setSprinting(false);
@@ -461,9 +461,9 @@ public final class SprintPolicy {
         if (jump == null) {
             return;
         }
-        GameOptions options = MinecraftClient.getInstance().options;
+        Options options = Minecraft.getInstance().options;
         if (options != null) {
-            options.jumpKey.setPressed(jump);
+            options.keyJump.setDown(jump);
         }
     }
 
@@ -484,7 +484,7 @@ public final class SprintPolicy {
      * player's own pitch), because upstream passes {@code force = false} at :468 — the same mapping
      * {@code Movement.updateAimTarget} uses.
      */
-    public static void applySteer(ClientPlayerEntity player, Decision decision) {
+    public static void applySteer(LocalPlayer player, Decision decision) {
         if (decision == null || !decision.hasSteer()) {
             return;
         }
@@ -492,14 +492,14 @@ public final class SprintPolicy {
             Movement.clearAllKeys();
         }
         if (decision.aim != null && player != null) {
-            WindMouseRotation.INSTANCE.setTargetFast(decision.aim.getYaw(), player.getPitch());
+            WindMouseRotation.INSTANCE.setTargetFast(decision.aim.getYaw(), player.getXRot(1.0f));
             Movement.motionYaw = decision.aim.getYaw();
-            Movement.motionPitch = player.getPitch();
+            Movement.motionPitch = player.getXRot(1.0f);
         }
         if (decision.moveForward) {
-            GameOptions options = MinecraftClient.getInstance().options;
+            Options options = Minecraft.getInstance().options;
             if (options != null) {
-                options.forwardKey.setPressed(true);
+                options.keyUp.setDown(true);
             }
         }
     }
@@ -513,8 +513,8 @@ public final class SprintPolicy {
      * {@code allowSprint && player.getHungerManager().getFoodLevel() > 6}. Upstream builds a whole
      * {@code CalculationContext} at PathExecutor.java:352 just to read this one boolean.
      */
-    private static boolean canSprint(ClientPlayerEntity player) {
-        return ALLOW_SPRINT && player.getHungerManager().getFoodLevel() > SPRINT_HUNGER_FLOOR;
+    private static boolean canSprint(LocalPlayer player) {
+        return ALLOW_SPRINT && player.getFoodData().getFoodLevel() > SPRINT_HUNGER_FLOOR;
     }
 
     /**
@@ -523,27 +523,27 @@ public final class SprintPolicy {
      * no filter, so "have we got a block" can only be asked of the main hand. KNOWN divergence, not
      * faked. It feeds only {@code couldPlaceInstead}, which is dead while there is no parkour class.
      */
-    private static boolean hasThrowaway(ClientPlayerEntity player) {
+    private static boolean hasThrowaway(LocalPlayer player) {
         return TungstenConfig.get().allowPlace
-                && player.getMainHandStack().getItem() instanceof BlockItem;
+                && player.getMainHandItem().getItem() instanceof BlockItem;
     }
 
     /**
      * {@code PathExecutor.skipNow} (:515-528): are we centred enough on the current movement, and
      * far enough past the block behind us, to cut it short without bonking our head?
      */
-    private static boolean skipNow(ClientPlayerEntity player, Movement current) {
+    private static boolean skipNow(LocalPlayer player, Movement current) {
         BlockPos direction = current.getDirection();
         BetterBlockPos src = current.getSrc();
-        Vec3d pos = player.getEntityPos();
+        Vec3 pos = player.position();
         double offTarget = Math.abs(direction.getX() * (src.z + 0.5D - pos.z))
                 + Math.abs(direction.getZ() * (src.x + 0.5D - pos.x));
         if (offTarget > 0.1) {
             return false;
         }
         // we are centered
-        BlockPos headBonk = src.subtract(direction).up(2);
-        WorldView world = player.getEntityWorld();
+        BlockPos headBonk = src.subtract(direction).above(2);
+        LevelReader world = player.level();
         if (fullyPassable(world, headBonk)) {
             return true;
         }
@@ -563,12 +563,12 @@ public final class SprintPolicy {
      * a sprint-ascend under a cell altoclef has force-marked as un-walkable; without the marker
      * there is nothing to read, so this is a drop of an input, not of a condition.
      */
-    private static boolean sprintableAscend(WorldView world, MovementTraverse current,
+    private static boolean sprintableAscend(LevelReader world, MovementTraverse current,
                                             MovementAscend next, Movement nextnext) {
         if (!SPRINT_ASCENDS) {
             return false;
         }
-        if (!current.getDirection().equals(next.getDirection().down())) {
+        if (!current.getDirection().equals(next.getDirection().below())) {
             return false;
         }
         if (nextnext.getDirection().getX() != next.getDirection().getX()
@@ -594,7 +594,7 @@ public final class SprintPolicy {
             for (int y = 0; y < 3; y++) {
                 BlockPos chk = current.getSrc().up(y);
                 if (x == 1) {
-                    chk = chk.add(current.getDirection());
+                    chk = chk.offset(current.getDirection());
                 }
                 if (!fullyPassable(world, chk)) {
                     return false;
@@ -613,7 +613,7 @@ public final class SprintPolicy {
      * {@code PathExecutor.canSprintFromDescendInto} (:570-581): having descended, is the NEXT
      * movement one we can carry the speed into?
      */
-    private static boolean canSprintFromDescendInto(WorldView world, Movement current, Movement next) {
+    private static boolean canSprintFromDescendInto(LevelReader world, Movement current, Movement next) {
         if (next instanceof MovementDescend && next.getDirection().equals(current.getDirection())) {
             return true;
         }
@@ -626,15 +626,15 @@ public final class SprintPolicy {
         return next instanceof MovementDiagonal && ALLOW_OVERSHOOT_DIAGONAL_DESCEND;
     }
 
-    /** {@code PathExecutor.overrideFall}'s return, upstream a {@code Pair<Vec3d, BlockPos>} (:510).
+    /** {@code PathExecutor.overrideFall}'s return, upstream a {@code Pair<Vec3, BlockPos>} (:510).
      *  Named fields instead of {@code getLeft}/{@code getRight} so the two cannot be swapped. */
     private static final class FallOverride {
-        /** The point to aim at — a Vec3d some way BEYOND the fall's destination. */
-        final Vec3d aimAt;
+        /** The point to aim at — a Vec3 some way BEYOND the fall's destination. */
+        final Vec3 aimAt;
         /** The cell the overshoot actually ends in; must be a position on the chain. */
         final BetterBlockPos dest;
 
-        FallOverride(Vec3d aimAt, BetterBlockPos dest) {
+        FallOverride(Vec3 aimAt, BetterBlockPos dest) {
             this.aimAt = aimAt;
             this.dest = dest;
         }
@@ -645,7 +645,7 @@ public final class SprintPolicy {
      * in the same flat direction is not two manoeuvres, it is one jump with a run-out. Returns the
      * point to aim past and the cell the run-out ends in, or null if the shape does not qualify.
      */
-    private static FallOverride overrideFall(List<Movement> movements, int index, WorldView world,
+    private static FallOverride overrideFall(List<Movement> movements, int index, LevelReader world,
                                              MovementFall movement) {
         Vec3i dir = movement.getDirection();
         if (dir.getY() < -3) {
@@ -685,7 +685,7 @@ public final class SprintPolicy {
         }
         double len = i - index - 0.4;
         return new FallOverride(
-                new Vec3d(flatDir.getX() * len + movement.getDest().x + 0.5,
+                new Vec3(flatDir.getX() * len + movement.getDest().x + 0.5,
                         movement.getDest().y,
                         flatDir.getZ() * len + movement.getDest().z + 0.5),
                 new BetterBlockPos(movement.getDest().add(
@@ -727,7 +727,7 @@ public final class SprintPolicy {
      * (they slow us down)".
      *
      * <p>⛔ NOT {@code kaptainwutax.tungsten.helpers.BlockStateChecker.fullyPassableBlockState}, and
-     * this is not a style preference. That copy is missing both the {@code SnowBlock} case and
+     * this is not a style preference. That copy is missing both the {@code SnowLayerBlock} case and
      * upstream's closing {@code canPathfindThrough(LAND)} test — it falls out of its exception list
      * with a bare {@code return YES}, so it answers "fully passable" for STONE. Feeding this policy
      * that answer would sprint the bot head-first into walls. Ported from upstream instead.
@@ -735,7 +735,7 @@ public final class SprintPolicy {
      * <p>DROPPED (:321-323): {@code AltoClefSettings.shouldAvoidWalkThroughForce(pos)} — no tungsten
      * equivalent, same drop {@link MovementHelperB} records for {@code canWalkThrough}.
      */
-    private static boolean fullyPassable(WorldView world, BlockPos pos) {
+    private static boolean fullyPassable(LevelReader world, BlockPos pos) {
         BlockState state = world.getBlockState(pos);
         Ternary fullyPassable = fullyPassableBlockState(state);
         // DROPPED: if (AltoClefSettings.shouldAvoidWalkThroughForce(pos)) return false;
@@ -748,7 +748,7 @@ public final class SprintPolicy {
         // Upstream's tail. Unreachable today — fullyPassableBlockState never answers MAYBE — and
         // kept because it is upstream's, and because a future block case that does answer MAYBE
         // would otherwise silently fall out of a switch with no default.
-        return state.canPathfindThrough(NavigationType.LAND);
+        return state.isPathfindable(PathComputationType.LAND);
     }
 
     /** {@code MovementHelper.fullyPassableBlockState} (MovementHelper.java:274-304), verbatim. */
@@ -758,7 +758,7 @@ public final class SprintPolicy {
             return Ternary.YES;
         }
         // exceptions - blocks that are isPassable true, but we can't actually jump through
-        if (block instanceof AbstractFireBlock
+        if (block instanceof BaseFireBlock
                 || block == Blocks.TRIPWIRE
                 || block == Blocks.COBWEB
                 || block == Blocks.VINE
@@ -767,9 +767,9 @@ public final class SprintPolicy {
                 || block instanceof AzaleaBlock
                 || block instanceof DoorBlock
                 || block instanceof FenceGateBlock
-                || block instanceof SnowBlock
+                || block instanceof SnowLayerBlock
                 || !state.getFluidState().isEmpty()
-                || block instanceof TrapdoorBlock
+                || block instanceof TrapDoorBlock
                 || block instanceof EndPortalBlock
                 || block instanceof SkullBlock
                 || block instanceof ShulkerBoxBlock) {
@@ -777,7 +777,7 @@ public final class SprintPolicy {
         }
         // door, fence gate, liquid, trapdoor have been accounted for, nothing else uses the world or
         // pos parameters at least in 1.12.2 vanilla, that is.....
-        if (state.canPathfindThrough(NavigationType.LAND)) {
+        if (state.isPathfindable(PathComputationType.LAND)) {
             return Ternary.YES;
         } else {
             return Ternary.NO;

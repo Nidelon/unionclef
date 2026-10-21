@@ -4,11 +4,14 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.multiversion.recipemanager.RecipeManagerWrapper;
 import adris.altoclef.multiversion.recipemanager.WrappedRecipeEntry;
 import adris.altoclef.util.RecipeTarget;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.recipe.*;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.world.item.crafting.CustomRecipe;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -106,7 +109,7 @@ public class CraftingRecipeTracker extends Tracker{
         // rebuild once we are in game
         if (!AltoClef.inGame()) return;
 
-        ClientPlayNetworkHandler networkHandler =  MinecraftClient.getInstance().getNetworkHandler();
+        ClientPacketListener networkHandler =  Minecraft.getInstance().getConnection();
         if (networkHandler == null) return;
 
         //#if MC >= 12111
@@ -129,11 +132,11 @@ public class CraftingRecipeTracker extends Tracker{
         //$$ // this player about. That is not a shortcut, it is the only thing a 1.21.11 client is
         //$$ // given -- and it is why recipesKnown is published rather than assumed: the number is
         //$$ // the claim.
-        //$$ net.minecraft.client.network.ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        //$$ net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
         //$$ if (player == null || mod.getWorld() == null) return;
         //$$ net.minecraft.util.context.ContextParameterMap ctx =
         //$$         net.minecraft.recipe.display.SlotDisplayContexts.createParameters(mod.getWorld());
-        //$$ for (net.minecraft.client.gui.screen.recipebook.RecipeResultCollection col
+        //$$ for (net.minecraft.client.gui.screens.recipebook.RecipeCollection col
         //$$         : player.getRecipeBook().getOrderedResults()) {
         //$$     for (net.minecraft.recipe.RecipeDisplayEntry entry : col.getAllRecipes()) {
         //$$         java.util.List<net.minecraft.recipe.display.SlotDisplay> ingredients;
@@ -188,18 +191,18 @@ public class CraftingRecipeTracker extends Tracker{
         //$$ recipesKnown = itemRecipeMap.size();
         //$$ shouldRebuild = false;
         //#else
-        RecipeManagerWrapper recipeManager = RecipeManagerWrapper.of(networkHandler.getRecipeManager());
+        RecipeManagerWrapper recipeManager = RecipeManagerWrapper.of(networkHandler.recipes());
 
         for (WrappedRecipeEntry recipe : recipeManager.values()) {
-            if (!(recipe.value() instanceof net.minecraft.recipe.CraftingRecipe craftingRecipe)) continue;
+            if (!(recipe.value() instanceof net.minecraft.world.item.crafting.CraftingRecipe craftingRecipe)) continue;
 
             // not implemented for now because it isn't needed (I hope xd)
-            if (craftingRecipe instanceof SpecialCraftingRecipe) continue;
+            if (craftingRecipe instanceof CustomRecipe) continue;
 
             // the arguments shouldn't be used, we can just pass null
-            ItemStack result = new ItemStack(craftingRecipe.getResult(null).getItem(), craftingRecipe.getResult(null).getCount());
+            ItemStack result = new ItemStack(adris.altoclef.multiversion.recipemanager.RecipeCompat.resultOf(craftingRecipe).getItem(), adris.altoclef.multiversion.recipemanager.RecipeCompat.resultOf(craftingRecipe).getCount());
 
-            Item[][] altoclefRecipeItems = getShapedCraftingRecipe(craftingRecipe.getIngredients());
+            Item[][] altoclefRecipeItems = getShapedCraftingRecipe(craftingRecipe.placementInfo().ingredients());
 
             adris.altoclef.util.CraftingRecipe altoclefRecipe = adris.altoclef.util.CraftingRecipe.newShapedRecipe(altoclefRecipeItems, result.getCount());
 
@@ -231,7 +234,7 @@ public class CraftingRecipeTracker extends Tracker{
         int x = 0;
 
         for (Ingredient ingredient : ingredients) {
-            ItemStack[] stacks = ingredient.getMatchingStacks();
+            ItemStack[] stacks = ingredient.items().map(h -> new ItemStack(h.value())).toArray(ItemStack[]::new);
             Item[] items = new Item[stacks.length];
 
             for (int i = 0; i < stacks.length; i++) {

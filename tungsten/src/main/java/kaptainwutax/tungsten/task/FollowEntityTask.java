@@ -5,15 +5,15 @@ import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.TungstenModDataContainer;
 import kaptainwutax.tungsten.util.WindMouseRotation;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.block.BlockState;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Core entity-following engine. Contains ALL routing logic:
@@ -39,7 +39,7 @@ public class FollowEntityTask {
     // no HORIZONTAL progress for longer than that, so the first live value was measured, not
     // assumed — the log showed the same route restarted 80 times ("Walker: BFS 82" x80).
     private static final int    WALKER_STUCK_TICKS = 80;   // 4s
-    private static Vec3d walkerAnchor = null;
+    private static Vec3 walkerAnchor = null;
     private static int   walkerStuckTicks = 0;
     /** Why the chase stands still, in four numbers. `planTooShort` = the block planner returned
      *  fewer than two cells and the plan was dropped with no alternative; `physicsFallbacks` =
@@ -54,7 +54,7 @@ public class FollowEntityTask {
 
     // ── state ───────────────────────────────────────────────────────────────────
     private static Entity  targetEntity    = null;
-    private static Vec3d   lastKnownPos    = null;
+    private static Vec3   lastKnownPos    = null;
     private static boolean active          = false;
     /** Rate-limit for the local physics leg (the obstacle hand-off). */
     private static final long LOCAL_LEG_COOLDOWN_MS = 3000;
@@ -66,7 +66,7 @@ public class FollowEntityTask {
     private static boolean leapActive = false;
 
     // ── pathfinder state ────────────────────────────────────────────────────────
-    private static Vec3d   lastTargetPos  = null;
+    private static Vec3   lastTargetPos  = null;
     private static int     tickCounter    = 0;
     private static boolean stopRequested  = false;
 
@@ -163,13 +163,13 @@ public class FollowEntityTask {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /** Called every game tick from MixinClientPlayerEntity. */
-    public static void tick(WorldView world, ClientPlayerEntity player) {
+    public static void tick(LevelReader world, LocalPlayer player) {
         tickCalled++;
         if (!active) { tickInactive++; return; }
         tickActive++;
 
         // resolve target position
-        Vec3d   targetPos;
+        Vec3   targetPos;
         boolean hasEntity;
 
         if (targetEntity != null && !targetEntity.isRemoved()) {
@@ -185,7 +185,7 @@ public class FollowEntityTask {
             // this; direct mode used to just stop.)
             targetPos = lastKnownPos;
             hasEntity = false;
-            if (!managed && player.getEntityPos().distanceTo(lastKnownPos) < 3.0) {
+            if (!managed && player.position().distanceTo(lastKnownPos) < 3.0) {
                 stop();   // arrived at the last sighting and it is really not there
                 return;
             }
@@ -193,13 +193,13 @@ public class FollowEntityTask {
             return; // managed but no position known yet
         }
 
-        double dist          = player.getEntityPos().distanceTo(targetPos);
+        double dist          = player.position().distanceTo(targetPos);
         boolean outsideRadius = closeEnough <= 0 || dist >= closeEnough;
 
         // ── Trail recording + TRAILING state ───────────────────────────────────
         if (kaptainwutax.tungsten.TungstenConfig.get().enableTrailing) {
             if (hasEntity) trail.recordPosition(targetPos);
-            trail.update(player.getEntityPos(), targetPos);
+            trail.update(player.position(), targetPos);
         }
 
         // ── LEAP: PvP close-range sprint+jump (no camera — altoclef handles aim+attacks)
@@ -227,14 +227,14 @@ public class FollowEntityTask {
         }
 
         // ── Resolve effective target: waypoint when TRAILING, else real target ─
-        Vec3d effectiveTarget = targetPos;
+        Vec3 effectiveTarget = targetPos;
         if (kaptainwutax.tungsten.TungstenConfig.get().enableTrailing && trail.isTrailing()) {
-            Vec3d wp = trail.getWaypoint(player.getEntityPos());
+            Vec3 wp = trail.getWaypoint(player.position());
             if (wp != null) {
                 effectiveTarget = wp;
             }
         }
-        double effectiveDist = player.getEntityPos().distanceTo(effectiveTarget);
+        double effectiveDist = player.position().distanceTo(effectiveTarget);
 
         // ── LIVE DIRECT-STEER (moving target with a clear line) ───────────────
         // If we can SEE the target, sprint STRAIGHT at its LIVE position instead of
@@ -349,7 +349,7 @@ public class FollowEntityTask {
             // pointing a static-goal navigator at a runner is not it.
             var res = kaptainwutax.tungsten.path.fast.FastPlanner.plan(
                     world, planStart(world, player),
-                    net.minecraft.util.math.BlockPos.ofFloored(effectiveTarget),
+                    net.minecraft.core.BlockPos.containing(effectiveTarget),
                     kaptainwutax.tungsten.TungstenConfig.get().fastPlanBudgetMs);
             var cells = res.positions();
             // COUNT WHAT HAPPENS TO THE PLAN. A plan of fewer than two cells is dropped here
@@ -383,7 +383,7 @@ public class FollowEntityTask {
             // running before we force a re-plan" — and NOTHING READ THEM. Wiring them up is the
             // whole fix: stopping the walker opens the replanning path that already exists (and
             // BlockPathWalker.stop() also releases any armed executor path).
-            Vec3d hereNow = player.getEntityPos();
+            Vec3 hereNow = player.position();
             if (walkerAnchor == null
                     || Math.hypot(hereNow.x - walkerAnchor.x, hereNow.z - walkerAnchor.z) > 0.25) {
                 walkerAnchor = hereNow;
@@ -444,20 +444,20 @@ public class FollowEntityTask {
      * two walked routes in three minutes. Upstream solves it by faking a plausible start:
      * the nearest neighbouring cell we could be sneaking off, or the cell below when falling.
      */
-    private static net.minecraft.util.math.BlockPos planStart(WorldView world,
-                                                              ClientPlayerEntity player) {
-        net.minecraft.util.math.BlockPos feet = player.getBlockPos();
-        net.minecraft.util.math.BlockPos.Mutable scratch = new net.minecraft.util.math.BlockPos.Mutable();
+    private static net.minecraft.core.BlockPos planStart(LevelReader world,
+                                                              LocalPlayer player) {
+        net.minecraft.core.BlockPos feet = player.blockPosition();
+        net.minecraft.core.BlockPos.MutableBlockPos scratch = new net.minecraft.core.BlockPos.MutableBlockPos();
         scratch.set(feet.getX(), feet.getY(), feet.getZ());
         if (!Double.isNaN(kaptainwutax.tungsten.helpers.PlayerFit.supportTop(world, scratch))) {
             return feet;
         }
-        double px = player.getEntityPos().x, pz = player.getEntityPos().z;
-        if (player.isOnGround()) {
-            java.util.List<net.minecraft.util.math.BlockPos> closest = new java.util.ArrayList<>();
+        double px = player.position().x, pz = player.position().z;
+        if (player.onGround()) {
+            java.util.List<net.minecraft.core.BlockPos> closest = new java.util.ArrayList<>();
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
-                    closest.add(new net.minecraft.util.math.BlockPos(
+                    closest.add(new net.minecraft.core.BlockPos(
                             feet.getX() + dx, feet.getY(), feet.getZ() + dz));
                 }
             }
@@ -465,7 +465,7 @@ public class FollowEntityTask {
                     ((pos.getX() + 0.5D) - px) * ((pos.getX() + 0.5D) - px)
                             + ((pos.getZ() + 0.5D) - pz) * ((pos.getZ() + 0.5D) - pz)));
             for (int i = 0; i < 4 && i < closest.size(); i++) {
-                net.minecraft.util.math.BlockPos support = closest.get(i);
+                net.minecraft.core.BlockPos support = closest.get(i);
                 double xDist = Math.abs((support.getX() + 0.5D) - px);
                 double zDist = Math.abs((support.getZ() + 0.5D) - pz);
                 if (xDist > 0.8 && zDist > 0.8) continue;   // too far to be sneaking off it
@@ -480,7 +480,7 @@ public class FollowEntityTask {
             // mid-jump or falling: the cell below is where we are heading
             scratch.set(feet.getX(), feet.getY() - 1, feet.getZ());
             if (!Double.isNaN(kaptainwutax.tungsten.helpers.PlayerFit.supportTop(world, scratch))) {
-                return feet.down();
+                return feet.below();
             }
         }
         return feet;
@@ -490,8 +490,8 @@ public class FollowEntityTask {
      *  32 cells and it is the reason far goals never reach the physics engine there. */
     private static final int PHYSICS_LEG_CELLS = 32;
 
-    private static void startFind(WorldView world, ClientPlayerEntity player, Vec3d target, double dist) {
-        java.util.List<net.minecraft.util.math.BlockPos> bfsGuide = null;
+    private static void startFind(LevelReader world, LocalPlayer player, Vec3 target, double dist) {
+        java.util.List<net.minecraft.core.BlockPos> bfsGuide = null;
         tickCounter   = 0;
         lastTargetPos = target;
         TungstenMod.TARGET = target;
@@ -514,9 +514,9 @@ public class FollowEntityTask {
         if (kaptainwutax.tungsten.TungstenConfig.get().followBlockPathFinderEnabled && dist > 6) {
             var fastRes = kaptainwutax.tungsten.path.fast.FastPlanner.plan(
                     world, planStart(world, player),
-                    net.minecraft.util.math.BlockPos.ofFloored(target),
+                    net.minecraft.core.BlockPos.containing(target),
                     kaptainwutax.tungsten.TungstenConfig.get().fastPlanBudgetMs);
-            java.util.List<net.minecraft.util.math.BlockPos> bfsPath = fastRes.positions();
+            java.util.List<net.minecraft.core.BlockPos> bfsPath = fastRes.positions();
             bfsGuide = bfsPath;
             if (bfsPath.size() >= 2) {
                 // IF WE HAVE A ROUTE, WALK THE ROUTE. A beeline is what you do when you have
@@ -569,7 +569,7 @@ public class FollowEntityTask {
                 // bailing, and the chase stands at the foot of the wall forever
                 // (stand-measured on a mountainside). Rooting HERE instead lets
                 // the physics engine solve the climb that blocks us right now.
-                Vec3d bfsEnd = BlockPathWalker.getEndpoint();
+                Vec3 bfsEnd = BlockPathWalker.getEndpoint();
                 if (bfsEnd != null && !BlockPathWalker.wasStoppedByBail()) {
                     TungstenModDataContainer.PATHFINDER.overrideStartPos = bfsEnd;
                 } else {
@@ -608,11 +608,11 @@ public class FollowEntityTask {
         // planning resumed, physics active, bot motionless, distance unchanged.
         //
         // So when a block route exists, aim physics at a point ALONG it rather than at the runner.
-        Vec3d physicsGoal = target;
+        Vec3 physicsGoal = target;
         if (bfsGuide != null && bfsGuide.size() >= 2) {
             int leg = Math.min(bfsGuide.size() - 1, PHYSICS_LEG_CELLS);
             var cell = bfsGuide.get(leg);
-            physicsGoal = new Vec3d(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5);
+            physicsGoal = new Vec3(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5);
         }
         TungstenModDataContainer.PATHFINDER.find(world, physicsGoal, player);
     }
@@ -624,20 +624,20 @@ public class FollowEntityTask {
      * NO camera rotation — altoclef controls aim and attacks.
      * Only used on flat ground with LOS to target.
      */
-    private static void doLeap(ClientPlayerEntity player) {
-        MinecraftClient mc = MinecraftClient.getInstance();
+    private static void doLeap(LocalPlayer player) {
+        Minecraft mc = Minecraft.getInstance();
         // Movement only — camera is altoclef's responsibility
-        mc.options.forwardKey.setPressed(true);
-        mc.options.sprintKey.setPressed(true);
-        mc.options.jumpKey.setPressed(player.isOnGround());
+        mc.options.keyUp.setDown(true);
+        mc.options.keySprint.setDown(true);
+        mc.options.keyJump.setDown(player.onGround());
     }
 
     /** Release movement keys set by LEAP (does NOT touch camera/WindMouse). */
     private static void releaseLeapKeys() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        mc.options.forwardKey.setPressed(false);
-        mc.options.sprintKey.setPressed(false);
-        mc.options.jumpKey.setPressed(false);
+        Minecraft mc = Minecraft.getInstance();
+        mc.options.keyUp.setDown(false);
+        mc.options.keySprint.setDown(false);
+        mc.options.keyJump.setDown(false);
     }
 
     /** Release all keys including WindMouse rotation (used by stop()). */
@@ -651,11 +651,11 @@ public class FollowEntityTask {
      * Flat ground between player and target — no voids, no lava, no walls.
      * Prevents LEAP on SkyWars edges, bridges, etc.
      */
-    private static boolean isFlatGround(ClientPlayerEntity player, Vec3d targetPos) {
-        if (!player.isOnGround()) return false;
+    private static boolean isFlatGround(LocalPlayer player, Vec3 targetPos) {
+        if (!player.onGround()) return false;
         if (Math.abs(targetPos.y - player.getY()) > 1.5) return false;
 
-        Vec3d pos = player.getEntityPos();
+        Vec3 pos = player.position();
         double dx = targetPos.x - pos.x;
         double dz = targetPos.z - pos.z;
         double len = Math.sqrt(dx * dx + dz * dz);
@@ -663,8 +663,8 @@ public class FollowEntityTask {
 
         dx /= len;
         dz /= len;
-        int playerY = player.getBlockPos().getY();
-        WorldView world = TungstenMod.mc.world;
+        int playerY = player.blockPosition().getY();
+        LevelReader world = TungstenMod.mc.level;
 
         int steps = Math.min((int) len, 5);
         for (int i = 1; i <= steps; i++) {
@@ -672,13 +672,13 @@ public class FollowEntityTask {
                 (int) Math.floor(pos.x + dx * i),
                 playerY,
                 (int) Math.floor(pos.z + dz * i));
-            BlockPos below = check.down();
+            BlockPos below = check.below();
             // Ground must be solid (no voids, no lava below)
             BlockState ground = world.getBlockState(below);
-            if (!ground.isSolidBlock(world, below)) return false;
+            if (!ground.isRedstoneConductor(world, below)) return false;
             // Feet and head level must be passable (no walls)
-            if (world.getBlockState(check).isSolidBlock(world, check)) return false;
-            if (world.getBlockState(check.up()).isSolidBlock(world, check.up())) return false;
+            if (world.getBlockState(check).isRedstoneConductor(world, check)) return false;
+            if (world.getBlockState(check.above()).isRedstoneConductor(world, check.above())) return false;
         }
         return true;
     }
@@ -688,7 +688,7 @@ public class FollowEntityTask {
      * Handles: sneaking on block edges (getBlockPos() returns air),
      * standing on fences/slabs, or any case where feet Y is above ground.
      */
-    private static Vec3d snapToGround(WorldView world, Entity entity) {
+    private static Vec3 snapToGround(LevelReader world, Entity entity) {
         double x = entity.getX();
         double z = entity.getZ();
         int blockX = (int) Math.floor(x);
@@ -699,24 +699,24 @@ public class FollowEntityTask {
         for (int dy = 0; dy <= 5; dy++) {
             BlockPos check = new BlockPos(blockX, startY - dy, blockZ);
             BlockState state = world.getBlockState(check);
-            if (!state.isAir() && state.isSolidBlock(world, check)) {
+            if (!state.isAir() && state.isRedstoneConductor(world, check)) {
                 // Target is on top of this block
-                return new Vec3d(blockX + 0.5, check.getY() + 1.0, blockZ + 0.5);
+                return new Vec3(blockX + 0.5, check.getY() + 1.0, blockZ + 0.5);
             }
             // Also check for non-full blocks (fences, slabs) that have collision
             if (!state.getCollisionShape(world, check).isEmpty()) {
-                return new Vec3d(blockX + 0.5, entity.getY(), blockZ + 0.5);
+                return new Vec3(blockX + 0.5, entity.getY(), blockZ + 0.5);
             }
         }
         // Fallback: use entity position as-is
-        return new Vec3d(blockX + 0.5, entity.getY(), blockZ + 0.5);
+        return new Vec3(blockX + 0.5, entity.getY(), blockZ + 0.5);
     }
 
     /** True if no solid block obstructs the line from player eyes to targetPos. */
-    static boolean hasLineOfSight(ClientPlayerEntity player, Vec3d targetPos) {
-        Vec3d eyePos = player.getEyePos();
-        RaycastContext ctx = new RaycastContext(eyePos, targetPos,
-                RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, player);
-        return TungstenMod.mc.world.raycast(ctx).getType() == HitResult.Type.MISS;
+    static boolean hasLineOfSight(LocalPlayer player, Vec3 targetPos) {
+        Vec3 eyePos = player.getEyePosition();
+        ClipContext ctx = new ClipContext(eyePos, targetPos,
+                net.minecraft.world.level.ClipContext.Block.COLLIDER, net.minecraft.world.level.ClipContext.Fluid.NONE, player);
+        return TungstenMod.mc.level.clip(ctx).getType() == HitResult.Type.MISS;
     }
 }

@@ -1,13 +1,13 @@
 package kaptainwutax.tungsten.helpers;
 
-import net.minecraft.util.function.BooleanBiFunction;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.util.shape.VoxelShapes;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.phys.shapes.BooleanOp;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * The single source of truth for "can a player BE here", computed from real
@@ -40,9 +40,9 @@ public final class PlayerFit {
     private PlayerFit() {}
 
     /** Collision shape of one block, moved into world coordinates. */
-    private static VoxelShape shapeAt(WorldView world, BlockPos pos) {
+    private static VoxelShape shapeAt(LevelReader world, BlockPos pos) {
         return world.getBlockState(pos).getCollisionShape(world, pos)
-                .offset(pos.getX(), pos.getY(), pos.getZ());
+                .move(pos.getX(), pos.getY(), pos.getZ());
     }
 
     /**
@@ -116,7 +116,7 @@ public final class PlayerFit {
                 | ((long) (pos.getY() + 2048) & 0xFFFL);
     }
 
-    private static int classify(WorldView world, BlockPos pos) {
+    private static int classify(LevelReader world, BlockPos pos) {
         ClassifyCache cache = CACHE.get();
         if (cache == null) return classifyUncached(world, pos);
         long key = cellKey(pos);
@@ -127,18 +127,18 @@ public final class PlayerFit {
         return value;
     }
 
-    private static int classifyUncached(WorldView world, BlockPos pos) {
-        net.minecraft.block.BlockState state = world.getBlockState(pos);
+    private static int classifyUncached(LevelReader world, BlockPos pos) {
+        net.minecraft.world.level.block.state.BlockState state = world.getBlockState(pos);
         if (state.isAir()) return 0;
         // baritone canWalkThroughBlockState: POWDER_SNOW -> NO (MovementHelper.java:193). No collision
         // box, so the shape test below would call it air; the body sinks in and freezes. A full block
         // to the body (routes break it -- RouteHazards.blocksBody -- or go round), but NOT a floor:
         // standing on it sinks you into it, so supportTop must not see a full cube here.
-        if (state.getBlock() == net.minecraft.block.Blocks.POWDER_SNOW) return 3;
+        if (state.getBlock() == net.minecraft.world.level.block.Blocks.POWDER_SNOW) return 3;
         VoxelShape shape = state.getCollisionShape(world, pos);
         if (shape.isEmpty()) return 0;
-        if (shape == net.minecraft.util.shape.VoxelShapes.fullCube()) return 1;
-        net.minecraft.util.math.Box bb = shape.getBoundingBox();
+        if (shape == net.minecraft.world.phys.shapes.Shapes.block()) return 1;
+        net.minecraft.world.phys.AABB bb = shape.bounds();
         if (bb.minX <= 0.0001 && bb.minY <= 0.0001 && bb.minZ <= 0.0001
                 && bb.maxX >= 0.9999 && bb.maxY >= 0.9999 && bb.maxZ >= 0.9999) return 1;
         return 2;
@@ -150,18 +150,18 @@ public final class PlayerFit {
      * overlaps — this is what makes slabs, stairs, trapdoors, fences, carpets
      * and snow layers count for exactly as much as they physically are.
      */
-    public static boolean bodyFits(WorldView world, double x, double feetY, double z) {
-        return boxFits(world, new Box(x - HALF, feetY, z - HALF,
+    public static boolean bodyFits(LevelReader world, double x, double feetY, double z) {
+        return boxFits(world, new AABB(x - HALF, feetY, z - HALF,
                 x + HALF, feetY + HEIGHT, z + HALF));
     }
 
-    private static boolean boxFits(WorldView world, Box volume) {
-        Box box = volume.contract(EPS);
-        VoxelShape boxShape = VoxelShapes.cuboid(box);
-        int minX = MathHelper.floor(box.minX), maxX = MathHelper.floor(box.maxX);
-        int minY = MathHelper.floor(box.minY), maxY = MathHelper.floor(box.maxY);
-        int minZ = MathHelper.floor(box.minZ), maxZ = MathHelper.floor(box.maxZ);
-        BlockPos.Mutable p = new BlockPos.Mutable();
+    private static boolean boxFits(LevelReader world, AABB volume) {
+        AABB box = volume.contract(EPS, EPS, EPS);
+        VoxelShape boxShape = Shapes.create(box);
+        int minX = Mth.floor(box.minX), maxX = Mth.floor(box.maxX);
+        int minY = Mth.floor(box.minY), maxY = Mth.floor(box.maxY);
+        int minZ = Mth.floor(box.minZ), maxZ = Mth.floor(box.maxZ);
+        net.minecraft.core.BlockPos.MutableBlockPos p = new net.minecraft.core.BlockPos.MutableBlockPos();
         for (int bx = minX; bx <= maxX; bx++) {
             for (int by = minY; by <= maxY; by++) {
                 for (int bz = minZ; bz <= maxZ; bz++) {
@@ -170,8 +170,8 @@ public final class PlayerFit {
                     if (kind == 0) continue;             // air: cheap, exact
                     if (kind == 1 || kind == 3) return false; // full cube / powder snow in the body
                     // partial block: measure it properly
-                    if (VoxelShapes.matchesAnywhere(shapeAt(world, p), boxShape,
-                            BooleanBiFunction.AND)) {
+                    if (Shapes.joinIsNotEmpty(shapeAt(world, p), boxShape,
+                            BooleanOp.AND)) {
                         return false;
                     }
                 }
@@ -187,8 +187,8 @@ public final class PlayerFit {
      * Testing only the landing or raising the origin by STEP_HEIGHT misses ceilings
      * which admit a step but prevent the body from rising onto a full block.
      */
-    public static boolean ascentClear(WorldView world, BlockPos from, BlockPos to, double landingY) {
-        return boxFits(world, new Box(
+    public static boolean ascentClear(LevelReader world, BlockPos from, BlockPos to, double landingY) {
+        return boxFits(world, new AABB(
                 Math.min(from.getX(), to.getX()) + 0.5 - HALF, landingY,
                 Math.min(from.getZ(), to.getZ()) + 0.5 - HALF,
                 Math.max(from.getX(), to.getX()) + 0.5 + HALF, landingY + HEIGHT,
@@ -196,7 +196,7 @@ public final class PlayerFit {
     }
 
     /** A supported bank exit, including the head sweep above the water column. */
-    public static boolean waterExitClear(WorldView world, BlockPos from, BlockPos to) {
+    public static boolean waterExitClear(LevelReader world, BlockPos from, BlockPos to) {
         double landing = supportTop(world, to);
         if (Double.isNaN(landing) || landing < from.getY() - STEP_HEIGHT
                 || landing - from.getY() > JUMP_HEIGHT
@@ -205,9 +205,9 @@ public final class PlayerFit {
     }
 
     /** The destination column swept while leaving a ledge and falling to its floor. */
-    public static boolean descentClear(WorldView world, int x, int z,
+    public static boolean descentClear(LevelReader world, int x, int z,
                                        double departureY, double landingY) {
-        return boxFits(world, new Box(x + 0.5 - HALF, landingY, z + 0.5 - HALF,
+        return boxFits(world, new AABB(x + 0.5 - HALF, landingY, z + 0.5 - HALF,
                 x + 0.5 + HALF, departureY + HEIGHT, z + 0.5 + HALF));
     }
 
@@ -217,19 +217,19 @@ public final class PlayerFit {
      * the cell is a floor at its own top; otherwise the floor is the top of the
      * block below (y of the cell for a full block).
      */
-    public static double supportTop(WorldView world, BlockPos cell) {
+    public static double supportTop(LevelReader world, BlockPos cell) {
         int self = classify(world, cell);
         if (self == 2) {   // partial block IN the cell (slab/snow/carpet) = the floor
             double top = world.getBlockState(cell).getCollisionShape(world, cell)
-                    .getMax(Direction.Axis.Y);
+                    .max(Direction.Axis.Y);
             if (top < 1.0) return cell.getY() + top;
         }
-        BlockPos below = cell.down();
+        BlockPos below = cell.below();
         int under = classify(world, below);
         if (under == 0 || under == 3) return Double.NaN;   // air, or powder snow: nothing holds you
         if (under == 1) return below.getY() + 1.0;          // full cube: exact, no shape math
         return below.getY() + world.getBlockState(below).getCollisionShape(world, below)
-                .getMax(Direction.Axis.Y);
+                .max(Direction.Axis.Y);
     }
 
     /**
@@ -237,14 +237,14 @@ public final class PlayerFit {
      * fits above that surface. This is the test that rejects the slab-capped
      * 1.5-block passage.
      */
-    public static boolean standable(WorldView world, BlockPos cell) {
+    public static boolean standable(LevelReader world, BlockPos cell) {
         double top = supportTop(world, cell);
         if (Double.isNaN(top)) return false;
         return bodyFits(world, cell.getX() + 0.5, top, cell.getZ() + 0.5);
     }
 
     /** Can the player pass THROUGH this cell with feet at the given height. */
-    public static boolean passableAt(WorldView world, BlockPos cell, double feetY) {
+    public static boolean passableAt(LevelReader world, BlockPos cell, double feetY) {
         return bodyFits(world, cell.getX() + 0.5, feetY, cell.getZ() + 0.5);
     }
 
@@ -252,7 +252,7 @@ public final class PlayerFit {
      * Can the player move from a surface at {@code fromTop} into {@code to}
      * without jumping (step-up) — and does the body fit there.
      */
-    public static boolean canStepTo(WorldView world, double fromTop, BlockPos to) {
+    public static boolean canStepTo(LevelReader world, double fromTop, BlockPos to) {
         double top = supportTop(world, to);
         if (Double.isNaN(top)) return false;
         if (top - fromTop > STEP_HEIGHT) return false;
@@ -260,7 +260,7 @@ public final class PlayerFit {
     }
 
     /** Same, but allowing a jump (used by the ascend/parkour move generators). */
-    public static boolean canJumpTo(WorldView world, double fromTop, BlockPos to) {
+    public static boolean canJumpTo(LevelReader world, double fromTop, BlockPos to) {
         double top = supportTop(world, to);
         if (Double.isNaN(top)) return false;
         if (top - fromTop > JUMP_HEIGHT) return false;
@@ -273,7 +273,7 @@ public final class PlayerFit {
      * half-block steps — enough to catch a slab/fence cap mid-corridor, which
      * the class-based predicate it replaces could not.
      */
-    public static boolean corridorClear(WorldView world, BlockPos from, BlockPos to) {
+    public static boolean corridorClear(LevelReader world, BlockPos from, BlockPos to) {
         double fromTop = supportTop(world, from);
         double toTop = supportTop(world, to);
         if (Double.isNaN(fromTop) || Double.isNaN(toTop)) return false;

@@ -10,7 +10,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
-import net.minecraft.item.Item;
+import net.minecraft.world.item.Item;
 
 public abstract class CraftWithMatchingMaterialsTask extends ResourceTask {
 
@@ -77,7 +77,7 @@ public abstract class CraftWithMatchingMaterialsTask extends ResourceTask {
 
         // For each "same" item: How many items can we craft with it?
         // For instance, if we have 7 red wool, we can craft 2 beds
-        // sameFullCraftsPermitted[Items.RED_WOOL] = 2;
+        // sameFullCraftsPermitted[Items.WOOL.red()] = 2;
         int canCraftTotal = 0;
         int majorityCraftCount = 0;
         Item majorityCraftItem = null;

@@ -5,7 +5,6 @@
   "compatibilityLevel": "JAVA_25",
   "mixins": [
     "AbstractFurnaceScreenHandlerAccessor",
-    "AxeItemAccessor",
     "BlockModifiedByPlayerMixin",
     "ClientBlockBreakAccessor",
     "ClientConnectionAccessor",
@@ -15,17 +14,14 @@
     "DeathScreenAccessor",
     "EntityAccessor",
     "EntityMixin",
-    "GameOverlayMixin",
     "LivingEntityMixin",
     "MapRendererInvoker",
     "MinecraftClientSessionMixin",
-    "MiningToolItemAccessor",
     "PersistentProjectileEntityAccessor",
     "PortalManagerAccessor",
     "ScreenshotRecorderInvoker",
     "ServerPlayerEntityMixin",
-    "SlotClickMixin",
-    "WorldBlockModifiedMixin"
+    "SlotClickMixin"
   ],
   "client": [
     "InactivityFpsLimiterMixin",
@@ -39,7 +35,6 @@
     "ClientPlayNetworkHandlerMixin",
     "ClientPlayerInteractionManagerMixin",
     "ClientTickMixin",
-    "DrawableHelperInvoker",
     "EntryMixin",
     "LoadChunkMixin",
     "MixinLocalPlayer",

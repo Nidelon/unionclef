@@ -6,8 +6,8 @@ import adris.altoclef.eventbus.Subscription;
 import adris.altoclef.eventbus.events.SlotClickChangedEvent;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.slots.Slot;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.Arrays;
 import java.util.HashMap;

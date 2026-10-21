@@ -11,19 +11,19 @@ import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ProjectileHelper;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.FishingBobberEntity;
-import net.minecraft.entity.projectile.PersistentProjectileEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
-import net.minecraft.entity.projectile.thrown.EnderPearlEntity;
-import net.minecraft.entity.projectile.thrown.ExperienceBottleEntity;
-import net.minecraft.item.Item;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.FishingHook;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownExperienceBottle;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 import java.util.function.Predicate;
@@ -49,15 +49,15 @@ public class EntityTracker extends Tracker {
 
     private final List<CachedProjectile> projectiles = new ArrayList<>();
 
-    private final HashMap<String, PlayerEntity> playerMap = new HashMap<>();
-    private final HashMap<String, Vec3d> playerLastCoordinates = new HashMap<>();
+    private final HashMap<String, Player> playerMap = new HashMap<>();
+    private final HashMap<String, Vec3> playerLastCoordinates = new HashMap<>();
 
     private final EntityLocateBlacklist entityBlacklist = new EntityLocateBlacklist();
     private int _blacklistCleanupCounter = 0;
     private static final int BLACKLIST_CLEANUP_INTERVAL = 200; // ~10 seconds
 
-    private final HashMap<PlayerEntity, List<Entity>> entitiesCollidingWithPlayerAccumulator = new HashMap<>();
-    private final HashMap<PlayerEntity, HashSet<Entity>> entitiesCollidingWithPlayer = new HashMap<>();
+    private final HashMap<Player, List<Entity>> entitiesCollidingWithPlayerAccumulator = new HashMap<>();
+    private final HashMap<Player, HashSet<Entity>> entitiesCollidingWithPlayer = new HashMap<>();
 
     public EntityTracker(TrackerManager manager) {
         super(manager);
@@ -75,20 +75,20 @@ public class EntityTracker extends Tracker {
      */
     private static Class squashType(Class type) {
         // Squash types for ease of use
-        if (PlayerEntity.class.isAssignableFrom(type)) {
-            return PlayerEntity.class;
+        if (Player.class.isAssignableFrom(type)) {
+            return Player.class;
         }
         return type;
     }
 
-    private void registerPlayerCollision(PlayerEntity player, Entity entity) {
+    private void registerPlayerCollision(Player player, Entity entity) {
         if (!entitiesCollidingWithPlayerAccumulator.containsKey(player)) {
             entitiesCollidingWithPlayerAccumulator.put(player, new ArrayList<>());
         }
         entitiesCollidingWithPlayerAccumulator.get(player).add(entity);
     }
 
-    public boolean isCollidingWithPlayer(PlayerEntity player, Entity entity) {
+    public boolean isCollidingWithPlayer(Player player, Entity entity) {
         return entitiesCollidingWithPlayer.containsKey(player) && entitiesCollidingWithPlayer.get(player).contains(entity);
     }
 
@@ -97,22 +97,22 @@ public class EntityTracker extends Tracker {
     }
 
     public Optional<ItemEntity> getClosestItemDrop(Item... items) {
-        return getClosestItemDrop(mod.getPlayer().getPos(), items);
+        return getClosestItemDrop(mod.getPlayer().position(), items);
     }
 
-    public Optional<ItemEntity> getClosestItemDrop(Vec3d position, Item... items) {
+    public Optional<ItemEntity> getClosestItemDrop(Vec3 position, Item... items) {
         return getClosestItemDrop(position, entity -> true, items);
     }
 
-    public Optional<ItemEntity> getClosestItemDrop(Vec3d position, ItemTarget... items) {
+    public Optional<ItemEntity> getClosestItemDrop(Vec3 position, ItemTarget... items) {
         return getClosestItemDrop(position, entity -> true, items);
     }
 
     public Optional<ItemEntity> getClosestItemDrop(Predicate<ItemEntity> acceptPredicate, Item... items) {
-        return getClosestItemDrop(mod.getPlayer().getPos(), acceptPredicate, items);
+        return getClosestItemDrop(mod.getPlayer().position(), acceptPredicate, items);
     }
 
-    public Optional<ItemEntity> getClosestItemDrop(Vec3d position, Predicate<ItemEntity> acceptPredicate, Item... items) {
+    public Optional<ItemEntity> getClosestItemDrop(Vec3 position, Predicate<ItemEntity> acceptPredicate, Item... items) {
         ensureUpdated();
         ItemTarget[] tempTargetList = new ItemTarget[items.length];
         for (int i = 0; i < items.length; ++i) {
@@ -143,7 +143,7 @@ public class EntityTracker extends Tracker {
     /** Of those, the ones taken while OTHER drops were on offer -- i.e. depth actually won. */
     public static volatile int idDeepBeatOthers;
 
-    public Optional<ItemEntity> getClosestItemDrop(Vec3d position, Predicate<ItemEntity> acceptPredicate, ItemTarget... targets) {
+    public Optional<ItemEntity> getClosestItemDrop(Vec3 position, Predicate<ItemEntity> acceptPredicate, ItemTarget... targets) {
         ensureUpdated();
         if (targets.length == 0) {
             Debug.logError("You asked for the drop position of zero items... Most likely a typo.");
@@ -167,11 +167,11 @@ public class EntityTracker extends Tracker {
             for (Item item : target.getMatches()) {
                 if (!itemDropped(item)) continue;
                 for (ItemEntity entity : itemDropLocations.get(item)) {
-                    if (!entity.getStack().getItem().equals(item)) continue;
+                    if (!entity.getItem().getItem().equals(item)) continue;
                     if (!acceptPredicate.test(entity)) continue;
                     if (entityBlacklist.unreachable(entity)) {
                         idBlacklisted++;
-                        float c = (float) BaritoneHelper.calculateGenericHeuristic(position, entity.getPos());
+                        float c = (float) BaritoneHelper.calculateGenericHeuristic(position, entity.position());
                         if (!entityBlacklist.excludedDeliberately(entity) && c < restedCost) {
                             restedCost = c; restedFallback = entity;
                         }
@@ -180,7 +180,7 @@ public class EntityTracker extends Tracker {
 
                     // G63: the cost of a drop includes what it has already cost (penaltyBlocks is
                     // in blocks and this heuristic is in ticks-ish units of the same scale).
-                    float cost = (float) (BaritoneHelper.calculateGenericHeuristic(position, entity.getPos())
+                    float cost = (float) (BaritoneHelper.calculateGenericHeuristic(position, entity.position())
                             + entityBlacklist.penaltyBlocks(entity));
                     considered++;
                     if (cost < minCost) {
@@ -206,8 +206,8 @@ public class EntityTracker extends Tracker {
                 double dyPick = closestEntity.getY() - position.y;
                 idDropPick = String.format(java.util.Locale.ROOT,
                         "%s cost=%.0f dy=%+.1f of=%d next=%s",
-                        net.minecraft.registry.Registries.ITEM.getId(
-                                closestEntity.getStack().getItem()).getPath(),
+                        net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(
+                                closestEntity.getItem().getItem()).getPath(),
                         minCost, dyPick, considered,
                         runnerUp == Float.POSITIVE_INFINITY ? "-"
                                 : String.format(java.util.Locale.ROOT, "%.0f", runnerUp));
@@ -231,18 +231,18 @@ public class EntityTracker extends Tracker {
     }
 
     public Optional<Entity> getClosestEntity(Class... entityTypes) {
-        return getClosestEntity(mod.getPlayer().getPos(), entityTypes);
+        return getClosestEntity(mod.getPlayer().position(), entityTypes);
     }
 
-    public Optional<Entity> getClosestEntity(Vec3d position, Class... entityTypes) {
+    public Optional<Entity> getClosestEntity(Vec3 position, Class... entityTypes) {
         return this.getClosestEntity(position, (entity) -> true, entityTypes);
     }
 
     public Optional<Entity> getClosestEntity(Predicate<Entity> acceptPredicate, Class... entityTypes) {
-        return getClosestEntity(mod.getPlayer().getPos(), acceptPredicate, entityTypes);
+        return getClosestEntity(mod.getPlayer().position(), acceptPredicate, entityTypes);
     }
 
-    public Optional<Entity> getClosestEntity(Vec3d position, Predicate<Entity> acceptPredicate, Class... entityTypes) {
+    public Optional<Entity> getClosestEntity(Vec3 position, Predicate<Entity> acceptPredicate, Class... entityTypes) {
         Entity closestEntity = null;
         double minCost = Float.POSITIVE_INFINITY;
         // ⛔ A COOL-OFF PICKS BETWEEN TARGETS; IT DOES NOT DELETE THE LAST ONE (G63, 2026-09-12).
@@ -259,7 +259,7 @@ public class EntityTracker extends Tracker {
                         // Don't accept entities that no longer exist
                         if (!entity.isAlive()) continue;
                         if (!acceptPredicate.test(entity)) continue;
-                        double cost = entity.squaredDistanceTo(position);
+                        double cost = entity.distanceToSqr(position);
                         if (entityBlacklist.unreachable(entity)) {
                             if (!entityBlacklist.excludedDeliberately(entity) && cost < restedCost) {
                                 restedCost = cost; restedFallback = entity;
@@ -424,7 +424,7 @@ public class EntityTracker extends Tracker {
      *
      * @return Username on a multiplayer server.
      */
-    public Optional<Vec3d> getPlayerMostRecentPosition(String name) {
+    public Optional<Vec3> getPlayerMostRecentPosition(String name) {
         ensureUpdated();
         synchronized (BaritoneHelper.MINECRAFT_LOCK) {
             return Optional.ofNullable(playerLastCoordinates.getOrDefault(name, null));
@@ -436,7 +436,7 @@ public class EntityTracker extends Tracker {
      *
      * @param name Username on a multiplayer server.
      */
-    public Optional<PlayerEntity> getPlayerEntity(String name) {
+    public Optional<Player> getPlayerEntity(String name) {
         if (isPlayerLoaded(name)) {
             synchronized (BaritoneHelper.MINECRAFT_LOCK) {
                 return Optional.of(playerMap.get(name));
@@ -474,18 +474,18 @@ public class EntityTracker extends Tracker {
             hostiles.clear();
             trackedHostiles.clear();
             playerMap.clear();
-            if (MinecraftClient.getInstance().world == null) return;
+            if (Minecraft.getInstance().level == null) return;
 
             // Store/Register All accumulated player collisions for this frame.
             entitiesCollidingWithPlayer.clear();
-            for (Map.Entry<PlayerEntity, List<Entity>> collisions : entitiesCollidingWithPlayerAccumulator.entrySet()) {
+            for (Map.Entry<Player, List<Entity>> collisions : entitiesCollidingWithPlayerAccumulator.entrySet()) {
                 entitiesCollidingWithPlayer.put(collisions.getKey(), new HashSet<>());
                 entitiesCollidingWithPlayer.get(collisions.getKey()).addAll(collisions.getValue());
             }
             entitiesCollidingWithPlayerAccumulator.clear();
 
             // Loop through all entities and track 'em
-            for (Entity entity : MinecraftClient.getInstance().world.getEntities()) {
+            for (Entity entity : Minecraft.getInstance().level.entitiesForRendering()) {
 
                 // Catalogue based on type. Some types may get "squashed" or combined into one.
                 Class type = entity.getClass();
@@ -495,7 +495,7 @@ public class EntityTracker extends Tracker {
                 if (entity == null || !entity.isAlive()) continue;
 
                 // Don't catalogue our own player.
-                if (type == PlayerEntity.class && entity.equals(mod.getPlayer())) continue;
+                if (type == Player.class && entity.equals(mod.getPlayer())) continue;
 
                 if (!entityMap.containsKey(type)) {
                     entityMap.put(type, new ArrayList<>());
@@ -514,17 +514,17 @@ public class EntityTracker extends Tracker {
                     // Position and the four block states it consults, once.
                     if (etTrace < 4) {
                         etTrace++;
-                        net.minecraft.util.math.BlockPos bp = ientity.getBlockPos();
-                        Debug.logMessage("ETITEM " + ientity.getStack().getItem()
+                        net.minecraft.core.BlockPos bp = ientity.blockPosition();
+                        Debug.logMessage("ETITEM " + ientity.getItem().getItem()
                                 + " pos=" + String.format("%.2f,%.2f,%.2f", ientity.getX(), ientity.getY(), ientity.getZ())
                                 + " block=" + bp.getX() + "," + bp.getY() + "," + bp.getZ()
-                                + " onGround=" + ientity.isOnGround()
+                                + " onGround=" + ientity.onGround()
                                 + " self=" + WorldHelper.isSolidBlock(bp)
-                                + " d1=" + WorldHelper.isSolidBlock(bp.down())
-                                + " d2=" + WorldHelper.isSolidBlock(bp.down(2))
-                                + " d3=" + WorldHelper.isSolidBlock(bp.down(3)));
+                                + " d1=" + WorldHelper.isSolidBlock(bp.below())
+                                + " d2=" + WorldHelper.isSolidBlock(bp.below(2))
+                                + " d3=" + WorldHelper.isSolidBlock(bp.below(3)));
                     }
-                    Item droppedItem = ientity.getStack().getItem();
+                    Item droppedItem = ientity.getItem().getItem();
 
                     // Only cared about GROUNDED item entities -- AND THE BLOCK DIRECTLY BELOW COUNTS.
                     // The fallbacks looked two and three blocks down and skipped the one cell that
@@ -541,11 +541,11 @@ public class EntityTracker extends Tracker {
                     // test, even with down() added. A dropped item settles a few hundredths BELOW
                     // the surface, so flooring its Y lands on the floor block ITSELF -- down() is
                     // then the air beneath the floor, and down(2)/down(3) deeper air still.
-                    if (ientity.isOnGround() || ientity.isTouchingWater()
-                            || WorldHelper.isSolidBlock(ientity.getBlockPos())
-                            || WorldHelper.isSolidBlock(ientity.getBlockPos().down())
-                            || WorldHelper.isSolidBlock(ientity.getBlockPos().down(2))
-                            || WorldHelper.isSolidBlock(ientity.getBlockPos().down(3))) {
+                    if (ientity.onGround() || ientity.isInWater()
+                            || WorldHelper.isSolidBlock(ientity.blockPosition())
+                            || WorldHelper.isSolidBlock(ientity.blockPosition().below())
+                            || WorldHelper.isSolidBlock(ientity.blockPosition().below(2))
+                            || WorldHelper.isSolidBlock(ientity.blockPosition().below(3))) {
                         etItemsGrounded++;
                         if (!itemDropLocations.containsKey(droppedItem)) {
                             itemDropLocations.put(droppedItem, new ArrayList<>());
@@ -553,14 +553,14 @@ public class EntityTracker extends Tracker {
                         itemDropLocations.get(droppedItem).add(ientity);
                     }
                 }
-                if (entity instanceof MobEntity mob) {
+                if (entity instanceof Mob mob) {
                     if (EntityHelper.isProbablyHostileToPlayer(mod, entity)) {
                         trackedHostiles.add(mob);
-                        if (entity.isInRange(mod.getPlayer(), 26) && mob.canSee(mod.getPlayer())) {
+                        if (entity.closerThan(mod.getPlayer(), 26) && mob.hasLineOfSight(mod.getPlayer())) {
                             hostiles.add(mob);
                         }
                     }
-                } else if (entity instanceof ProjectileEntity projEntity) {
+                } else if (entity instanceof Projectile projEntity) {
                     if (!mod.getBehaviour().shouldAvoidDodgingProjectile(entity)) {
                         CachedProjectile proj = new CachedProjectile();
 
@@ -573,27 +573,27 @@ public class EntityTracker extends Tracker {
                         // here, unconditionally leaving `inGround` at its `false` default. The fixed
                         // accessor exposes `isInGround()` under the same name on both branches, so
                         // this call needs no version split of its own any more.
-                        if (entity instanceof PersistentProjectileEntity) {
+                        if (entity instanceof AbstractArrow) {
                             inGround = ((PersistentProjectileEntityAccessor) entity).isInGround();
                         }
 
                         // Ignore some of the harlmess projectiles
-                        if (projEntity instanceof FishingBobberEntity || projEntity instanceof EnderPearlEntity || projEntity instanceof ExperienceBottleEntity)
+                        if (projEntity instanceof FishingHook || projEntity instanceof ThrownEnderpearl || projEntity instanceof ThrownExperienceBottle)
                             continue;
 
                         if (!inGround) {
-                            proj.position = projEntity.getPos();
-                            proj.velocity = projEntity.getVelocity();
+                            proj.position = projEntity.position();
+                            proj.velocity = projEntity.getDeltaMovement();
                             proj.gravity = ProjectileHelper.hasGravity(projEntity) ? ProjectileHelper.ARROW_GRAVITY_ACCEL : 0;
                             proj.projectileType = projEntity.getClass();
                             proj.entityId = projEntity.getId();
                             projectiles.add(proj);
                         }
                     }
-                } else if (entity instanceof PlayerEntity player) {
+                } else if (entity instanceof Player player) {
                     String name = player.getName().getString();
                     playerMap.put(name, player);
-                    playerLastCoordinates.put(name, player.getPos());
+                    playerLastCoordinates.put(name, player.position());
                 }
             }
         }
@@ -603,28 +603,28 @@ public class EntityTracker extends Tracker {
      * Add a projectile from event (instant detection, before next tick poll).
      * Filters out own projectiles, ground-stuck, and harmless types.
      */
-    public boolean addProjectile(ProjectileEntity projEntity) {
+    public boolean addProjectile(Projectile projEntity) {
         CachedProjectile proj = new CachedProjectile();
 
         boolean inGround = false;
         // ⛔ FIXED 2026-09-05: same version-gate removal as the poll-path call above; see the note
         // there and in PersistentProjectileEntityAccessor.java.
-        if (projEntity instanceof PersistentProjectileEntity) {
+        if (projEntity instanceof AbstractArrow) {
             inGround = ((PersistentProjectileEntityAccessor) projEntity).isInGround();
         }
 
         // Ignore harmless projectiles
-        if (projEntity instanceof FishingBobberEntity || projEntity instanceof EnderPearlEntity || projEntity instanceof ExperienceBottleEntity)
+        if (projEntity instanceof FishingHook || projEntity instanceof ThrownEnderpearl || projEntity instanceof ThrownExperienceBottle)
             return false;
 
         // Ignore own projectiles
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc.player != null && projEntity.getOwner() == mc.player)
             return false;
 
         if (!inGround) {
-            proj.position = projEntity.getPos();
-            proj.velocity = projEntity.getVelocity();
+            proj.position = projEntity.position();
+            proj.velocity = projEntity.getDeltaMovement();
             proj.gravity = ProjectileHelper.hasGravity(projEntity) ? ProjectileHelper.ARROW_GRAVITY_ACCEL : 0;
             proj.projectileType = projEntity.getClass();
             synchronized (BaritoneHelper.MINECRAFT_LOCK) {

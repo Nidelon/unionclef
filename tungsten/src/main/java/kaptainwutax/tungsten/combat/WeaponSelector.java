@@ -3,10 +3,10 @@ package kaptainwutax.tungsten.combat;
 import java.util.HashMap;
 import java.util.Map;
 
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /**
  * Picks the melee weapon the combat primitive swings with.
@@ -65,12 +65,12 @@ public final class WeaponSelector {
      * with nothing but its fists still swings rather than standing there waiting for a sword that
      * does not exist.
      */
-    public static boolean hasBetterThanHeld(ClientPlayerEntity player) {
+    public static boolean hasBetterThanHeld(LocalPlayer player) {
         if (player == null) return false;
-        double held = meleeScore(player.getInventory().getStack(
+        double held = meleeScore(player.getInventory().getItem(
                 player.getInventory().getSelectedSlot()));
         for (int slot = 0; slot < 9; slot++) {
-            if (meleeScore(player.getInventory().getStack(slot)) > held) return true;
+            if (meleeScore(player.getInventory().getItem(slot)) > held) return true;
         }
         return false;
     }
@@ -132,22 +132,22 @@ public final class WeaponSelector {
      * disengage-to-heal behaviour is ever added, it needs its OWN predicate and must not be hung
      * on this one, or it will be gated on owning a bow for no reason.
      */
-    public static boolean hasRangedOption(ClientPlayerEntity player) {
+    public static boolean hasRangedOption(LocalPlayer player) {
         if (player == null) return false;
         boolean launcher = false;
         for (int slot = 0; slot < 9 && !launcher; slot++) {
-            Item it = player.getInventory().getStack(slot).getItem();
+            Item it = player.getInventory().getItem(slot).getItem();
             if (it == Items.BOW || it == Items.CROSSBOW) launcher = true;
         }
         if (!launcher) {
-            Item off = player.getOffHandStack().getItem();
+            Item off = player.getOffhandItem().getItem();
             launcher = off == Items.BOW || off == Items.CROSSBOW;
         }
         if (!launcher) return false;
-        for (int slot = 0; slot < player.getInventory().size(); slot++) {
-            if (ARROWS.contains(player.getInventory().getStack(slot).getItem())) return true;
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            if (ARROWS.contains(player.getInventory().getItem(slot).getItem())) return true;
         }
-        return ARROWS.contains(player.getOffHandStack().getItem());
+        return ARROWS.contains(player.getOffhandItem().getItem());
     }
 
     private WeaponSelector() {}
@@ -163,7 +163,7 @@ public final class WeaponSelector {
      * order they arrive, so a swing queued after this one can no longer be resolved with the
      * item we just put away. Vanilla sends its own copy on the next tick and it changes nothing.
      */
-    public static void syncSlot(net.minecraft.client.network.ClientPlayerEntity player, int slot) {
+    public static void syncSlot(net.minecraft.client.player.LocalPlayer player, int slot) {
         if (!kaptainwutax.tungsten.TungstenConfig.get().syncSlotToServer) return;
         sendSlot(player, slot);
     }
@@ -224,15 +224,15 @@ public final class WeaponSelector {
     public static volatile long clientTick = 0, lastSwitchTick = -100;
 
     /** Watch for attack-key presses aimed at a living entity. Diagnostic only. */
-    public static void noticeStrayAttacks(net.minecraft.client.network.ClientPlayerEntity player) {
+    public static void noticeStrayAttacks(net.minecraft.client.player.LocalPlayer player) {
         clientTick++;
         try {
-            net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
-            if (player == null || !mc.options.attackKey.isPressed()) return;
-            if (!(mc.crosshairTarget instanceof net.minecraft.util.hit.EntityHitResult ehr)) return;
-            if (!(ehr.getEntity() instanceof net.minecraft.entity.LivingEntity)) return;
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            if (player == null || !mc.options.keyAttack.isDown()) return;
+            if (!(mc.hitResult instanceof net.minecraft.world.phys.EntityHitResult ehr)) return;
+            if (!(ehr.getEntity() instanceof net.minecraft.world.entity.LivingEntity)) return;
             strayAttackTicks++;
-            if (meleeScore(player.getMainHandStack()) <= 1.0) strayAttackWithNonWeapon++;
+            if (meleeScore(player.getMainHandItem()) <= 1.0) strayAttackWithNonWeapon++;
         } catch (Exception ignored) {
             // a watcher never breaks the tick it rides on
         }
@@ -241,7 +241,7 @@ public final class WeaponSelector {
     /** Slots re-asserted to the server after a respawn; reads 0 with the flag off. */
     public static volatile int slotReasserted = 0;
 
-    private static java.lang.ref.WeakReference<net.minecraft.client.network.ClientPlayerEntity>
+    private static java.lang.ref.WeakReference<net.minecraft.client.player.LocalPlayer>
             lastBody = new java.lang.ref.WeakReference<>(null);
 
     /**
@@ -261,7 +261,7 @@ public final class WeaponSelector {
      * <p>An earlier control removed the ARROWS and the 1.0s survived, which was read as clearing
      * the bow. It cleared nothing: a bow with no arrows is still a 1-damage club.
      */
-    public static void reassertSlotAfterRespawn(net.minecraft.client.network.ClientPlayerEntity player) {
+    public static void reassertSlotAfterRespawn(net.minecraft.client.player.LocalPlayer player) {
         if (!kaptainwutax.tungsten.TungstenConfig.get().reassertSlotOnRespawn) return;
         if (player == null) return;
         if (lastBody.get() == player) return;
@@ -274,11 +274,11 @@ public final class WeaponSelector {
         }
     }
 
-    private static void sendSlot(net.minecraft.client.network.ClientPlayerEntity player, int slot) {
+    private static void sendSlot(net.minecraft.client.player.LocalPlayer player, int slot) {
         try {
-            if (player.networkHandler == null) return;
-            player.networkHandler.sendPacket(
-                    new net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket(slot));
+            if (player.connection == null) return;
+            player.connection.send(
+                    new net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket(slot));
             slotSyncSent++;
         } catch (Exception ignored) {
             // a sync must never be the thing that breaks a fight
@@ -298,7 +298,7 @@ public final class WeaponSelector {
      *
      * @return true if the selected slot was changed
      */
-    public static boolean equipBestMelee(ClientPlayerEntity player) {
+    public static boolean equipBestMelee(LocalPlayer player) {
         if (player == null) return false;
         if (cooldown > 0) { cooldown--; return false; }
         cooldown = RECHECK_TICKS;
@@ -306,14 +306,14 @@ public final class WeaponSelector {
         int bestSlot = -1;
         double bestScore = 0;
         for (int slot = 0; slot < 9; slot++) {
-            double score = meleeScore(player.getInventory().getStack(slot));
+            double score = meleeScore(player.getInventory().getItem(slot));
             if (score > bestScore) { bestScore = score; bestSlot = slot; }
         }
         if (bestSlot < 0) return false;                       // nothing to switch to
 
         int selected = player.getInventory().getSelectedSlot();
         if (selected == bestSlot) return false;
-        if (meleeScore(player.getInventory().getStack(selected)) >= bestScore) return false;
+        if (meleeScore(player.getInventory().getItem(selected)) >= bestScore) return false;
 
         player.getInventory().setSelectedSlot(bestSlot);
         syncSlot(player, bestSlot);

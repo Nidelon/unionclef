@@ -7,10 +7,10 @@ import adris.altoclef.commandsystem.Command;
 import adris.altoclef.commandsystem.args.StringArg;
 import adris.altoclef.commandsystem.exception.CommandException;
 import adris.altoclef.tasks.construction.PlaceBlockNearbyTask;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 
 /*
  * @place <block>
@@ -43,7 +43,7 @@ public class PlaceCommand extends Command {
         if (name.contains(":")) name = name.substring(name.indexOf(':') + 1);
         Identifier id;
         try {
-            id = Identifier.of("minecraft", name);
+            id = Identifier.fromNamespaceAndPath("minecraft", name);
         } catch (Exception e) {
             mod.log("Bad block name '" + name + "': " + e.getMessage());
             finish();
@@ -52,9 +52,9 @@ public class PlaceCommand extends Command {
         // DefaultedRegistry.get(Identifier) → Block (AIR for unknown). The //$$ line guards the
         // 1.21.11 build from the preprocessor remapping .get( → .getEntry( (which returns Optional).
         //#if MC >= 12111
-        //$$ Block block = Registries.BLOCK.get(id);
+        //$$ Block block = BuiltInRegistries.BLOCK.getValue(id);
         //#else
-        Block block = Registries.BLOCK.get(id);
+        Block block = BuiltInRegistries.BLOCK.getValue(id);
         //#endif
         if (block == Blocks.AIR) {
             mod.log("Unknown block '" + name + "'. Use a vanilla id like stone / dirt / oak_planks / cobblestone.");

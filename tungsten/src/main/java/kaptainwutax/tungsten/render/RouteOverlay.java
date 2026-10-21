@@ -5,9 +5,9 @@ import java.util.List;
 import kaptainwutax.tungsten.path.movements.Movement;
 import kaptainwutax.tungsten.path.movements.MovementQueue;
 import kaptainwutax.tungsten.task.BlockPathWalker;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * What the bot is about to do, drawn in the world every frame -- baritone's PathRenderer, for the
@@ -53,20 +53,20 @@ public final class RouteOverlay {
 
     /** The block whose break just made progress (0..1). Called by whoever drives the break. */
     public static void noteMining(BlockPos pos, double progress) {
-        mining = pos == null ? null : pos.toImmutable();
+        mining = pos == null ? null : pos.immutable();
         miningProgress = progress;
         miningMs = System.currentTimeMillis();
     }
 
     /** The block a task means to break next, before any swing -- where the bot is headed to dig. */
     public static void noteTarget(BlockPos pos) {
-        target = pos == null ? null : pos.toImmutable();
+        target = pos == null ? null : pos.immutable();
         targetMs = System.currentTimeMillis();
     }
 
     public static void draw() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null || mc.world == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) return;
         kaptainwutax.tungsten.TungstenConfig cfg = kaptainwutax.tungsten.TungstenConfig.get();
         if (cfg.renderRoute) drawWalkerRoute();
         drawMovementQueue(mc, cfg);
@@ -78,22 +78,22 @@ public final class RouteOverlay {
         if (p == null || p.isEmpty()) return;
         int from = Math.max(0, Math.min(BlockPathWalker.waypointForOverlay(), p.size() - 1));
         int to = Math.min(p.size(), from + MAX_WAYPOINTS);
-        Vec3d prev = null;
+        Vec3 prev = null;
         for (int i = from; i < to; i++) {
             BlockPos b = p.get(i);
-            Vec3d c = new Vec3d(b.getX() + 0.5, b.getY() + 0.1, b.getZ() + 0.5);
+            Vec3 c = new Vec3(b.getX() + 0.5, b.getY() + 0.1, b.getZ() + 0.5);
             if (prev != null) line(prev, c, ROUTE, 5.0f);
             prev = c;
         }
         BlockPos next = p.get(from);
-        cell(new net.minecraft.util.math.Box(next.getX() + 0.3, next.getY(), next.getZ() + 0.3,
+        cell(new net.minecraft.world.phys.AABB(next.getX() + 0.3, next.getY(), next.getZ() + 0.3,
                 next.getX() + 0.7, next.getY() + 0.2, next.getZ() + 0.7), NEXT, 120);
         BlockPos end = p.get(p.size() - 1);
-        cell(new net.minecraft.util.math.Box(end.getX(), end.getY(), end.getZ(),
+        cell(new net.minecraft.world.phys.AABB(end.getX(), end.getY(), end.getZ(),
                 end.getX() + 1, end.getY() + 2, end.getZ() + 1), ROUTE, 40);
     }
 
-    private static void drawMovementQueue(MinecraftClient mc, kaptainwutax.tungsten.TungstenConfig cfg) {
+    private static void drawMovementQueue(Minecraft mc, kaptainwutax.tungsten.TungstenConfig cfg) {
         List<Movement> ms = MovementQueue.remainingForOverlay();
         if (ms.isEmpty()) return;
         int n = Math.min(ms.size(), MAX_MOVEMENTS);
@@ -101,13 +101,13 @@ public final class RouteOverlay {
             Movement m = ms.get(i);
             BlockPos s = m.getSrc(), d = m.getDest();
             if (cfg.renderRoute) {
-                line(new Vec3d(s.getX() + 0.5, s.getY() + 0.15, s.getZ() + 0.5),
-                        new Vec3d(d.getX() + 0.5, d.getY() + 0.15, d.getZ() + 0.5), QUEUE, 5.0f);
+                line(new Vec3(s.getX() + 0.5, s.getY() + 0.15, s.getZ() + 0.5),
+                        new Vec3(d.getX() + 0.5, d.getY() + 0.15, d.getZ() + 0.5), QUEUE, 5.0f);
             }
             try {
-                List<BlockPos> br = m.toBreakCached != null ? m.toBreakCached : m.toBreak(mc.world);
+                List<BlockPos> br = m.toBreakCached != null ? m.toBreakCached : m.toBreak(mc.level);
                 if (cfg.renderBreakPlan) for (BlockPos b : br) box(b, BREAK, 0.02, 70);
-                List<BlockPos> pl = m.toPlaceCached != null ? m.toPlaceCached : m.toPlace(mc.world);
+                List<BlockPos> pl = m.toPlaceCached != null ? m.toPlaceCached : m.toPlace(mc.level);
                 if (cfg.renderPlacePlan) for (BlockPos b : pl) box(b, PLACE, 0.02, 70);
             } catch (Exception ignored) {
                 // a movement whose cells cannot be computed this frame simply draws no boxes
@@ -124,34 +124,34 @@ public final class RouteOverlay {
             box(m, MINING, 0.03, 0);
             double f = Math.max(0.05, Math.min(1.0, miningProgress));
             double inset = 0.5 * (1.0 - f);
-            cell(new net.minecraft.util.math.Box(m.getX() + inset, m.getY() + inset, m.getZ() + inset,
+            cell(new net.minecraft.world.phys.AABB(m.getX() + inset, m.getY() + inset, m.getZ() + inset,
                     m.getX() + 1 - inset, m.getY() + 1 - inset, m.getZ() + 1 - inset), MINING, 90);
         }
     }
 
     private static void box(BlockPos b, Color c, double grow, int fillAlpha) {
-        cell(new net.minecraft.util.math.Box(b.getX() - grow, b.getY() - grow, b.getZ() - grow,
+        cell(new net.minecraft.world.phys.AABB(b.getX() - grow, b.getY() - grow, b.getZ() - grow,
                 b.getX() + 1 + grow, b.getY() + 1 + grow, b.getZ() + 1 + grow), c, fillAlpha);
     }
 
     /** A box with a thick outline and, when fillAlpha > 0, a see-through fill -- readable on video. */
-    private static void cell(net.minecraft.util.math.Box bx, Color c, int fillAlpha) {
+    private static void cell(net.minecraft.world.phys.AABB bx, Color c, int fillAlpha) {
         //#if MC >= 12111
-        net.minecraft.client.render.DrawStyle style = fillAlpha > 0
-                ? net.minecraft.client.render.DrawStyle.filledAndStroked(c.toARGB(255), 3.0f, c.toARGB(fillAlpha))
-                : net.minecraft.client.render.DrawStyle.stroked(c.toARGB(255), 3.0f);
-        net.minecraft.world.debug.gizmo.GizmoDrawing.box(bx, style);
-        net.minecraft.world.debug.gizmo.GizmoDrawing.box(bx, net.minecraft.client.render.DrawStyle.stroked(c.toARGB(110), 2.0f))
-                .ignoreOcclusion();
+        net.minecraft.gizmos.GizmoStyle style = fillAlpha > 0
+                ? net.minecraft.gizmos.GizmoStyle.strokeAndFill(c.toARGB(255), 3.0f, c.toARGB(fillAlpha))
+                : net.minecraft.gizmos.GizmoStyle.stroke(c.toARGB(255), 3.0f);
+        net.minecraft.gizmos.Gizmos.cuboid(bx, style);
+        net.minecraft.gizmos.Gizmos.cuboid(bx, net.minecraft.gizmos.GizmoStyle.stroke(c.toARGB(110), 2.0f))
+                .setAlwaysOnTop();
         //#else
-        //$$ new Cuboid(new Vec3d(bx.minX, bx.minY, bx.minZ), new Vec3d(bx.getLengthX(), bx.getLengthY(), bx.getLengthZ()), c).render(null);
+        //$$ new Cuboid(new Vec3(bx.minX, bx.minY, bx.minZ), new Vec3(bx.getLengthX(), bx.getLengthY(), bx.getLengthZ()), c).render(null);
         //#endif
     }
 
-    private static void line(Vec3d a, Vec3d b, Color c, float width) {
+    private static void line(Vec3 a, Vec3 b, Color c, float width) {
         //#if MC >= 12111
-        net.minecraft.world.debug.gizmo.GizmoDrawing.line(a, b, c.toARGB(255), width);
-        net.minecraft.world.debug.gizmo.GizmoDrawing.line(a, b, c.toARGB(110), width * 0.6f).ignoreOcclusion();
+        net.minecraft.gizmos.Gizmos.line(a, b, c.toARGB(255), width);
+        net.minecraft.gizmos.Gizmos.line(a, b, c.toARGB(110), width * 0.6f).setAlwaysOnTop();
         //#else
         //$$ new Line(a, b, c).render(null);
         //#endif

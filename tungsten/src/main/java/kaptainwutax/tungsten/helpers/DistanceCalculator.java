@@ -4,9 +4,9 @@ import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.agent.Agent;
 import kaptainwutax.tungsten.render.Color;
 import kaptainwutax.tungsten.render.Cuboid;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Helper class to easily calculate distance.
@@ -21,7 +21,7 @@ public class DistanceCalculator {
      * @return horizontal Euclidean distance from startPos to endPos.
      */
 	public static double getHorizontalEuclideanDistance(BlockPos startPos, BlockPos endPos) {
-		return getHorizontalEuclideanDistance(new Vec3d(startPos.getX(), startPos.getY(), startPos.getZ()), new Vec3d(endPos.getX(), endPos.getY(), endPos.getZ()));
+		return getHorizontalEuclideanDistance(new Vec3(startPos.getX(), startPos.getY(), startPos.getZ()), new Vec3(endPos.getX(), endPos.getY(), endPos.getZ()));
 	}
 	
 	/**
@@ -31,17 +31,17 @@ public class DistanceCalculator {
      * @param endPos end position
      * @return horizontal Manhattan distance from startPos to endPos.
      */
-	public static double getHorizontalEuclideanDistance(Vec3d startPos, Vec3d endPos) {
-		double dx = endPos.getX() - startPos.getX();
-    	double dz = endPos.getZ() - startPos.getZ();
+	public static double getHorizontalEuclideanDistance(Vec3 startPos, Vec3 endPos) {
+		double dx = endPos.x() - startPos.x();
+    	double dz = endPos.z() - startPos.z();
     	return Math.sqrt(dx * dx + dz * dz);
 	}
 	
 
-	public static double getEuclideanDistance(Vec3d startPos, Vec3d endPos) {
-		double dx = endPos.getX() - startPos.getX();
-    	double dy = endPos.getY() - startPos.getY();
-    	double dz = endPos.getZ() - startPos.getZ();
+	public static double getEuclideanDistance(Vec3 startPos, Vec3 endPos) {
+		double dx = endPos.x() - startPos.x();
+    	double dy = endPos.y() - startPos.y();
+    	double dz = endPos.z() - startPos.z();
     	return Math.sqrt(dx * dx + dy * dy + dz * dz);
 	}
 	
@@ -53,7 +53,7 @@ public class DistanceCalculator {
      * @return horizontal Manhattan distance from startPos to endPos.
      */
 	public static double getHorizontalManhattanDistance(BlockPos startPos, BlockPos endPos) {
-		return getHorizontalManhattanDistance(new Vec3d(startPos.getX(), startPos.getY(), startPos.getZ()), new Vec3d(endPos.getX(), endPos.getY(), endPos.getZ()));
+		return getHorizontalManhattanDistance(new Vec3(startPos.getX(), startPos.getY(), startPos.getZ()), new Vec3(endPos.getX(), endPos.getY(), endPos.getZ()));
 	}
 	
 	/**
@@ -63,9 +63,9 @@ public class DistanceCalculator {
      * @param endPos end position
      * @return horizontal Manhattan distance from startPos to endPos.
      */
-	public static double getHorizontalManhattanDistance(Vec3d startPos, Vec3d endPos) {
-		double dx = endPos.getX() - startPos.getX();
-    	double dz = endPos.getZ() - startPos.getZ();
+	public static double getHorizontalManhattanDistance(Vec3 startPos, Vec3 endPos) {
+		double dx = endPos.x() - startPos.x();
+    	double dz = endPos.z() - startPos.z();
     	// ⛔ FIXED 2026-09-05: Manhattan distance is |dx| + |dz|, not dx + dz. As written this
     	// could go NEGATIVE whenever dx and dz share a sign (endPos both west AND north of
     	// startPos, or both east AND south) -- both live callers use this as a `<=`/`<` threshold
@@ -84,15 +84,15 @@ public class DistanceCalculator {
      * @return distance to the edge of the block in the look direction
      */
     public static double getDistanceToEdge(Agent agent) {
-        Vec3d position = agent.getPos(); // Get player's position
+        Vec3 position = agent.getPos(); // Get player's position
         BlockPos blockPos = agent.getBlockPos(); // Block the player is standing on
 		float f = agent.pitch * (float) (Math.PI / 180.0);
 		float g = -agent.yaw * (float) (Math.PI / 180.0);
-		float h = MathHelper.cos(g);
-		float i = MathHelper.sin(g);
-		float j = MathHelper.cos(f);
-		float k = MathHelper.sin(f);
-		Vec3d lookDirection =  new Vec3d((double)(i * j), (double)(-k), (double)(h * j)); // Direction player is looking
+		float h = Mth.cos(g);
+		float i = Mth.sin(g);
+		float j = Mth.cos(f);
+		float k = Mth.sin(f);
+		Vec3 lookDirection =  new Vec3((double)(i * j), (double)(-k), (double)(h * j)); // Direction player is looking
 
         // Determine block bounds relative to the player's position
         double deltaX = position.x - blockPos.getX();
@@ -116,7 +116,7 @@ public class DistanceCalculator {
             }
         }
 
-        return MathHelper.clamp(distance, 0.0, 1.0); // Ensure distance is within block bounds
+        return Mth.clamp(distance, 0.0, 1.0); // Ensure distance is within block bounds
     }
     
     /**

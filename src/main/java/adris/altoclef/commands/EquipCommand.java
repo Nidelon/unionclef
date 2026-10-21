@@ -11,10 +11,9 @@ import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 //#if MC < 12111
-import net.minecraft.item.Equipment;
 //#endif
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
@@ -72,9 +71,9 @@ public class EquipCommand extends Command {
      */
     private static boolean canBeEquipped(Item item) {
         //#if MC < 12111
-        return item instanceof Equipment;
+        return item.components().has(net.minecraft.core.component.DataComponents.EQUIPPABLE);
         //#else
-        //$$ // The Equipment interface is gone in 1.21.11; the EQUIPPABLE component now says which
+        //$$ // The Equipable interface is gone in 1.21.11; the EQUIPPABLE component now says which
         //$$ // slot an item goes to, and ItemHelper.getArmorSlot reads it. Shields carry no such
         //$$ // component (they are held, not worn) and stay a special case, as in EquipArmorTask.
         //$$ return item == Items.SHIELD || ItemHelper.getArmorSlot(item) != null;

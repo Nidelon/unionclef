@@ -5,7 +5,6 @@ import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.mixins.AbstractFurnaceScreenHandlerAccessor;
 import adris.altoclef.multiversion.item.ItemVer;
-import adris.altoclef.multiversion.ToolMaterialVer;
 import adris.altoclef.multiversion.versionedfields.Blocks;
 import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.trackers.storage.ItemStorageTracker;
@@ -17,17 +16,30 @@ import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.CursorSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ChatScreen;
-import net.minecraft.client.gui.screen.GameMenuScreen;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.option.GameOptionsScreen;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.*;
-import net.minecraft.screen.*;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.options.OptionsSubScreen;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.ShieldItem;
+import net.minecraft.world.inventory.AbstractFurnaceMenu;
+import net.minecraft.world.inventory.BlastFurnaceMenu;
+import net.minecraft.world.inventory.BrewingStandMenu;
+import net.minecraft.world.inventory.CraftingMenu;
+import net.minecraft.world.inventory.FurnaceMenu;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.inventory.ContainerData;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.SmokerMenu;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.*;
@@ -44,21 +56,21 @@ public class StorageHelper {
     private static final int OFF_HAND_SLOT = 40;
 
     public static void closeScreen() {
-        if (MinecraftClient.getInstance().player == null)
+        if (Minecraft.getInstance().player == null)
             return;
-        Screen screen = MinecraftClient.getInstance().currentScreen;
+        Screen screen = Minecraft.getInstance().gui.screen();
         if (
                 screen != null &&
-                        !(screen instanceof GameMenuScreen) &&
-                        !(screen instanceof GameOptionsScreen) &&
+                        !(screen instanceof PauseScreen) &&
+                        !(screen instanceof OptionsSubScreen) &&
                         !(screen instanceof ChatScreen)) {
             // Close the screen if we're in-game
-            MinecraftClient.getInstance().player.closeHandledScreen();
+            Minecraft.getInstance().player.closeContainer();
         }
     }
 
     public static ItemStack getItemStackInSlot(Slot slot) {
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        LocalPlayer player = Minecraft.getInstance().player;
         if (player == null)
             return ItemStack.EMPTY;
         // Cursor slot
@@ -66,43 +78,43 @@ public class StorageHelper {
             return StorageHelper.getItemStackInCursorSlot();
         }
         // Inventory slot when inventory is NOT open
-        PlayerInventory inv = player.getInventory();
+        Inventory inv = player.getInventory();
         if (inv != null) {
             if (slot.equals(PlayerSlot.OFFHAND_SLOT))
                 //#if MC >= 12111
-                //$$ return inv.getStack(40);
+                return inv.getItem(40);
                 //#else
-                return inv.offHand.stream().findFirst().orElse(ItemStack.EMPTY);
+                //$$ return inv.getNonEquipmentItems().stream().findFirst().orElse(ItemStack.EMPTY);
                 //#endif
             if (slot.equals(PlayerSlot.ARMOR_HELMET_SLOT))
                 //#if MC >= 12111
-                //$$ return inv.getStack(39);
+                return inv.getItem(39);
                 //#else
-                return inv.getArmorStack(3);
+                //$$ return inv.getArmorStack(3);
                 //#endif
             if (slot.equals(PlayerSlot.ARMOR_CHESTPLATE_SLOT))
                 //#if MC >= 12111
-                //$$ return inv.getStack(38);
+                return inv.getItem(38);
                 //#else
-                return inv.getArmorStack(2);
+                //$$ return inv.getArmorStack(2);
                 //#endif
             if (slot.equals(PlayerSlot.ARMOR_LEGGINGS_SLOT))
                 //#if MC >= 12111
-                //$$ return inv.getStack(37);
+                return inv.getItem(37);
                 //#else
-                return inv.getArmorStack(1);
+                //$$ return inv.getArmorStack(1);
                 //#endif
             if (slot.equals(PlayerSlot.ARMOR_BOOTS_SLOT))
                 //#if MC >= 12111
-                //$$ return inv.getStack(36);
+                return inv.getItem(36);
                 //#else
-                return inv.getArmorStack(0);
+                //$$ return inv.getArmorStack(0);
                 //#endif
         }
         try {
             // We might have messed up and opened the wrong slot.
-            net.minecraft.screen.slot.Slot mcSlot = player.currentScreenHandler.getSlot(slot.getWindowSlot());
-            return (mcSlot != null) ? mcSlot.getStack() : ItemStack.EMPTY;
+            net.minecraft.world.inventory.Slot mcSlot = player.containerMenu.getSlot(slot.getWindowSlot());
+            return (mcSlot != null) ? mcSlot.getItem() : ItemStack.EMPTY;
         } catch (Exception e) {
             Debug.logWarning("Screen Slot Error (ignored)");
             e.printStackTrace();
@@ -161,7 +173,7 @@ public class StorageHelper {
         //      PREFER (Always use silk touch if we have)
         //      AVOID  (Don't use silk touch if we can)
         //  }
-        if (state.getBlock().getHardness() == 0) return Optional.ofNullable(PlayerSlot.getEquipSlot());
+        if (state.getBlock().defaultDestroyTime() == 0) return Optional.ofNullable(PlayerSlot.getEquipSlot());
 
         Slot bestToolSlot = null;
         double highestSpeed = Double.NEGATIVE_INFINITY;
@@ -176,11 +188,11 @@ public class StorageHelper {
                 continue;
             ItemStack stack = getItemStackInSlot(slot);
             //#if MC < 12111
-            if (stack.getItem() instanceof ToolItem) {
+            //$$ if (stack.getItem() instanceof TieredItem) {
             //#else
-            //$$ if (stack.getItem().getDefaultStack().isSuitableFor(state)) { // TODO [1.21.11] tool-class deleted — use isSuitableFor directly
+            if (stack.getItem().getDefaultInstance().isCorrectToolForDrops(state)) { // TODO [1.21.11] tool-class deleted — use isSuitableFor directly
             //#endif
-                if (stack.getItem().getDefaultStack().isSuitableFor(state)) {
+                if (stack.getItem().getDefaultInstance().isCorrectToolForDrops(state)) {
                     double speed = ItemHelper.miningSpeedVsBlock(stack, state);
                     if (shouldSaveStack(mod,  state.getBlock(), stack)) {
                         if (speed > savedSpeed) { savedSpeed = speed; savedToolSlot = slot; }
@@ -211,12 +223,12 @@ public class StorageHelper {
         boolean diamondRelatedBlock = block.equals(Blocks.DIAMOND_BLOCK) || block.equals(Blocks.DIAMOND_ORE) || block.equals(Blocks.DEEPSLATE_DIAMOND_ORE);
 
         // if the durability is really low, mine only diamond related stuff
-        if (stack.getDamage()+8 > stack.getMaxDamage()) {
+        if (stack.getDamageValue()+8 > stack.getMaxDamage()) {
             return diamondRelatedBlock;
         }
 
         // if the durability gets low, mine only things we have to
-        if (stack.getDamage()+30 > stack.getMaxDamage()) {
+        if (stack.getDamageValue()+30 > stack.getMaxDamage()) {
             return !MiningRequirement.getMinimumRequirementForBlock(block).equals(MiningRequirement.IRON);
         }
 
@@ -260,11 +272,11 @@ public class StorageHelper {
 
         // Try throwing away lower tier tools
         //#if MC < 12111
-        final HashMap<Class, Integer> bestMaterials = new HashMap<>();
-        final HashMap<Class, Slot> bestToolSlot = new HashMap<>();
+        //$$ final HashMap<Class, Integer> bestMaterials = new HashMap<>();
+        //$$ final HashMap<Class, Slot> bestToolSlot = new HashMap<>();
         //#else
-        //$$ final HashMap<net.minecraft.registry.tag.TagKey<Item>, Double> bestMaterials = new HashMap<>();
-        //$$ final HashMap<net.minecraft.registry.tag.TagKey<Item>, Slot> bestToolSlot = new HashMap<>();
+        final HashMap<net.minecraft.tags.TagKey<Item>, Double> bestMaterials = new HashMap<>();
+        final HashMap<net.minecraft.tags.TagKey<Item>, Slot> bestToolSlot = new HashMap<>();
         //#endif
 
         for (Slot slot : PlayerSlot.getCurrentScreenSlots()) {
@@ -275,44 +287,44 @@ public class StorageHelper {
             Item item = stack.getItem();
 
             //#if MC < 12111
-            if (!(item instanceof ToolItem tool)) continue;
+            //$$ if (!(item instanceof TieredItem tool)) continue;
 
-            Class clazz = tool.getClass();
+            //$$ Class clazz = tool.getClass();
 
-            int level = ToolMaterialVer.getMiningLevel(tool);
-            int prevBest = bestMaterials.getOrDefault(clazz, 0);
+            //$$ int level = ToolMaterialVer.getMiningLevel(tool);
+            //$$ int prevBest = bestMaterials.getOrDefault(clazz, 0);
 
+            //$$ if (level > prevBest) {
+                //$$ // We had a WORSE tool before.
+                //$$ if (bestMaterials.containsKey(clazz)) {
+                    //$$ return Optional.of(bestToolSlot.get(clazz));
+                //$$ }
+
+                //$$ bestMaterials.put(clazz, level);
+                //$$ bestToolSlot.put(clazz, slot);
+            //$$ } else if (level < prevBest) {
+                //$$ // We found something WORSE!
+                //$$ return Optional.of(slot);
+            //$$ }
+            //#else
+            net.minecraft.tags.TagKey<Item> family = ItemHelper.toolFamily(item);
+            if (family == null) continue;
+            
+            double level = ItemHelper.toolQuality(item);
+            double prevBest = bestMaterials.getOrDefault(family, 0.0);
+            
             if (level > prevBest) {
                 // We had a WORSE tool before.
-                if (bestMaterials.containsKey(clazz)) {
-                    return Optional.of(bestToolSlot.get(clazz));
+                if (bestMaterials.containsKey(family)) {
+                    return Optional.of(bestToolSlot.get(family));
                 }
-
-                bestMaterials.put(clazz, level);
-                bestToolSlot.put(clazz, slot);
+            
+                bestMaterials.put(family, level);
+                bestToolSlot.put(family, slot);
             } else if (level < prevBest) {
                 // We found something WORSE!
                 return Optional.of(slot);
             }
-            //#else
-            //$$ net.minecraft.registry.tag.TagKey<Item> family = ItemHelper.toolFamily(item);
-            //$$ if (family == null) continue;
-            //$$
-            //$$ double level = ItemHelper.toolQuality(item);
-            //$$ double prevBest = bestMaterials.getOrDefault(family, 0.0);
-            //$$
-            //$$ if (level > prevBest) {
-            //$$     // We had a WORSE tool before.
-            //$$     if (bestMaterials.containsKey(family)) {
-            //$$         return Optional.of(bestToolSlot.get(family));
-            //$$     }
-            //$$
-            //$$     bestMaterials.put(family, level);
-            //$$     bestToolSlot.put(family, slot);
-            //$$ } else if (level < prevBest) {
-            //$$     // We found something WORSE!
-            //$$     return Optional.of(slot);
-            //$$ }
             //#endif
         }
 
@@ -357,8 +369,26 @@ public class StorageHelper {
                     ItemStack left = StorageHelper.getItemStackInSlot(leftSlot),
                             right = StorageHelper.getItemStackInSlot(rightSlot);
                     //#if MC < 12111
-                    boolean leftIsTool = left.getItem() instanceof ToolItem;
-                    boolean rightIsTool = right.getItem() instanceof ToolItem;
+                    //$$ boolean leftIsTool = left.getItem() instanceof TieredItem;
+                    //$$ boolean rightIsTool = right.getItem() instanceof TieredItem;
+                    //$$ // Prioritize tools over materials.
+                    //$$ if (rightIsTool && !leftIsTool) {
+                        //$$ return -1;
+                    //$$ } else if (leftIsTool && !rightIsTool) {
+                        //$$ return 1;
+                    //$$ }
+                    //$$ if (rightIsTool) {
+                        //$$ // Prioritize material type, then durability.
+                        //$$ TieredItem leftTool = (TieredItem) left.getItem();
+                        //$$ TieredItem rightTool = (TieredItem) right.getItem();
+                        //$$ if (ToolMaterialVer.getMiningLevel(leftTool) != ToolMaterialVer.getMiningLevel(rightTool))
+                            //$$ return ToolMaterialVer.getMiningLevel(leftTool) - ToolMaterialVer.getMiningLevel(rightTool);
+                        //$$ // We want less damage.
+                        //$$ return left.getDamage() - right.getDamage();
+                    //$$ }
+                    //#else
+                    boolean leftIsTool = ItemHelper.isTool(left.getItem());
+                    boolean rightIsTool = ItemHelper.isTool(right.getItem());
                     // Prioritize tools over materials.
                     if (rightIsTool && !leftIsTool) {
                         return -1;
@@ -366,33 +396,15 @@ public class StorageHelper {
                         return 1;
                     }
                     if (rightIsTool) {
-                        // Prioritize material type, then durability.
-                        ToolItem leftTool = (ToolItem) left.getItem();
-                        ToolItem rightTool = (ToolItem) right.getItem();
-                        if (ToolMaterialVer.getMiningLevel(leftTool) != ToolMaterialVer.getMiningLevel(rightTool))
-                            return ToolMaterialVer.getMiningLevel(leftTool) - ToolMaterialVer.getMiningLevel(rightTool);
+                        // Prioritize material type (via mining-speed/DPS proxy), then durability.
+                        double leftQuality = ItemHelper.toolQuality(left.getItem());
+                        double rightQuality = ItemHelper.toolQuality(right.getItem());
+                        if (leftQuality != rightQuality) {
+                            return Double.compare(leftQuality, rightQuality);
+                        }
                         // We want less damage.
-                        return left.getDamage() - right.getDamage();
+                        return left.getDamageValue() - right.getDamageValue();
                     }
-                    //#else
-                    //$$ boolean leftIsTool = ItemHelper.isTool(left.getItem());
-                    //$$ boolean rightIsTool = ItemHelper.isTool(right.getItem());
-                    //$$ // Prioritize tools over materials.
-                    //$$ if (rightIsTool && !leftIsTool) {
-                    //$$     return -1;
-                    //$$ } else if (leftIsTool && !rightIsTool) {
-                    //$$     return 1;
-                    //$$ }
-                    //$$ if (rightIsTool) {
-                    //$$     // Prioritize material type (via mining-speed/DPS proxy), then durability.
-                    //$$     double leftQuality = ItemHelper.toolQuality(left.getItem());
-                    //$$     double rightQuality = ItemHelper.toolQuality(right.getItem());
-                    //$$     if (leftQuality != rightQuality) {
-                    //$$         return Double.compare(leftQuality, rightQuality);
-                    //$$     }
-                    //$$     // We want less damage.
-                    //$$     return left.getDamage() - right.getDamage();
-                    //$$ }
                     //#endif
 
                     // Prioritize food over other things if we lack food.
@@ -502,25 +514,25 @@ public class StorageHelper {
     }
 
     public static boolean isArmorEquipped(Item... any) {
-        ClientPlayerEntity player = AltoClef.getInstance().getPlayer();
+        LocalPlayer player = AltoClef.getInstance().getPlayer();
 
         for (Item item : any) {
             //#if MC < 12111
-            if (item instanceof ArmorItem armor) {
-                ItemStack equippedStack = player.getEquippedStack(armor.getSlotType());
+            //$$ if (item instanceof ArmorItem armor) {
+                //$$ ItemStack equippedStack = player.getEquippedStack(armor.getSlotType());
+                //$$ if (equippedStack.getItem().equals(item))
+                    //$$ return true;
+            //$$ }
+            //#else
+            net.minecraft.world.entity.EquipmentSlot armorSlot = adris.altoclef.util.helpers.ItemHelper.getArmorSlot(item);
+            if (armorSlot != null) {
+                ItemStack equippedStack = player.getItemBySlot(armorSlot);
                 if (equippedStack.getItem().equals(item))
                     return true;
             }
-            //#else
-            //$$ net.minecraft.entity.EquipmentSlot armorSlot = adris.altoclef.util.helpers.ItemHelper.getArmorSlot(item);
-            //$$ if (armorSlot != null) {
-            //$$     ItemStack equippedStack = player.getEquippedStack(armorSlot);
-            //$$     if (equippedStack.getItem().equals(item))
-            //$$         return true;
-            //$$ }
             //#endif
             if (item instanceof ShieldItem shield) {
-                ItemStack equippedStack = player.getInventory().getStack(OFF_HAND_SLOT);
+                ItemStack equippedStack = player.getInventory().getItem(OFF_HAND_SLOT);
                 if (equippedStack.getItem().equals(shield))
                     return true;
             }
@@ -535,22 +547,22 @@ public class StorageHelper {
         );
     }
 
-    private static boolean isScreenOpenInner(Predicate<ScreenHandler> pNotNull) {
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+    private static boolean isScreenOpenInner(Predicate<AbstractContainerMenu> pNotNull) {
+        LocalPlayer player = Minecraft.getInstance().player;
         if (player != null)
-            return pNotNull.test(player.currentScreenHandler);
+            return pNotNull.test(player.containerMenu);
         return false;
     }
 
     public static boolean isBigCraftingOpen() {
-        return isScreenOpenInner(screen -> screen instanceof CraftingScreenHandler);
+        return isScreenOpenInner(screen -> screen instanceof CraftingMenu);
     }
 
     /**
      * Is the inventory GUI actually on screen?
      *
      * <p>Distinct from {@link #isPlayerInventoryOpen()}, which asks about the screen HANDLER and
-     * therefore answers true unconditionally: {@code PlayerScreenHandler} is the default handler
+     * therefore answers true unconditionally: {@code InventoryMenu} is the default handler
      * and stays current when nothing is open. That mattered -- the craft task believed a screen
      * was already up, never opened one, and the server dropped every recipe click it sent.
      *
@@ -558,28 +570,28 @@ public class StorageHelper {
      * callers, and "always true" may have become load-bearing in some of them.
      */
     public static boolean isPlayerInventoryScreenOpen() {
-        return MinecraftClient.getInstance().currentScreen
-                instanceof net.minecraft.client.gui.screen.ingame.InventoryScreen;
+        return Minecraft.getInstance().gui.screen()
+                instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen;
     }
 
     public static boolean isPlayerInventoryOpen() {
-        return isScreenOpenInner(screen -> screen instanceof PlayerScreenHandler);
+        return isScreenOpenInner(screen -> screen instanceof InventoryMenu);
     }
 
     public static boolean isFurnaceOpen() {
-        return isScreenOpenInner(screen -> screen instanceof FurnaceScreenHandler);
+        return isScreenOpenInner(screen -> screen instanceof FurnaceMenu);
     }
 
     public static boolean isChestOpen() {
-        return isScreenOpenInner(screen -> screen instanceof GenericContainerScreenHandler);
+        return isScreenOpenInner(screen -> screen instanceof ChestMenu);
     }
 
     public static boolean isSmokerOpen() {
-        return isScreenOpenInner(screen -> screen instanceof SmokerScreenHandler);
+        return isScreenOpenInner(screen -> screen instanceof SmokerMenu);
     }
 
     public static boolean isBlastFurnaceOpen() {
-        return isScreenOpenInner(screen -> screen instanceof BlastFurnaceScreenHandler);
+        return isScreenOpenInner(screen -> screen instanceof BlastFurnaceMenu);
     }
 
     public static boolean isArmorEquippedAll(Item... items) {
@@ -642,10 +654,10 @@ public class StorageHelper {
                     List<Slot> slotsWithItem = mod.getItemStorage().getSlotsWithItemPlayerInventory(false, needs.getMatches());
 
                     // Other slots may have our crafting supplies.
-                    ScreenHandler screen = mod.getPlayer().currentScreenHandler;
-                    if (screen instanceof PlayerScreenHandler || screen instanceof CraftingScreenHandler) {
+                    AbstractContainerMenu screen = mod.getPlayer().containerMenu;
+                    if (screen instanceof InventoryMenu || screen instanceof CraftingMenu) {
                         // Check crafting slots
-                        boolean bigCrafting = (screen instanceof CraftingScreenHandler);
+                        boolean bigCrafting = (screen instanceof CraftingMenu);
                         boolean bigRecipe = recipe.isBig();
                         for (int craftSlotIndex = 0; craftSlotIndex < (bigCrafting ? 9 : 4); ++craftSlotIndex) {
                             Slot craftSlot = bigCrafting ? CraftingTableSlot.getInputSlot(craftSlotIndex, bigRecipe) : PlayerSlot.getCraftInputSlot(craftSlotIndex);
@@ -729,83 +741,83 @@ public class StorageHelper {
     }
 
     public static ItemStack getItemStackInCursorSlot() {
-        if (MinecraftClient.getInstance().player != null) {
-            if (MinecraftClient.getInstance().player.currentScreenHandler != null) {
-                return MinecraftClient.getInstance().player.currentScreenHandler.getCursorStack();
+        if (Minecraft.getInstance().player != null) {
+            if (Minecraft.getInstance().player.containerMenu != null) {
+                return Minecraft.getInstance().player.containerMenu.getCarried();
             }
         }
         return ItemStack.EMPTY;
     }
 
     public static int getBrewingStandFuel() {
-        if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.currentScreenHandler instanceof BrewingStandScreenHandler stand)
+        if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.containerMenu instanceof BrewingStandMenu stand)
             return getBrewingStandFuel(stand);
         return -1;
     }
 
-    public static int getBrewingStandFuel(BrewingStandScreenHandler handler) {
+    public static int getBrewingStandFuel(BrewingStandMenu handler) {
         return handler.getFuel();
     }
 
-    public static double getFurnaceFuel(AbstractFurnaceScreenHandler handler) {
-        PropertyDelegate d = ((AbstractFurnaceScreenHandlerAccessor) handler).getPropertyDelegate();
+    public static double getFurnaceFuel(AbstractFurnaceMenu handler) {
+        ContainerData d = ((AbstractFurnaceScreenHandlerAccessor) handler).getPropertyDelegate();
         return (double) d.get(0) / 200.0;
     }
 
-    public static double getSmokerFuel(AbstractFurnaceScreenHandler handler) {
-        PropertyDelegate d = ((AbstractFurnaceScreenHandlerAccessor) handler).getPropertyDelegate();
+    public static double getSmokerFuel(AbstractFurnaceMenu handler) {
+        ContainerData d = ((AbstractFurnaceScreenHandlerAccessor) handler).getPropertyDelegate();
         return (double) d.get(0) / 200.0;
     }
 
-    public static double getBlastFurnaceFuel(AbstractFurnaceScreenHandler handler) {
-        PropertyDelegate d = ((AbstractFurnaceScreenHandlerAccessor) handler).getPropertyDelegate();
+    public static double getBlastFurnaceFuel(AbstractFurnaceMenu handler) {
+        ContainerData d = ((AbstractFurnaceScreenHandlerAccessor) handler).getPropertyDelegate();
         return (double) d.get(0) / 200.0;
     }
 
     public static double getFurnaceFuel() {
-        if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.currentScreenHandler instanceof AbstractFurnaceScreenHandler furnace)
+        if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.containerMenu instanceof AbstractFurnaceMenu furnace)
             return getFurnaceFuel(furnace);
         return -1;
     }
 
     public static double getSmokerFuel() {
-        if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.currentScreenHandler instanceof AbstractFurnaceScreenHandler smoker)
+        if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.containerMenu instanceof AbstractFurnaceMenu smoker)
             return getSmokerFuel(smoker);
         return -1;
     }
 
     public static double getBlastFurnaceFuel() {
-        if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.currentScreenHandler instanceof AbstractFurnaceScreenHandler blastFurnace)
+        if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.containerMenu instanceof AbstractFurnaceMenu blastFurnace)
             return getBlastFurnaceFuel(blastFurnace);
         return -1;
     }
 
-    public static double getFurnaceCookPercent(AbstractFurnaceScreenHandler handler) {
-        return (double) handler.getCookProgress() / 24.0;
+    public static double getFurnaceCookPercent(AbstractFurnaceMenu handler) {
+        return (double) handler.getBurnProgress() / 24.0;
     }
 
-    public static double getSmokerCookPercent(AbstractFurnaceScreenHandler handler) {
-        return (double) handler.getCookProgress() / 24.0;
+    public static double getSmokerCookPercent(AbstractFurnaceMenu handler) {
+        return (double) handler.getBurnProgress() / 24.0;
     }
 
-    public static double getBlastFurnaceCookPercent(AbstractFurnaceScreenHandler handler) {
-        return (double) handler.getCookProgress() / 24.0;
+    public static double getBlastFurnaceCookPercent(AbstractFurnaceMenu handler) {
+        return (double) handler.getBurnProgress() / 24.0;
     }
 
     public static double getFurnaceCookPercent() {
-        if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.currentScreenHandler instanceof AbstractFurnaceScreenHandler furnace)
+        if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.containerMenu instanceof AbstractFurnaceMenu furnace)
             return getFurnaceCookPercent(furnace);
         return -1;
     }
 
     public static double getSmokerCookPercent() {
-        if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.currentScreenHandler instanceof AbstractFurnaceScreenHandler smoker)
+        if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.containerMenu instanceof AbstractFurnaceMenu smoker)
             return getSmokerCookPercent(smoker);
         return -1;
     }
 
     public static double getBlastFurnaceCookPercent() {
-        if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.currentScreenHandler instanceof AbstractFurnaceScreenHandler blastFurnace)
+        if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.containerMenu instanceof AbstractFurnaceMenu blastFurnace)
             return getBlastFurnaceCookPercent(blastFurnace);
         return -1;
     }

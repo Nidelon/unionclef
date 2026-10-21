@@ -11,14 +11,14 @@ import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasks.misc.ChooseStrategyTask;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.ZombieEntity;
-import net.minecraft.entity.passive.PigEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.animal.pig.Pig;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -51,19 +51,19 @@ public class ExampleStrategyTask extends Task {
         AltoClef mod = AltoClef.getInstance();
         // Create strategy map
         Map<Strategy, PositionWrapper> strategyMap = new HashMap<>();
-        Vec3d pos = mod.getPlayer().getPos();
+        Vec3 pos = mod.getPlayer().position();
         Optional<Entity> ply = mod.getEntityTracker().getClosestEntity(
-                mod.getPlayer().getPos(),
+                mod.getPlayer().position(),
                 toPunk -> toPunk.distanceTo(mod.getPlayer()) < 50,
-                PlayerEntity.class, ZombieEntity.class, PigEntity.class
+                Player.class, Zombie.class, Pig.class
 
         );
 
         Optional<BlockPos> cont = mod.getBlockScanner().getNearestBlock(
                 blockPos -> WorldHelper.isUnopenedChest(blockPos) &&
-                        mod.getPlayer().getBlockPos().isWithinDistance(blockPos, 50), Blocks.CHEST);
+                        mod.getPlayer().blockPosition().closerThan(blockPos, 50), Blocks.CHEST);
         Optional<BlockPos> ore = mod.getBlockScanner().getNearestBlock(
-                blockPos -> mod.getPlayer().getBlockPos().isWithinDistance(blockPos, 50) &&
+                blockPos -> mod.getPlayer().blockPosition().closerThan(blockPos, 50) &&
                         WorldHelper.canReach(blockPos), Blocks.DIAMOND_ORE);
         // Debug.logMessage("cont "+ cont.orElse(null));
         strategyMap.put(Strategy.LOOT_CHEST, PositionWrapper.ofBlockPos(cont.orElse(null),
@@ -71,7 +71,7 @@ public class ExampleStrategyTask extends Task {
         strategyMap.put(Strategy.DIAMONDS, PositionWrapper.ofBlockPos(ore.orElse(null),
             (mod_next, p) -> !WorldHelper.isAir(p)));
         strategyMap.put(Strategy.KILL_PLAYER, PositionWrapper.ofEntity(ply.orElse(null),
-            (mod_next, e) -> e != null && e.isAlive() && e.isInRange(mod_next.getPlayer(), 50)));
+            (mod_next, e) -> e != null && e.isAlive() && e.closerThan(mod_next.getPlayer(), 50)));
 // Can also put empty positions:
         //strategyMap.put(Strategy.SOME_STRATEGY, PositionWrapper.empty());
 

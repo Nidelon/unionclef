@@ -4,12 +4,12 @@ import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.helpers.DirectionHelper;
 import kaptainwutax.tungsten.util.WindMouseRotation;
-import net.minecraft.block.SlimeBlock;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.SlimeBlock;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Crossing a slime pad, driven tick by tick: hold the heading and full sprint across the
@@ -60,7 +60,7 @@ public class SlimeBounceTask {
     private static volatile double probeMin, probeMax;
 
     public static void probeStart() {
-        ClientPlayerEntity p = MinecraftClient.getInstance().player;
+        LocalPlayer p = Minecraft.getInstance().player;
         probeMin = probeMax = (p == null ? 0 : p.getY());
         probing = true;
     }
@@ -68,7 +68,7 @@ public class SlimeBounceTask {
     public static double probeMin() { return probeMin; }
     public static double probeMax() { return probeMax; }
 
-    private static void probeTick(ClientPlayerEntity player) {
+    private static void probeTick(LocalPlayer player) {
         if (!probing) return;
         double y = player.getY();
         if (y < probeMin) probeMin = y;
@@ -85,7 +85,7 @@ public class SlimeBounceTask {
      *                whose floor is NOT slime.
      */
     public static synchronized boolean startTo(BlockPos landing) {
-        ClientPlayerEntity p = MinecraftClient.getInstance().player;
+        LocalPlayer p = Minecraft.getInstance().player;
         if (p == null || landing == null) return false;
         target = landing;
         ticks = 0;
@@ -103,41 +103,41 @@ public class SlimeBounceTask {
 
     public static void stop() {
         active = false;
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc.options != null) {
-            mc.options.forwardKey.setPressed(false);
-            mc.options.sprintKey.setPressed(false);
-            mc.options.jumpKey.setPressed(false);
+            mc.options.keyUp.setDown(false);
+            mc.options.keySprint.setDown(false);
+            mc.options.keyJump.setDown(false);
         }
         WindMouseRotation.INSTANCE.clearTarget();
     }
 
     /** Called every game tick from MixinClientPlayerEntity. */
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         probeTick(player);
         if (!active) return;
-        MinecraftClient mc = MinecraftClient.getInstance();
-        WorldView world = player.getEntityWorld();
-        Vec3d pos = player.getEntityPos();
-        Vec3d tgt = Vec3d.ofBottomCenter(target);
+        Minecraft mc = Minecraft.getInstance();
+        LevelReader world = player.level();
+        Vec3 pos = player.position();
+        Vec3 tgt = Vec3.atBottomCenterOf(target);
 
         double horiz = Math.hypot(tgt.x - pos.x, tgt.z - pos.z);
-        boolean onSlime = player.isOnGround()
-                && world.getBlockState(player.getBlockPos().down()).getBlock() instanceof SlimeBlock;
+        boolean onSlime = player.onGround()
+                && world.getBlockState(player.blockPosition().below()).getBlock() instanceof SlimeBlock;
 
-        if (!player.isOnGround() || onSlime) launched = true;
+        if (!player.onGround() || onSlime) launched = true;
 
         // Arrived: standing on the far side, close enough that the walker can take over.
-        if (launched && player.isOnGround() && !onSlime && horiz < 1.6) {
+        if (launched && player.onGround() && !onSlime && horiz < 1.6) {
             Debug.logMessage("Slime crossing done (" + bounces + " bounce(s))");
             stop();
             return;
         }
         // Landed on something solid that is NOT the target and not slime — the crossing is
         // over one way or the other; hand back rather than keep driving blind.
-        if (launched && player.isOnGround() && !onSlime && horiz >= 1.6) {
+        if (launched && player.onGround() && !onSlime && horiz >= 1.6) {
             Debug.logMessage("Slime crossing ended off-target at "
-                    + player.getBlockPos().toShortString());
+                    + player.blockPosition().toShortString());
             stop();
             return;
         }
@@ -160,12 +160,12 @@ public class SlimeBounceTask {
         // whole difference from doing this in the walker, which released it above every
         // intermediate hop and bled the speed the last bounce needs.
         boolean overTarget = horiz < 1.5 && pos.y > tgt.y + 0.5;
-        mc.options.forwardKey.setPressed(!overTarget);
-        mc.options.sprintKey.setPressed(!overTarget);
-        mc.options.backKey.setPressed(false);
-        mc.options.leftKey.setPressed(false);
-        mc.options.rightKey.setPressed(false);
-        mc.options.sneakKey.setPressed(false);
+        mc.options.keyUp.setDown(!overTarget);
+        mc.options.keySprint.setDown(!overTarget);
+        mc.options.keyDown.setDown(false);
+        mc.options.keyLeft.setDown(false);
+        mc.options.keyRight.setDown(false);
+        mc.options.keyShift.setDown(false);
 
         // JUMP ONCE, ON THE LAST CELL OF THE PAD. A passive bounce provably cannot cross the
         // gap: traced, the bot leaves the pad's end at x=13.4 with its apex at y=-55.5, and
@@ -176,13 +176,13 @@ public class SlimeBounceTask {
         // earlier attempts (5-9 deaths a run). So: only on the last slime cell before the
         // gap, which is where the launch is actually aimed at something.
         boolean lastPadCell = onSlime && !(world.getBlockState(
-                player.getBlockPos().down().offset(
-                        net.minecraft.util.math.Direction.getFacing(
+                player.blockPosition().below().relative(
+                        net.minecraft.core.Direction.getApproximateNearest(
                                 tgt.x - pos.x, 0, tgt.z - pos.z))).getBlock() instanceof SlimeBlock);
-        mc.options.jumpKey.setPressed(lastPadCell);
+        mc.options.keyJump.setDown(lastPadCell);
 
         if (TungstenConfig.get().verboseDebugLogging && (ticks % 8 == 0)) {
-            Vec3d v = player.getVelocity();
+            Vec3 v = player.getDeltaMovement();
             Debug.logMessage(String.format(
                     "BOUNCE t=%d pos=(%.1f,%.1f,%.1f) vel=(%.2f,%.2f) horiz=%.1f slime=%b",
                     ticks, pos.x, pos.y, pos.z, v.x, v.y, horiz, onSlime));

@@ -6,11 +6,11 @@ import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasksystem.Task;
 import kaptainwutax.tungsten.helpers.PlayerFit;
 import kaptainwutax.tungsten.task.FastNavigator;
-import net.minecraft.entity.EntityPose;
-import net.minecraft.registry.tag.FluidTags;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.entity.Pose;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /** Reach breathable air through the ordinary movement graph, then replenish oxygen. */
 public final class GetToAirTask extends Task {
@@ -28,19 +28,19 @@ public final class GetToAirTask extends Task {
     }
 
     /** A standing body must fit and its eyes must be above any water in their cell. */
-    private static boolean canBreatheAt(WorldView world, BlockPos pos, double eyeHeight) {
+    private static boolean canBreatheAt(LevelReader world, BlockPos pos, double eyeHeight) {
         if (!PlayerFit.bodyFits(world, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5)) return false;
-        if (!world.getFluidState(pos).isIn(FluidTags.WATER) && !PlayerFit.standable(world, pos)) return false;
-        Vec3d eye = new Vec3d(pos.getX() + 0.5, pos.getY() + eyeHeight, pos.getZ() + 0.5);
-        BlockPos eyeCell = BlockPos.ofFloored(eye);
+        if (!world.getFluidState(pos).is(FluidTags.WATER) && !PlayerFit.standable(world, pos)) return false;
+        Vec3 eye = new Vec3(pos.getX() + 0.5, pos.getY() + eyeHeight, pos.getZ() + 0.5);
+        BlockPos eyeCell = BlockPos.containing(eye);
         var fluid = world.getFluidState(eyeCell);
-        return !fluid.isIn(FluidTags.WATER) || eye.y >= eyeCell.getY() + fluid.getHeight(world, eyeCell);
+        return !fluid.is(FluidTags.WATER) || eye.y >= eyeCell.getY() + fluid.getHeight(world, eyeCell);
     }
 
     @Override
     protected Task onTick() {
         AltoClef mod = AltoClef.getInstance();
-        if (!mod.getPlayer().isSubmergedInWater()) {
+        if (!mod.getPlayer().isUnderWater()) {
             // Keep the recovered air pocket until oxygen is full. The survival
             // chain's existing float input holds the head above the surface.
             if (FastNavigator.isActive()) FastNavigator.stop();
@@ -86,9 +86,9 @@ public final class GetToAirTask extends Task {
             return digUp;
         }
         digUp = null; digTarget = null;
-        long now = mod.getWorld().getTime();
+        long now = mod.getWorld().getGameTime();
         if (!FastNavigator.isActive() && now >= nextSearchTick) {
-            double eyes = mod.getPlayer().getEyeHeight(EntityPose.STANDING);
+            double eyes = mod.getPlayer().getEyeHeight(Pose.STANDING);
             FastNavigator.startNearest(pos -> canBreatheAt(world, pos, eyes));
             // Rate-limit unsuccessful searches in a sealed or changing cavity.
             nextSearchTick = now + 20;
@@ -113,22 +113,22 @@ public final class GetToAirTask extends Task {
 
     /** Ticks to break {@code cap} from here, with vanilla's penalties for water and for not
      *  standing on the ground (PlayerEntity.getBlockBreakingSpeed). */
-    private static double digTicksHere(AltoClef mod, WorldView world, BlockPos cap) {
+    private static double digTicksHere(AltoClef mod, LevelReader world, BlockPos cap) {
         var p = mod.getPlayer();
         double t = kaptainwutax.tungsten.path.movements.MovementHelperB.getRequiredMiningDurationTicks(
                 world, p, cap.getX(), cap.getY(), cap.getZ(), world.getBlockState(cap), false);
         if (t >= 1_000_000) return t;
         // x5 submerged (Aqua Affinity would lift it; the bot does not wear it)
-        if (p.isSubmergedIn(FluidTags.WATER)) t *= 5;
-        if (!p.isOnGround()) t *= 5;
+        if (p.isEyeInFluid(FluidTags.WATER)) t *= 5;
+        if (!p.onGround()) t *= 5;
         return t;
     }
 
     /** Swim steps (through water and air, six directions) to the nearest cell the body can breathe
      *  in, or -1 if none within SWIM_SEARCH_STEPS. */
-    private static int stepsToBreathable(AltoClef mod, WorldView world) {
-        double eyes = mod.getPlayer().getEyeHeight(EntityPose.STANDING);
-        BlockPos start = mod.getPlayer().getBlockPos();
+    private static int stepsToBreathable(AltoClef mod, LevelReader world) {
+        double eyes = mod.getPlayer().getEyeHeight(Pose.STANDING);
+        BlockPos start = mod.getPlayer().blockPosition();
         java.util.ArrayDeque<BlockPos> q = new java.util.ArrayDeque<>();
         java.util.Map<BlockPos, Integer> dist = new java.util.HashMap<>();
         q.add(start);
@@ -138,8 +138,8 @@ public final class GetToAirTask extends Task {
             int d = dist.get(c);
             if (d > 0 && canBreatheAt(world, c, eyes)) return d;
             if (d >= SWIM_SEARCH_STEPS) continue;
-            for (net.minecraft.util.math.Direction dir : net.minecraft.util.math.Direction.values()) {
-                BlockPos n = c.offset(dir);
+            for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+                BlockPos n = c.relative(dir);
                 if (dist.containsKey(n)) continue;
                 if (!world.getBlockState(n).getCollisionShape(world, n).isEmpty()) continue;
                 dist.put(n, d + 1);
@@ -149,17 +149,17 @@ public final class GetToAirTask extends Task {
         return -1;
     }
 
-    private static BlockPos cappedColumnDig(AltoClef mod, WorldView world) {
-        BlockPos head = BlockPos.ofFloored(mod.getPlayer().getEyePos());
+    private static BlockPos cappedColumnDig(AltoClef mod, LevelReader world) {
+        BlockPos head = BlockPos.containing(mod.getPlayer().getEyePosition());
         for (int i = 1; i <= DIG_UP_SCAN; i++) {
-            BlockPos c = head.up(i);
-            if (world.getFluidState(c).isIn(FluidTags.WATER)) continue;   // still water: keep rising
+            BlockPos c = head.above(i);
+            if (world.getFluidState(c).is(FluidTags.WATER)) continue;   // still water: keep rising
             var state = world.getBlockState(c);
             if (state.isAir()) return null;                              // open to air: just swim up
             // A solid cell over the water: dig it if it is breakable (finite, non-negative
             // hardness rules out bedrock), else the column is a dead end -- let the lateral
             // search run instead.
-            float hardness = state.getHardness(world, c);
+            float hardness = state.getDestroySpeed(world, c);
             return hardness >= 0 ? c : null;
         }
         return null;                                                      // all water for 12: swim up
@@ -173,7 +173,7 @@ public final class GetToAirTask extends Task {
     @Override
     public boolean isFinished() {
         var player = AltoClef.getInstance().getPlayer();
-        return player == null || (!player.isSubmergedInWater() && player.getAir() >= player.getMaxAir());
+        return player == null || (!player.isUnderWater() && player.getAirSupply() >= player.getMaxAirSupply());
     }
 
     @Override

@@ -4,9 +4,9 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.block.Blocks;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
 
 
 public class GoToStrongholdPortalTask extends Task {
@@ -61,7 +61,7 @@ public class GoToStrongholdPortalTask extends Task {
         // actually is -- matching the original TODO's own complaint ("gets stuck near the
         // stronghold and keeps 'Searching'"). Horizontal-only, matching what the estimate can
         // actually claim to know.
-        if (WorldHelper.inRangeXZ(mod.getPlayer().getPos(), WorldHelper.toVec3d(_strongholdCoordinates), 10) && !mod.getBlockScanner().anyFound(Blocks.END_PORTAL_FRAME)) {
+        if (WorldHelper.inRangeXZ(mod.getPlayer().position(), WorldHelper.toVec3d(_strongholdCoordinates), 10) && !mod.getBlockScanner().anyFound(Blocks.END_PORTAL_FRAME)) {
             mod.log("Something went wrong whilst triangulating the stronghold... either the action got disrupted or the second eye went to a different stronghold");
             mod.log("We will try to triangulate again now...");
             _strongholdCoordinates = null;

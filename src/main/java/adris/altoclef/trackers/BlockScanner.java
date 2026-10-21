@@ -10,15 +10,15 @@ import adris.altoclef.util.Dimension;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
-import net.minecraft.world.chunk.WorldChunk;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.LevelChunk;
 
 import java.util.*;
 import java.util.function.Predicate;
@@ -40,7 +40,7 @@ public class BlockScanner {
     // used while scanning
     private HashMap<Block, HashSet<BlockPos>> cachedScannedBlocks = new HashMap<>();
     private Dimension scanDimension = Dimension.OVERWORLD;
-    private World scanWorld = null;
+    private Level scanWorld = null;
 
     // Client-thread ownership. A worker only writes its private request and
     // publishes completion through the volatile flag; it never changes caches
@@ -118,7 +118,7 @@ public class BlockScanner {
         // snapshot, then mark -- blackListNow does not touch trackedBlocks, but a scan may
         List<BlockPos> near = new LinkedList<>();
         for (BlockPos p : tracked) {
-            if (!p.equals(pos) && p.isWithinDistance(pos.toCenterPos(), radius)) {
+            if (!p.equals(pos) && p.closerThan(BlockPos.containing(net.minecraft.world.phys.Vec3.atCenterOf(pos)), radius)) {
                 near.add(p);
             }
         }
@@ -164,16 +164,16 @@ public class BlockScanner {
      * @param range  Radius to scan for
      * @param blocks What blocks to check for
      */
-    public Optional<BlockPos> getNearestWithinRange(Vec3d pos, double range, Block... blocks) {
+    public Optional<BlockPos> getNearestWithinRange(Vec3 pos, double range, Block... blocks) {
         Optional<BlockPos> nearest = getNearestBlock(pos, blocks);
 
-        if (nearest.isEmpty() || nearest.get().isWithinDistance(pos, range)) return nearest;
+        if (nearest.isEmpty() || nearest.get().closerThan(BlockPos.containing(pos), range)) return nearest;
 
         return Optional.empty();
     }
 
     public Optional<BlockPos> getNearestWithinRange(BlockPos pos, double range, Block... blocks) {
-        return getNearestWithinRange(new Vec3d(pos.getX(), pos.getY(), pos.getZ()), range, blocks);
+        return getNearestWithinRange(new Vec3(pos.getX(), pos.getY(), pos.getZ()), range, blocks);
     }
 
 
@@ -197,18 +197,18 @@ public class BlockScanner {
 
     public Optional<BlockPos> getNearestBlock(Block... blocks) {
         // Add juuust a little, to prevent digging down all the time/bias towards blocks BELOW the player
-        return getNearestBlock(mod.getPlayer().getPos().add(0, 0.6f, 0), blocks);
+        return getNearestBlock(mod.getPlayer().position().add(0, 0.6f, 0), blocks);
     }
 
-    public Optional<BlockPos> getNearestBlock(Vec3d pos, Block... blocks) {
+    public Optional<BlockPos> getNearestBlock(Vec3 pos, Block... blocks) {
         return getNearestBlock(pos, p -> true, blocks);
     }
 
     public Optional<BlockPos> getNearestBlock(Predicate<BlockPos> isValidTest, Block... blocks) {
-        return getNearestBlock(mod.getPlayer().getPos().add(0, 0.6f, 0), isValidTest, blocks);
+        return getNearestBlock(mod.getPlayer().position().add(0, 0.6f, 0), isValidTest, blocks);
     }
 
-    public Optional<BlockPos> getNearestBlock(Vec3d pos, Predicate<BlockPos> isValidTest, Block... blocks) {
+    public Optional<BlockPos> getNearestBlock(Vec3 pos, Predicate<BlockPos> isValidTest, Block... blocks) {
         Optional<BlockPos> closest = Optional.empty();
 
         for (Block block : blocks) {
@@ -227,18 +227,18 @@ public class BlockScanner {
         return closest;
     }
 
-    public Optional<BlockPos> getNearestBlock(Block block, Vec3d fromPos) {
+    public Optional<BlockPos> getNearestBlock(Block block, Vec3 fromPos) {
         return getNearestBlock(block, (pos) -> true, fromPos);
     }
 
-    public Optional<BlockPos> getNearestBlock(Block block, Predicate<BlockPos> isValidTest, Vec3d fromPos) {
+    public Optional<BlockPos> getNearestBlock(Block block, Predicate<BlockPos> isValidTest, Vec3 fromPos) {
         return getNearestBlock(block, isValidTest, fromPos, true);
     }
 
     /**
      * @param honourCoolOff false on the second pass — see the bottom of this method (G63).
      */
-    private Optional<BlockPos> getNearestBlock(Block block, Predicate<BlockPos> isValidTest, Vec3d fromPos,
+    private Optional<BlockPos> getNearestBlock(Block block, Predicate<BlockPos> isValidTest, Vec3 fromPos,
                                                boolean honourCoolOff) {
         BlockPos pos = null;
         double nearest = Double.POSITIVE_INFINITY;
@@ -361,19 +361,19 @@ public class BlockScanner {
     public static volatile int scanEquivChecked, scanEquivMismatch;
 
     public boolean anyFoundWithinDistance(double distance, Block... blocks) {
-        return anyFoundWithinDistance(mod.getPlayer().getPos().add(0, 0.6f, 0), distance, blocks);
+        return anyFoundWithinDistance(mod.getPlayer().position().add(0, 0.6f, 0), distance, blocks);
     }
 
-    public boolean anyFoundWithinDistance(Vec3d pos, double distance, Block... blocks) {
+    public boolean anyFoundWithinDistance(Vec3 pos, double distance, Block... blocks) {
         Optional<BlockPos> blockPos = getNearestBlock(blocks);
-        return blockPos.map(value -> value.isWithinDistance(pos, distance)).orElse(false);
+        return blockPos.map(value -> value.closerThan(BlockPos.containing(pos), distance)).orElse(false);
     }
 
     public double distanceToClosest(Block... blocks) {
-        return distanceToClosest(mod.getPlayer().getPos().add(0, 0.6f, 0), blocks);
+        return distanceToClosest(mod.getPlayer().position().add(0, 0.6f, 0), blocks);
     }
 
-    public double distanceToClosest(Vec3d pos, Block... blocks) {
+    public double distanceToClosest(Vec3 pos, Block... blocks) {
         Optional<BlockPos> blockPos = getNearestBlock(blocks);
         return blockPos.map(value ->  Math.sqrt(BlockPosVer.getSquaredDistance(value, pos))).orElse(Double.POSITIVE_INFINITY);
     }
@@ -389,13 +389,13 @@ public class BlockScanner {
             return false;
         }
 
-        ClientWorld world = MinecraftClient.getInstance().world;
+        ClientLevel world = Minecraft.getInstance().level;
         if (world == null) {
             return false;
         }
         try {
             for (Block block : blocks) {
-                if (world.isAir(pos) && WorldHelper.isAir(block)) {
+                if (world.isEmptyBlock(pos) && WorldHelper.isAir(block)) {
                     return true;
                 }
                 BlockState state = world.getBlockState(pos);
@@ -411,8 +411,8 @@ public class BlockScanner {
     }
 
     public void reset() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (!client.isOnThread()) {
+        Minecraft client = Minecraft.getInstance();
+        if (!client.isSameThread()) {
             client.execute(this::reset);
             return;
         }
@@ -427,7 +427,7 @@ public class BlockScanner {
     }
 
     public void tick() {
-        World world = mod.getWorld();
+        Level world = mod.getWorld();
         // Invalidate before processing a completion, including ticks spent in
         // menus. Port the ownership order in baritone/src/main/java/baritone/cache/WorldProvider.java:
         // 102-110 (closeWorld clears the current world before closing its cache).
@@ -473,8 +473,8 @@ public class BlockScanner {
             mod.log("Updating BlockScanner.. size: " + trackedBlocks.size() + " : " + cachedScannedBlocks.size());
         }
 
-        ScanRequest request = new ScanRequest(world, mod.getPlayer().getChunkPos(),
-                mod.getPlayer().getPos(), world.getTime(), copyBlocks(scannedBlocks),
+        ScanRequest request = new ScanRequest(world, mod.getPlayer().chunkPosition(),
+                mod.getPlayer().position(), world.getGameTime(), copyBlocks(scannedBlocks),
                 new HashMap<>(scannedChunks), blacklist.snapshotUnreachable());
         activeScan = request;
         scanStarted++;
@@ -509,8 +509,8 @@ public class BlockScanner {
 
         HashMap<Block, HashSet<BlockPos>> map = new HashMap<>();
 
-        BlockPos pos = mod.getPlayer().getBlockPos();
-        World world = mod.getPlayer().getWorld();
+        BlockPos pos = mod.getPlayer().blockPosition();
+        Level world = mod.getPlayer().level();
 
         for (int x = pos.getX() - 8; x <= pos.getX() + 8; x++) {
             for (int y = pos.getY() - 8; y < pos.getY() + 8; y++) {
@@ -533,7 +533,7 @@ public class BlockScanner {
         }
 
         for (Map.Entry<Block, HashSet<BlockPos>> entry : map.entrySet()) {
-            getFirstFewPositions(entry.getValue(),mod.getPlayer().getPos());
+            getFirstFewPositions(entry.getValue(),mod.getPlayer().position());
 
             if (!trackedBlocks.containsKey(entry.getKey())) {
                 trackedBlocks.put(entry.getKey(), new HashSet<>());
@@ -549,9 +549,9 @@ public class BlockScanner {
     private void rescan(ScanRequest request, int maxCount, int cutOffRadius) {
         long ms = System.currentTimeMillis();
 
-        World world = request.world;
+        Level world = request.world;
         ChunkPos playerChunkPos = request.playerChunk;
-        Vec3d playerPos = request.playerPos;
+        Vec3 playerPos = request.playerPos;
 
         int scanned = 0;
         HashSet<ChunkPos> visited = new HashSet<>();
@@ -561,7 +561,7 @@ public class BlockScanner {
         while (!queue.isEmpty() && visited.size() < maxCount && !request.cancelled) {
             Node node = queue.poll();
 
-            if (node.distance > cutOffRadius || visited.contains(node.pos) || !world.getChunkManager().isChunkLoaded(node.pos.x, node.pos.z))
+            if (node.distance > cutOffRadius || visited.contains(node.pos) || !world.getChunkSource().hasChunk(node.pos.x(), node.pos.z()))
                 continue;
 
             visited.add(node.pos);
@@ -592,10 +592,10 @@ public class BlockScanner {
             // Orthogonal steps cover both parities, and they also make node.distance exactly the
             // Manhattan getChunkDist() used for the cutoff below and the prune further down, which
             // the diagonal version did not.
-            queue.add(new Node(new ChunkPos(node.pos.x + 1, node.pos.z), node.distance + 1));
-            queue.add(new Node(new ChunkPos(node.pos.x - 1, node.pos.z), node.distance + 1));
-            queue.add(new Node(new ChunkPos(node.pos.x, node.pos.z + 1), node.distance + 1));
-            queue.add(new Node(new ChunkPos(node.pos.x, node.pos.z - 1), node.distance + 1));
+            queue.add(new Node(new ChunkPos(node.pos.x() + 1, node.pos.z()), node.distance + 1));
+            queue.add(new Node(new ChunkPos(node.pos.x() - 1, node.pos.z()), node.distance + 1));
+            queue.add(new Node(new ChunkPos(node.pos.x(), node.pos.z() + 1), node.distance + 1));
+            queue.add(new Node(new ChunkPos(node.pos.x(), node.pos.z() - 1), node.distance + 1));
         }
         if (request.cancelled) return;
 
@@ -625,12 +625,12 @@ public class BlockScanner {
     }
 
     private int getChunkDist(ChunkPos pos1, ChunkPos pos2) {
-        return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.z - pos2.z);
+        return Math.abs(pos1.x() - pos2.x()) + Math.abs(pos1.z() - pos2.z());
     }
 
 
     //TODO rename
-    private void getFirstFewPositions(HashSet<BlockPos> set, Vec3d playerPos) {
+    private void getFirstFewPositions(HashSet<BlockPos> set, Vec3 playerPos) {
         Queue<BlockPos> queue = new PriorityQueue<>(Comparator.comparingDouble((pos) -> -BaritoneHelper.calculateGenericHeuristic(playerPos, WorldHelper.toVec3d(pos))));
 
         for (BlockPos pos : set) {
@@ -654,18 +654,18 @@ public class BlockScanner {
      * @param chunkPos position of the scanned chunk
      */
     private void scanChunk(ScanRequest request, ChunkPos chunkPos, ChunkPos playerChunkPos) {
-        World world = request.world;
-        WorldChunk chunk = world.getChunk(chunkPos.x, chunkPos.z);
+        Level world = request.world;
+        LevelChunk chunk = world.getChunk(chunkPos.x(), chunkPos.z());
         request.chunks.put(chunkPos, request.worldTime);
 
         boolean isPriorityChunk = getChunkDist(chunkPos, playerChunkPos) <= 2;
 
-        for (int x = chunkPos.getStartX(); x <= chunkPos.getEndX(); x++) {
-            for (int y = world.getBottomY(); y < world.getTopY(); y++) {
+        for (int x = chunkPos.getMinBlockX(); x <= chunkPos.getMaxBlockX(); x++) {
+            for (int y = world.getMinY(); y < world.getHeight(); y++) {
                 if (request.cancelled) return;
-                for (int z = chunkPos.getStartZ(); z <= chunkPos.getEndZ(); z++) {
+                for (int z = chunkPos.getMinBlockZ(); z <= chunkPos.getMaxBlockZ(); z++) {
                     BlockPos p = new BlockPos(x, y, z);
-                    if (request.excluded.contains(p) || world.isOutOfHeightLimit(p)) continue;
+                    if (request.excluded.contains(p) || world.isOutsideBuildHeight(p)) continue;
 
                     BlockState state = chunk.getBlockState(p);
                     if (state.isAir()) continue;
@@ -691,12 +691,12 @@ public class BlockScanner {
     }
 
     private static final class ScanRequest {
-        // World identity and player/search inputs are fixed for this request.
+        // Level identity and player/search inputs are fixed for this request.
         // Chunk contents still come from the live captured world off-thread;
         // C4.1's immutable chunk-state cache remains separate, open work.
-        final World world;
+        final Level world;
         final ChunkPos playerChunk;
-        final Vec3d playerPos;
+        final Vec3 playerPos;
         final long worldTime;
         final HashMap<Block, HashSet<BlockPos>> blocks;
         final HashMap<ChunkPos, Long> chunks;
@@ -706,7 +706,7 @@ public class BlockScanner {
         boolean succeeded;
         int visited, scanned, ms;
 
-        ScanRequest(World world, ChunkPos playerChunk, Vec3d playerPos, long worldTime,
+        ScanRequest(Level world, ChunkPos playerChunk, Vec3 playerPos, long worldTime,
                     HashMap<Block, HashSet<BlockPos>> blocks, HashMap<ChunkPos, Long> chunks,
                     Set<BlockPos> excluded) {
             this.world = world;

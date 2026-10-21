@@ -1,19 +1,19 @@
 package adris.altoclef.multiversion.world;
 
-import net.minecraft.world.World;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.core.BlockPos;
 
 public class WorldHelper {
 
     //#if MC <= 11605
-    //$$ public static int getTopY(World world) {
+    //$$ public static int getTopY(Level world) {
     //$$     return 255;
     //$$ }
-    //$$ public static int getBottomY(World world) {
+    //$$ public static int getBottomY(Level world) {
     //$$     return 0;
     //$$ }
     //$$
-    //$$ public static boolean isOutOfHeightLimit(World world,BlockPos pos) {
+    //$$ public static boolean isOutOfHeightLimit(Level world,BlockPos pos) {
     //$$      return isOutOfHeightLimit(pos.getY());
     //$$   }
     //$$

@@ -5,11 +5,17 @@ import kaptainwutax.tungsten.helpers.PlayerFit;
 import kaptainwutax.tungsten.render.Color;
 import kaptainwutax.tungsten.render.Cuboid;
 import kaptainwutax.tungsten.render.Line;
-import net.minecraft.block.*;
-import net.minecraft.block.Blocks;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.CampfireBlock;
+import net.minecraft.world.level.block.WebBlock;
+import net.minecraft.world.level.block.FireBlock;
+import net.minecraft.world.level.block.SweetBerryBushBlock;
+import net.minecraft.world.level.block.TripWireBlock;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 import java.util.*;
 
@@ -61,13 +67,13 @@ public class CombatPathfinder {
 
     private List<BlockPos> attackPath = Collections.emptyList();
     private List<BlockPos> retreatPath = Collections.emptyList();
-    private WorldView lastWorld = null;
+    private LevelReader lastWorld = null;
     private int tickCounter = 0;
     private static final int UPDATE_INTERVAL = 10;
 
     // ── tick ─────────────────────────────────────────────────────────────────
 
-    public void tick(BlockPos playerPos, BlockPos targetPos, Vec3d enemyVelocity, WorldView world) {
+    public void tick(BlockPos playerPos, BlockPos targetPos, Vec3 enemyVelocity, LevelReader world) {
         tickCounter++;
         if (tickCounter < UPDATE_INTERVAL) return;
         tickCounter = 0;
@@ -84,9 +90,9 @@ public class CombatPathfinder {
         // repo.
         // A pathfinding target has to be a walkable cell. Lead the enemy across the GROUND, which is
         // what a chase actually needs, and let the BFS resolve the height itself.
-        Vec3d predicted = Vec3d.ofBottomCenter(targetPos)
+        Vec3 predicted = Vec3.atBottomCenterOf(targetPos)
                 .add(enemyVelocity.x * 20, 0, enemyVelocity.z * 20);
-        BlockPos predictedTarget = BlockPos.ofFloored(predicted);
+        BlockPos predictedTarget = BlockPos.containing(predicted);
         lastWorld = world;
         attackPath = bfsPath(playerPos, predictedTarget, world, false);
 
@@ -112,15 +118,15 @@ public class CombatPathfinder {
 
         // render waypoint cubes
         for (BlockPos bp : jumpPoints) {
-            Vec3d center = Vec3d.ofBottomCenter(bp);
+            Vec3 center = Vec3.atBottomCenterOf(bp);
             TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Cuboid(
-                    center.subtract(0.2, 0, 0.2), new Vec3d(0.4, 0.15, 0.4), col));
+                    center.subtract(0.2, 0, 0.2), new Vec3(0.4, 0.15, 0.4), col));
         }
 
         // render jump arcs between waypoints
         for (int i = 0; i < jumpPoints.size() - 1; i++) {
-            Vec3d from = Vec3d.ofBottomCenter(jumpPoints.get(i)).add(0, 0.1, 0);
-            Vec3d to = Vec3d.ofBottomCenter(jumpPoints.get(i + 1)).add(0, 0.1, 0);
+            Vec3 from = Vec3.atBottomCenterOf(jumpPoints.get(i)).add(0, 0.1, 0);
+            Vec3 to = Vec3.atBottomCenterOf(jumpPoints.get(i + 1)).add(0, 0.1, 0);
             renderJumpArc(from, to, COL_JUMP_ARC);
         }
     }
@@ -130,7 +136,7 @@ public class CombatPathfinder {
      * Verify LOS between consecutive waypoints — if blocked by wall,
      * insert intermediate point so jump arcs don't clip through blocks.
      */
-    private List<BlockPos> computeJumpWaypoints(List<BlockPos> path, WorldView world) {
+    private List<BlockPos> computeJumpWaypoints(List<BlockPos> path, LevelReader world) {
         List<BlockPos> waypoints = new ArrayList<>();
         waypoints.add(path.get(0));
 
@@ -140,7 +146,7 @@ public class CombatPathfinder {
         for (int i = 1; i < path.size(); i++) {
             BlockPos prev = path.get(i - 1);
             BlockPos curr = path.get(i);
-            double step = Math.sqrt(prev.getSquaredDistance(curr));
+            double step = Math.sqrt(prev.distSqr(curr));
             accumulated += step;
 
             if (accumulated >= JUMP_HORIZ || i == path.size() - 1) {
@@ -164,9 +170,9 @@ public class CombatPathfinder {
     }
 
     /** Simple LOS check between two block positions at eye height (+1.5). */
-    private static boolean hasBlockLOS(BlockPos from, BlockPos to, WorldView world) {
-        Vec3d start = Vec3d.ofBottomCenter(from).add(0, 1.5, 0);
-        Vec3d end = Vec3d.ofBottomCenter(to).add(0, 1.5, 0);
+    private static boolean hasBlockLOS(BlockPos from, BlockPos to, LevelReader world) {
+        Vec3 start = Vec3.atBottomCenterOf(from).add(0, 1.5, 0);
+        Vec3 end = Vec3.atBottomCenterOf(to).add(0, 1.5, 0);
         // manual raycast: step along line, check for solid blocks
         double dist = start.distanceTo(end);
         int steps = (int) Math.ceil(dist * 2);
@@ -190,7 +196,7 @@ public class CombatPathfinder {
         waypoints.add(path.get(0));
         double accumulated = 0;
         for (int i = 1; i < path.size(); i++) {
-            accumulated += Math.sqrt(path.get(i - 1).getSquaredDistance(path.get(i)));
+            accumulated += Math.sqrt(path.get(i - 1).distSqr(path.get(i)));
             if (accumulated >= JUMP_HORIZ || i == path.size() - 1) {
                 waypoints.add(path.get(i));
                 accumulated = 0;
@@ -200,7 +206,7 @@ public class CombatPathfinder {
     }
 
     /** Render a parabolic arc from → to (simple ballistic curve). */
-    private void renderJumpArc(Vec3d from, Vec3d to, Color col) {
+    private void renderJumpArc(Vec3 from, Vec3 to, Color col) {
         double dx = to.x - from.x;
         double dz = to.z - from.z;
         double dy = to.y - from.y;
@@ -208,7 +214,7 @@ public class CombatPathfinder {
         // peak height: ~1.25 blocks above start for sprint-jump
         double peakH = 1.25 + Math.max(0, dy);
 
-        Vec3d prev = from;
+        Vec3 prev = from;
         for (int s = 1; s <= JUMP_ARC_SEGMENTS; s++) {
             double t = (double) s / JUMP_ARC_SEGMENTS;
             double x = from.x + dx * t;
@@ -216,7 +222,7 @@ public class CombatPathfinder {
             // parabola: y = start + peak * 4t(1-t) + dy*t
             double y = from.y + peakH * 4 * t * (1 - t) + dy * t;
 
-            Vec3d curr = new Vec3d(x, y, z);
+            Vec3 curr = new Vec3(x, y, z);
             TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Line(prev, curr, col));
             prev = curr;
         }
@@ -227,11 +233,11 @@ public class CombatPathfinder {
     /** When the no-expansion diagnosis above last printed; it repeats every tick otherwise. */
     private static volatile long lastNoExpandLogMs = 0L;
 
-    private static List<BlockPos> bfsPath(BlockPos start, BlockPos goal, WorldView world, boolean allowParkour) {
+    private static List<BlockPos> bfsPath(BlockPos start, BlockPos goal, LevelReader world, boolean allowParkour) {
         return bfsPath(start, goal, world, allowParkour, false);
     }
 
-    private static List<BlockPos> bfsPath(BlockPos start, BlockPos goal, WorldView world,
+    private static List<BlockPos> bfsPath(BlockPos start, BlockPos goal, LevelReader world,
                                           boolean allowParkour, boolean cardinalOnly) {
         // WHAT SHAPE DOES THIS ACTUALLY RETURN? Its own javadoc calls it an instant grid BFS
         // for FollowEntityTask to chase a nearby entity while the physics A* computes -- yet
@@ -250,20 +256,20 @@ public class CombatPathfinder {
         int explored = 0;
         // Decided once, from where the search begins: a bot already in the water is the only case
         // that gets floorless moves, so a land route can never start preferring a pond.
-        boolean swimming = isLiquid(start, world) || isLiquid(start.up(), world);
+        boolean swimming = isLiquid(start, world) || isLiquid(start.above(), world);
 
         while (!queue.isEmpty() && explored < MAX_NODES) {
             BlockPos current = queue.poll();
             explored++;
 
-            if (current.equals(goal) || current.isWithinDistance(goal, 1.5)) {
+            if (current.equals(goal) || current.closerThan(goal, 1.5)) {
                 return note(reconstructPath(cameFrom, current), explored);
             }
 
             for (BlockPos neighbor : getWalkableNeighbors(current, world, allowParkour, swimming, cardinalOnly)) {
                 if (cameFrom.containsKey(neighbor)) continue;
-                if (!start.isWithinDistance(neighbor, MAX_RADIUS)) continue;
-                if (LAVA_MARGIN.get() && !neighbor.isWithinDistance(goal, 1.5) && lavaAdjacent(neighbor, world)) continue;
+                if (!start.closerThan(neighbor, MAX_RADIUS)) continue;
+                if (LAVA_MARGIN.get() && !neighbor.closerThan(goal, 1.5) && lavaAdjacent(neighbor, world)) continue;
                 cameFrom.put(neighbor, current);
                 queue.add(neighbor);
             }
@@ -281,16 +287,16 @@ public class CombatPathfinder {
                 lastNoExpandLogMs = now;
                 StringBuilder why = new StringBuilder();
                 for (int[] off : HORIZONTAL) {
-                    BlockPos c = start.add(off[0], 0, off[1]);
+                    BlockPos c = start.offset(off[0], 0, off[1]);
                     why.append(' ').append(off[0]).append(',').append(off[1]).append(':');
-                    if (!isSolid(c.down(), world)) why.append("noFloor");
-                    else if (isHazard(c.down(), world)) why.append("hazardBelow");
+                    if (!isSolid(c.below(), world)) why.append("noFloor");
+                    else if (isHazard(c.below(), world)) why.append("hazardBelow");
                     else if (!canPassThrough(c, world)) why.append("feetBlocked=")
-                            .append(world.getBlockState(c).getBlock().getTranslationKey());
+                            .append(world.getBlockState(c).getBlock().getDescriptionId());
                     else if (isHazardOrSlow(c, world)) why.append("feetSlow");
-                    else if (!canPassThrough(c.up(), world)) why.append("headBlocked=")
-                            .append(world.getBlockState(c.up()).getBlock().getTranslationKey());
-                    else if (isHazardOrSlow(c.up(), world)) why.append("headSlow");
+                    else if (!canPassThrough(c.above(), world)) why.append("headBlocked=")
+                            .append(world.getBlockState(c.above()).getBlock().getDescriptionId());
+                    else if (isHazardOrSlow(c.above(), world)) why.append("headSlow");
                     else why.append("OK?");
                 }
                 kaptainwutax.tungsten.Debug.logMessage("BFS stuck at " + start.getX() + ","
@@ -302,13 +308,13 @@ public class CombatPathfinder {
         BlockPos closest = null;
         double closestDist = Double.MAX_VALUE;
         for (BlockPos p : cameFrom.keySet()) {
-            double d = p.getSquaredDistance(goal);
+            double d = p.distSqr(goal);
             if (d < closestDist) { closestDist = d; closest = p; }
         }
         return note(closest != null ? reconstructPath(cameFrom, closest) : Collections.emptyList(), explored);
     }
 
-    private static List<BlockPos> findRetreatPath(BlockPos playerPos, BlockPos targetPos, WorldView world) {
+    private static List<BlockPos> findRetreatPath(BlockPos playerPos, BlockPos targetPos, LevelReader world) {
         Queue<BlockPos> queue = new ArrayDeque<>();
         Map<BlockPos, BlockPos> cameFrom = new HashMap<>();
         queue.add(playerPos);
@@ -322,9 +328,9 @@ public class CombatPathfinder {
             BlockPos current = queue.poll();
             explored++;
 
-            double distFromTarget = Math.sqrt(current.getSquaredDistance(targetPos));
+            double distFromTarget = Math.sqrt(current.distSqr(targetPos));
             double heightBonus = (current.getY() - targetPos.getY()) * 2.0;
-            double edgePenalty = VoidDetector.edgeScore(Vec3d.ofBottomCenter(current), world) * -10.0;
+            double edgePenalty = VoidDetector.edgeScore(Vec3.atBottomCenterOf(current), world) * -10.0;
 
             // direction bonus: prefer points in the hemisphere AWAY from target
             double awayDirX = playerPos.getX() - targetPos.getX();
@@ -351,7 +357,7 @@ public class CombatPathfinder {
 
             for (BlockPos neighbor : getWalkableNeighbors(current, world, false)) {
                 if (cameFrom.containsKey(neighbor)) continue;
-                if (!playerPos.isWithinDistance(neighbor, MAX_RADIUS)) continue;
+                if (!playerPos.closerThan(neighbor, MAX_RADIUS)) continue;
                 cameFrom.put(neighbor, current);
                 queue.add(neighbor);
             }
@@ -370,14 +376,14 @@ public class CombatPathfinder {
 
     private static final int[][] HORIZONTAL = {{1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}};
 
-    private static List<BlockPos> getWalkableNeighbors(BlockPos pos, WorldView world, boolean allowParkour) {
+    private static List<BlockPos> getWalkableNeighbors(BlockPos pos, LevelReader world, boolean allowParkour) {
         return getWalkableNeighbors(pos, world, allowParkour, false, false);
     }
 
     /**
      * @param allowSwim the search STARTED in liquid, so cells with no floor are still traversable
      */
-    private static List<BlockPos> getWalkableNeighbors(BlockPos pos, WorldView world,
+    private static List<BlockPos> getWalkableNeighbors(BlockPos pos, LevelReader world,
                                                        boolean allowParkour, boolean allowSwim) {
         return getWalkableNeighbors(pos, world, allowParkour, allowSwim, false);
     }
@@ -385,7 +391,7 @@ public class CombatPathfinder {
     /**
      * @param cardinalOnly drop the four diagonals -- the WALKING queue cannot execute one.
      */
-    private static List<BlockPos> getWalkableNeighbors(BlockPos pos, WorldView world,
+    private static List<BlockPos> getWalkableNeighbors(BlockPos pos, LevelReader world,
                                                        boolean allowParkour, boolean allowSwim,
                                                        boolean cardinalOnly) {
         List<BlockPos> result = new ArrayList<>();
@@ -402,7 +408,7 @@ public class CombatPathfinder {
             // Only when the search began in liquid: on land nothing changes, so no land route can
             // start preferring a pond.
             for (int[] off : SWIM_DIRS) {
-                BlockPos c = pos.add(off[0], off[1], off[2]);
+                BlockPos c = pos.offset(off[0], off[1], off[2]);
                 // Baritone MovementTraverse.java:103-107 checks both feet and head before
                 // offering a traverse. MovementSwim cannot mine the cap or plan a crawl;
                 // match FastPlanner.java:1043-1046's full-body water clearance. The retained
@@ -410,7 +416,7 @@ public class CombatPathfinder {
                 // the same stroke twice; fluid at the feet alone is not a usable move.
                 boolean swim = isLiquid(c, world)
                         && PlayerFit.bodyFits(world, c.getX() + 0.5, c.getY(), c.getZ() + 0.5);
-                if (swim || (isWalkable(c, world) && !isHazard(c.down(), world))) {
+                if (swim || (isWalkable(c, world) && !isHazard(c.below(), world))) {
                     result.add(c);
                 }
             }
@@ -463,8 +469,8 @@ public class CombatPathfinder {
             // also keeps them in the search, but never hands one to the queue.
             if (kaptainwutax.tungsten.TungstenConfig.get().gridBfsRefusesCornerCut
                     && off[0] != 0 && off[1] != 0) {
-                BlockPos sideA = pos.add(off[0], 0, 0);
-                BlockPos sideB = pos.add(0, 0, off[1]);
+                BlockPos sideA = pos.offset(off[0], 0, 0);
+                BlockPos sideB = pos.offset(0, 0, off[1]);
                 if (!canPassThrough(sideA, world) || !canPassThrough(sideB, world)) {
                     gridCornerRefused++;
                     continue;
@@ -476,21 +482,21 @@ public class CombatPathfinder {
                 // replan") and got the same route back: measured on nav_powder, 12 freeze windows at
                 // the edge of a powder snow patch. baritone MovementDiagonal refuses the corner in the
                 // planner (:158/162); the planner and the executor must agree on one rule.
-                BlockPos.Mutable sc = new BlockPos.Mutable();
+                net.minecraft.core.BlockPos.MutableBlockPos sc = new net.minecraft.core.BlockPos.MutableBlockPos();
                 if (kaptainwutax.tungsten.path.RouteHazards.lethalColumn(world, sideA.getX(), pos.getY(), sideA.getZ(), sc)
                         || kaptainwutax.tungsten.path.RouteHazards.lethalColumn(world, sideB.getX(), pos.getY(), sideB.getZ(), sc)) {
                     gridCornerLethal++;
                     continue;
                 }
             }
-            BlockPos candidate = pos.add(off[0], 0, off[1]);
+            BlockPos candidate = pos.offset(off[0], 0, off[1]);
             boolean flatWalk = isWalkable(candidate, world);
             if (flatWalk) {
                 result.add(candidate);
             } else {
-                BlockPos up = candidate.up();
-                if (isWalkable(up, world) && canPassThrough(pos.up().up(), world)) result.add(up);
-                BlockPos down = candidate.down();
+                BlockPos up = candidate.above();
+                if (isWalkable(up, world) && canPassThrough(pos.above().above(), world)) result.add(up);
+                BlockPos down = candidate.below();
                 if (isWalkable(down, world) && canPassThrough(candidate, world)) result.add(down);
             }
             // Parkour (goto only): a running jump across a gap to a same-level or +1
@@ -507,36 +513,36 @@ public class CombatPathfinder {
 
     /** Running-jump landings 2..MAX_PARKOUR away in {@code dir} (flat or +1 up), each
      *  with the whole flight path (feet + head) clear so the arc doesn't clip a wall. */
-    private static void addParkourNeighbors(List<BlockPos> result, BlockPos pos, int[] dir, WorldView world) {
-        if (!canPassThrough(pos.up().up(), world)) return; // no head room to jump
+    private static void addParkourNeighbors(List<BlockPos> result, BlockPos pos, int[] dir, LevelReader world) {
+        if (!canPassThrough(pos.above().above(), world)) return; // no head room to jump
         for (int dist = 2; dist <= MAX_PARKOUR; dist++) {
             boolean flightClear = true;
             for (int s = 1; s < dist; s++) {
-                BlockPos mid = pos.add(dir[0] * s, 0, dir[1] * s);
-                if (!canPassThrough(mid, world) || !canPassThrough(mid.up(), world)) { flightClear = false; break; }
+                BlockPos mid = pos.offset(dir[0] * s, 0, dir[1] * s);
+                if (!canPassThrough(mid, world) || !canPassThrough(mid.above(), world)) { flightClear = false; break; }
                 // A gap over lava or powder snow is one the executors refuse (RouteHazards) --
                 // baritone MovementParkour refuses a lava gap floor too. Do not offer the jump.
                 if (kaptainwutax.tungsten.path.RouteHazards.lethalColumn(world, mid.getX(), mid.getY(), mid.getZ(),
-                        new BlockPos.Mutable())) { flightClear = false; break; }
+                        new net.minecraft.core.BlockPos.MutableBlockPos())) { flightClear = false; break; }
             }
             if (!flightClear) break;
-            BlockPos flat = pos.add(dir[0] * dist, 0, dir[1] * dist);
+            BlockPos flat = pos.offset(dir[0] * dist, 0, dir[1] * dist);
             if (isWalkable(flat, world) && !result.contains(flat)) result.add(flat);
             if (dist <= 3) { // a running jump reaches +1y over at most ~3 blocks
-                BlockPos upLand = flat.up();
+                BlockPos upLand = flat.above();
                 if (isWalkable(upLand, world) && !result.contains(upLand)) result.add(upLand);
             }
         }
     }
 
-    public static boolean isWalkable(BlockPos feetPos, WorldView world) {
-        BlockPos below = feetPos.down();
+    public static boolean isWalkable(BlockPos feetPos, LevelReader world) {
+        BlockPos below = feetPos.below();
         if (!isSolid(below, world)) return false;
         if (isHazard(below, world)) return false;           // standing ON hazard
         if (!canPassThrough(feetPos, world)) return false;
         if (isHazardOrSlow(feetPos, world)) return false;   // feet IN hazard/slow
-        if (!canPassThrough(feetPos.up(), world)) return false;
-        if (isHazardOrSlow(feetPos.up(), world)) return false;
+        if (!canPassThrough(feetPos.above(), world)) return false;
+        if (isHazardOrSlow(feetPos.above(), world)) return false;
         return true;
     }
 
@@ -547,27 +553,27 @@ public class CombatPathfinder {
 
     /** Is this cell liquid we can move through? Lava is a hazard, not a route -- except surface lava
      *  while the lava escape swims (RouteHazards.lavaSwim, baritone canSwimThroughLava). */
-    public static boolean isLiquid(BlockPos pos, WorldView world) {
+    public static boolean isLiquid(BlockPos pos, LevelReader world) {
         return world.getBlockState(pos).getBlock() == Blocks.WATER
                 || kaptainwutax.tungsten.path.RouteHazards.swimmableLava(
-                        world, pos.getX(), pos.getY(), pos.getZ(), new BlockPos.Mutable());
+                        world, pos.getX(), pos.getY(), pos.getZ(), new net.minecraft.core.BlockPos.MutableBlockPos());
     }
 
-    public static boolean isSolid(BlockPos pos, WorldView world) {
+    public static boolean isSolid(BlockPos pos, LevelReader world) {
         return !world.getBlockState(pos).getCollisionShape(world, pos).isEmpty();
     }
 
-    public static boolean canPassThrough(BlockPos pos, WorldView world) {
+    public static boolean canPassThrough(BlockPos pos, LevelReader world) {
         // RouteHazards.blocksBody: baritone canWalkThroughBlockState, powder snow included.
         return !kaptainwutax.tungsten.path.RouteHazards.blocksBody(world.getBlockState(pos), world, pos);
     }
 
     /** Blocks that deal damage — never walk here. */
-    public static boolean isHazard(BlockPos pos, WorldView world) {
+    public static boolean isHazard(BlockPos pos, LevelReader world) {
         BlockState state = world.getBlockState(pos);
         Block block = state.getBlock();
         if (block == Blocks.LAVA && kaptainwutax.tungsten.path.RouteHazards.swimmableLava(
-                world, pos.getX(), pos.getY(), pos.getZ(), new BlockPos.Mutable())) return false;
+                world, pos.getX(), pos.getY(), pos.getZ(), new net.minecraft.core.BlockPos.MutableBlockPos())) return false;
         return block == Blocks.LAVA
                 || block instanceof FireBlock
                 || block == Blocks.MAGMA_BLOCK
@@ -589,12 +595,12 @@ public class CombatPathfinder {
      * already here via {@link #isHazard}; tripwire was the one name on baritone's list this
      * function never carried over.
      */
-    public static boolean isHazardOrSlow(BlockPos pos, WorldView world) {
+    public static boolean isHazardOrSlow(BlockPos pos, LevelReader world) {
         if (isHazard(pos, world)) return true;
         Block block = world.getBlockState(pos).getBlock();
         return block == Blocks.WATER
-                || block instanceof CobwebBlock
-                || block instanceof TripwireBlock
+                || block instanceof WebBlock
+                || block instanceof TripWireBlock
                 || block == Blocks.SOUL_SAND
                 || block == Blocks.HONEY_BLOCK
                 || block == Blocks.POWDER_SNOW;
@@ -639,19 +645,19 @@ public class CombatPathfinder {
      * still crosses when nothing else reaches the goal. Only true lips are scanned, so ordinary
      * ground costs two block reads per neighbour.
      */
-    private static boolean lavaAdjacent(BlockPos feet, WorldView world) {
+    private static boolean lavaAdjacent(BlockPos feet, LevelReader world) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 if (dx == 0 && dz == 0) continue;
-                BlockPos n = feet.add(dx, 0, dz), nd = n.down();
+                BlockPos n = feet.offset(dx, 0, dz), nd = n.below();
                 var sn = world.getBlockState(n);
                 var sd = world.getBlockState(nd);
-                if (sn.getFluidState().isIn(net.minecraft.registry.tag.FluidTags.LAVA)
-                        || sd.getFluidState().isIn(net.minecraft.registry.tag.FluidTags.LAVA)) {
+                if (sn.getFluidState().is(net.minecraft.tags.FluidTags.LAVA)
+                        || sd.getFluidState().is(net.minecraft.tags.FluidTags.LAVA)) {
                     return true;
                 }
                 if (sn.getCollisionShape(world, n).isEmpty() && sd.getCollisionShape(world, nd).isEmpty()
-                        && VoidDetector.fallHeight(Vec3d.ofBottomCenter(n), world) >= LETHAL_DROP) {
+                        && VoidDetector.fallHeight(Vec3.atBottomCenterOf(n), world) >= LETHAL_DROP) {
                     cpCliffMargin++;
                     return true;
                 }
@@ -665,7 +671,7 @@ public class CombatPathfinder {
     /** Cells closed in the margin pass because a neighbour is the lip of a lethal drop. */
     public static volatile int cpCliffMargin = 0;
 
-    public static List<BlockPos> findPath(BlockPos start, BlockPos goal, WorldView world) {
+    public static List<BlockPos> findPath(BlockPos start, BlockPos goal, LevelReader world) {
         // ⛔ A ONE-BLOCK MARGIN FROM LAVA FIRST, THE BARE ROUTE ONLY IF THERE IS NO OTHER (G108 nether,
         // 2026-09-24). This BFS is the walker's main route source in the altoclef drive, and a BFS
         // has no cost to price a cell with -- so the lava-adjacent lane FastPlanner now prices, this
@@ -692,13 +698,13 @@ public class CombatPathfinder {
         // the goal (the margin was what stood in the way); if neither reaches -- a far goal -- the
         // margin's partial route is the better heading. nav keeps its fps either way (29-30).
         boolean reachedWithMargin = route != null && !route.isEmpty()
-                && route.get(route.size() - 1).isWithinDistance(goal, 1.5);
+                && route.get(route.size() - 1).closerThan(goal, 1.5);
         if (reachedWithMargin) {
             cpLavaMarginKept++;
         } else {
             List<BlockPos> bare = bfsPath(start, goal, world, true, false);
             boolean bareReached = bare != null && !bare.isEmpty()
-                    && bare.get(bare.size() - 1).isWithinDistance(goal, 1.5);
+                    && bare.get(bare.size() - 1).closerThan(goal, 1.5);
             if (bareReached || route == null || route.size() < 2) {
                 cpLavaMarginDropped++;
                 route = bare;
@@ -745,7 +751,7 @@ public class CombatPathfinder {
      * <p>The corner is taken through whichever orthogonal is passable, so the body never
      * clips a block the diagonal cut past.
      */
-    private static List<BlockPos> expandDiagonals(List<BlockPos> path, WorldView world) {
+    private static List<BlockPos> expandDiagonals(List<BlockPos> path, LevelReader world) {
         if (path == null || path.size() < 2) return path;
         List<BlockPos> out = new ArrayList<>(path.size() * 2);
         out.add(path.get(0));
@@ -753,8 +759,8 @@ public class CombatPathfinder {
             BlockPos a = path.get(i - 1), b = path.get(i);
             int dx = b.getX() - a.getX(), dz = b.getZ() - a.getZ();
             if (a.getY() == b.getY() && dx != 0 && dz != 0) {
-                BlockPos viaX = a.add(dx, 0, 0);
-                BlockPos viaZ = a.add(0, 0, dz);
+                BlockPos viaX = a.offset(dx, 0, 0);
+                BlockPos viaZ = a.offset(0, 0, dz);
                 BlockPos via = isWalkable(viaX, world) ? viaX
                         : (isWalkable(viaZ, world) ? viaZ : null);
                 if (via == null) {

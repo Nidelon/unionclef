@@ -9,14 +9,20 @@ import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import kaptainwutax.tungsten.path.movements.Rotation;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.item.*;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.*;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.ClipContext;
 
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -29,8 +35,8 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
     public EscapeFromLavaTask(AltoClef mod,float strength) {
         this.strength = strength;
-        avoidPlacingRiskyBlock = (blockPos -> mod.getPlayer().getBoundingBox().intersects(new Box(blockPos))
-                && (mod.getWorld().getBlockState(mod.getPlayer().getBlockPos().down()).getBlock() == Blocks.LAVA || mod.getPlayer().isInLava()));
+        avoidPlacingRiskyBlock = (blockPos -> mod.getPlayer().getBoundingBox().intersects(new AABB(blockPos))
+                && (mod.getWorld().getBlockState(mod.getPlayer().blockPosition().below()).getBlock() == Blocks.LAVA || mod.getPlayer().isInLava()));
     }
 
 
@@ -60,7 +66,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
     protected Task onTick() {
         AltoClef mod = AltoClef.getInstance();
 
-       // if (mod.getWorld().getBlockState(mod.getPlayer().getBlockPos().up()).getBlock().equals(Blocks.LAVA)) {
+       // if (mod.getWorld().getBlockState(mod.getPlayer().getBlockPos().above()).getBlock().equals(Blocks.LAVA)) {
             mod.getInputControls().hold(Input.JUMP);
             mod.getInputControls().hold(Input.SPRINT);
            /* setDebugState("escaping submerged lava");
@@ -68,7 +74,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         }*/
 
         Optional<Item> food = calculateFood(mod);
-        if (food.isPresent() && mod.getPlayer().getHungerManager().getFoodLevel() < 20) {
+        if (food.isPresent() && mod.getPlayer().getFoodData().getFoodLevel() < 20) {
             // can be interrupted by block placing, but we should try to eat whenever we can
             if (mod.getPlayer().isBlocking()) {
                 mod.log("want to eat, trying to stop shielding...");
@@ -81,11 +87,11 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
 
         // Sprint through lava + jump, it's faster
-        if (mod.getPlayer().isInLava() || mod.getWorld().getBlockState(mod.getPlayer().getBlockPos().down()).getBlock() == Blocks.LAVA) {
+        if (mod.getPlayer().isInLava() || mod.getWorld().getBlockState(mod.getPlayer().blockPosition().below()).getBlock() == Blocks.LAVA) {
 
             setDebugState("run away from lava");
 
-            BlockPos steppingPos = mod.getPlayer().getSteppingPos();
+            BlockPos steppingPos = mod.getPlayer().getOnPos();
             if (!mod.getWorld().getBlockState(steppingPos.east()).getBlock().equals(Blocks.LAVA) ||
                     !mod.getWorld().getBlockState(steppingPos.west()).getBlock().equals(Blocks.LAVA) ||
                     !mod.getWorld().getBlockState(steppingPos.south()).getBlock().equals(Blocks.LAVA) ||
@@ -121,9 +127,9 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
                         BlockHitResult blockHitResult = (BlockHitResult) result;
                         BlockPos pos = blockHitResult.getBlockPos();
 
-                        if (pos.getY() > mod.getPlayer().getSteppingPos().getY()) continue;
+                        if (pos.getY() > mod.getPlayer().getOnPos().getY()) continue;
 
-                        Direction facing = blockHitResult.getSide();
+                        Direction facing = blockHitResult.getDirection();
 
                         if (facing == Direction.UP) continue;
                         LookHelper.lookAt(new Rotation(yaw,pitch));
@@ -153,10 +159,10 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
     private Optional<Item> calculateFood(AltoClef mod) {
         Item bestFood = null;
         double bestFoodScore = Double.NEGATIVE_INFINITY;
-        ClientPlayerEntity player = mod.getPlayer();
+        LocalPlayer player = mod.getPlayer();
 
-        float hunger = player != null ? player.getHungerManager().getFoodLevel() : 20;
-        float saturation = player != null ? player.getHungerManager().getSaturationLevel() : 20;
+        float hunger = player != null ? player.getFoodData().getFoodLevel() : 20;
+        float saturation = player != null ? player.getFoodData().getSaturationLevel() : 20;
         // Get best food item + calculate food total
         for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
             if (ItemVer.isFood(stack)) {
@@ -202,26 +208,26 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
 
     public HitResult raycast(AltoClef mod,double maxDistance, float pitch, float yaw) {
-        Vec3d cameraPos = mod.getPlayer().getCameraPosVec(MinecraftClient.getInstance().getRenderTickCounter().getTickDelta(true));
-        Vec3d rotationVector = getRotationVector(pitch,yaw);
+        Vec3 cameraPos = mod.getPlayer().getEyePosition();
+        Vec3 rotationVector = getRotationVector(pitch,yaw);
 
-        Vec3d vec3d3 = cameraPos.add(rotationVector.x * maxDistance, rotationVector.y * maxDistance, rotationVector.z * maxDistance);
-        return mod.getPlayer().getWorld()
-                .raycast(
-                        new RaycastContext(
-                                cameraPos, vec3d3, RaycastContext.ShapeType.OUTLINE,
-                                false ? RaycastContext.FluidHandling.ANY : RaycastContext.FluidHandling.NONE, mod.getPlayer()
+        Vec3 vec3d3 = cameraPos.add(rotationVector.x * maxDistance, rotationVector.y * maxDistance, rotationVector.z * maxDistance);
+        return mod.getPlayer().level()
+                .clip(
+                        new ClipContext(
+                                cameraPos, vec3d3, net.minecraft.world.level.ClipContext.Block.OUTLINE,
+                                false ? net.minecraft.world.level.ClipContext.Fluid.ANY : net.minecraft.world.level.ClipContext.Fluid.NONE, mod.getPlayer()
                         )
                 );
     }
-    protected final Vec3d getRotationVector(float pitch, float yaw) {
+    protected final Vec3 getRotationVector(float pitch, float yaw) {
         float f = pitch * (float) (Math.PI / 180.0);
         float g = -yaw * (float) (Math.PI / 180.0);
-        float h = MathHelper.cos(g);
-        float i = MathHelper.sin(g);
-        float j = MathHelper.cos(f);
-        float k = MathHelper.sin(f);
-        return new Vec3d((double)(i * j), (double)(-k), (double)(h * j));
+        float h = Mth.cos(g);
+        float i = Mth.sin(g);
+        float j = Mth.cos(f);
+        float k = Mth.sin(f);
+        return new Vec3((double)(i * j), (double)(-k), (double)(h * j));
     }
 
 
@@ -251,7 +257,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         // escaping INTO water is strongly preferred because it extinguishes, and that preference
         // does not fall off with distance. A predicate cannot express a preference -- the ORDER OF
         // CALLS can. So look for water first, and settle for dry ground only if none is near.
-        BlockPos feet = mod.getPlayer().getBlockPos();
+        BlockPos feet = mod.getPlayer().blockPosition();
         adris.altoclef.util.goals.AltoGoal water = new adris.altoclef.util.goals.AltoGoal.NearestSatisfying(
                 pos -> EscapeFromLavaGoal.isWater(pos.getX(), pos.getY(), pos.getZ()), feet, 12);
         if (water.target() != null) {
@@ -277,7 +283,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
     @Override
     public boolean isFinished() {
-        ClientPlayerEntity player = AltoClef.getInstance().getPlayer();
+        LocalPlayer player = AltoClef.getInstance().getPlayer();
 
         return !player.isInLava() && !player.isOnFire();
     }
@@ -290,8 +296,8 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
     private static final class EscapeFromLavaGoal {
 
         private static boolean isLava(int x, int y, int z) {
-            if (MinecraftClient.getInstance().world == null) return false;
-            return adris.altoclef.util.helpers.WorldHelper.isLavaState(MinecraftClient.getInstance().world.getBlockState(new BlockPos(x, y, z)));
+            if (Minecraft.getInstance().level == null) return false;
+            return adris.altoclef.util.helpers.WorldHelper.isLavaState(Minecraft.getInstance().level.getBlockState(new BlockPos(x, y, z)));
         }
 
         private static boolean isLavaAdjacent(int x, int y, int z) {
@@ -302,7 +308,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
         /** Solid support directly under the feet cell and room for the body above it. */
         private static boolean canStand(BlockPos pos) {
-            var world = MinecraftClient.getInstance().world;
+            var world = Minecraft.getInstance().level;
             if (world == null) return false;
             double top = kaptainwutax.tungsten.helpers.PlayerFit.supportTop(world, pos);
             if (Double.isNaN(top) || top < pos.getY() - 0.01 || top >= pos.getY() + 1) return false;
@@ -310,8 +316,8 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         }
 
         private static boolean isWater(int x, int y, int z) {
-            if (MinecraftClient.getInstance().world == null) return false;
-            return adris.altoclef.util.helpers.WorldHelper.isWaterState(MinecraftClient.getInstance().world.getBlockState(new BlockPos(x, y, z)));
+            if (Minecraft.getInstance().level == null) return false;
+            return adris.altoclef.util.helpers.WorldHelper.isWaterState(Minecraft.getInstance().level.getBlockState(new BlockPos(x, y, z)));
         }
 
     }

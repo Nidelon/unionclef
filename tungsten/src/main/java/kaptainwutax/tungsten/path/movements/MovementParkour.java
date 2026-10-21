@@ -4,11 +4,11 @@ import java.util.HashSet;
 import java.util.Set;
 
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Direction;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Port of {@code baritone/pathing/movement/movements/MovementParkour.java} — a RUNNING JUMP across
@@ -100,8 +100,8 @@ public class MovementParkour extends Movement {
         if (state.getStatus() != MovementStatus.RUNNING) {
             return state;
         }
-        PlayerEntity player = ctx.player();
-        WorldView world = player.getEntityWorld();
+        Player player = ctx.player();
+        LevelReader world = player.level();
 
         if (ctx.playerFeet().getY() < src.getY()) {
             // We have fallen out of the jump; nothing here can recover it.
@@ -119,7 +119,7 @@ public class MovementParkour extends Movement {
             }
             // Landing is claimed only once the body has actually settled onto the cell, which is
             // what keeps a lilypad or a slab from reading as a miss.
-            if (player.getEntityPos().y - ctx.playerFeet().getY() < 0.094) {
+            if (player.position().y - ctx.playerFeet().getY() < 0.094) {
                 state.setStatus(MovementStatus.SUCCESS);
             }
             return state;
@@ -130,13 +130,13 @@ public class MovementParkour extends Movement {
         }
 
         if (ctx.playerFeet().equals(src.relative(direction))
-                || player.getEntityPos().y - src.getY() > 0.0001) {
+                || player.position().y - src.getY() > 0.0001) {
             // THE LATE-JUMP GUARD, and it is not a tuning constant. For a three-cell gap the body
             // must leave the lip rather than the middle of the source cell: jumping while still
             // behind 0.7 of the way across lands short every time.
             if (dist == 3 && !ascend) {
-                double xDiff = (src.getX() + 0.5) - player.getEntityPos().x;
-                double zDiff = (src.getZ() + 0.5) - player.getEntityPos().z;
+                double xDiff = (src.getX() + 0.5) - player.position().x;
+                double zDiff = (src.getZ() + 0.5) - player.position().z;
                 if (Math.max(Math.abs(xDiff), Math.abs(zDiff)) < 0.7) {
                     return state;
                 }

@@ -6,15 +6,21 @@ import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.Slot;
-import net.minecraft.block.*;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.BeetrootBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CarrotBlock;
+import net.minecraft.world.level.block.CropBlock;
+import net.minecraft.world.level.block.PotatoBlock;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
 
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -46,7 +52,7 @@ public class CollectFoodPriorityCalculator extends ItemPriorityCalculator {
     /** Hunger remains urgent even when discovery has no known food target yet. */
     public static boolean needsEmergencyFood(AltoClef mod) {
         return mod.getPlayer() != null
-                && (mod.getPlayer().getHungerManager().getFoodLevel() <= 10
+                && (mod.getPlayer().getFoodData().getFoodLevel() <= 10
                     || mod.getPlayer().getHealth() <= 10.0f)
                 && CollectFoodTask.calculateFoodPotential(mod) < 10;
     }
@@ -94,7 +100,7 @@ public class CollectFoodPriorityCalculator extends ItemPriorityCalculator {
         // by thirty. Emergencies and a genuinely low reserve still ramp hard via needsEmergencyFood
         // (+inf) and the foodPotential<10 branch below.
         Optional<BlockPos> hay = mod.getBlockScanner().getNearestBlock(Blocks.HAY_BLOCK);
-        if ((hay.isPresent() && WorldHelper.inRangeXZ(hay.get(),mod.getPlayer().getBlockPos(),75))|| mod.getEntityTracker().itemDropped(Items.HAY_BLOCK)) {
+        if ((hay.isPresent() && WorldHelper.inRangeXZ(hay.get(),mod.getPlayer().blockPosition(),75))|| mod.getEntityTracker().itemDropped(Items.HAY_BLOCK)) {
             multiplier = 7;
         }
 
@@ -113,7 +119,7 @@ public class CollectFoodPriorityCalculator extends ItemPriorityCalculator {
     }
 
     private double getDistance(AltoClef mod) {
-        PlayerEntity player = mod.getPlayer();
+        Player player = mod.getPlayer();
 
         // Pick up food items from ground
         for (Item item : ITEMS_TO_PICK_UP) {
@@ -144,7 +150,7 @@ public class CollectFoodPriorityCalculator extends ItemPriorityCalculator {
                 BlockState s = mod.getWorld().getBlockState(blockPos);
                 Block b = s.getBlock();
                 if (b instanceof CropBlock) {
-                    boolean isWheat = !(b instanceof PotatoesBlock || b instanceof CarrotsBlock || b instanceof BeetrootsBlock);
+                    boolean isWheat = !(b instanceof PotatoBlock || b instanceof CarrotBlock || b instanceof BeetrootBlock);
                     if (isWheat) {
                         // Chunk needs to be loaded for wheat maturity to be checked.
                         if (!mod.getChunkTracker().isChunkLoaded(blockPos)) {
@@ -152,7 +158,7 @@ public class CollectFoodPriorityCalculator extends ItemPriorityCalculator {
                         }
                         // Prune if we're not mature/fully grown wheat.
                         CropBlock crop = (CropBlock) b;
-                        return crop.isMature(s);
+                        return crop.isMaxAge(s);
                     }
                 }
                 // Unbreakable.
@@ -170,10 +176,10 @@ public class CollectFoodPriorityCalculator extends ItemPriorityCalculator {
 
         for (CookableFoodTarget cookable : COOKABLE_FOODS) {
             if (!mod.getEntityTracker().entityFound(cookable.mobToKill)) continue;
-            Optional<Entity> nearest = mod.getEntityTracker().getClosestEntity(mod.getPlayer().getPos(), notBaby, cookable.mobToKill);
+            Optional<Entity> nearest = mod.getEntityTracker().getClosestEntity(mod.getPlayer().position(), notBaby, cookable.mobToKill);
             if (nearest.isEmpty()) continue; // ?? This crashed once?
             int hungerPerformance = cookable.getCookedUnits();
-            double sqDistance = nearest.get().squaredDistanceTo(mod.getPlayer());
+            double sqDistance = nearest.get().distanceToSqr(mod.getPlayer());
             double score = (double) 100 * hungerPerformance / (sqDistance);
             if (cookable.isFish()) {
                 score = 0;
@@ -205,15 +211,15 @@ public class CollectFoodPriorityCalculator extends ItemPriorityCalculator {
             if (!WorldHelper.canBreak(blockPos)) return false;
             return accept.test(blockPos);
         };
-        Optional<BlockPos> nearestBlock = mod.getBlockScanner().getNearestBlock(mod.getPlayer().getPos(), acceptPlus, blockToCheck);
+        Optional<BlockPos> nearestBlock = mod.getBlockScanner().getNearestBlock(mod.getPlayer().position(), acceptPlus, blockToCheck);
 
-        if (nearestBlock.isPresent() && !nearestBlock.get().isWithinDistance(mod.getPlayer().getPos(), maxRange)) {
+        if (nearestBlock.isPresent() && !nearestBlock.get().closerThan(BlockPos.containing(mod.getPlayer().position()), maxRange)) {
             nearestBlock = Optional.empty();
         }
 
         Optional<ItemEntity> nearestDrop = Optional.empty();
         if (mod.getEntityTracker().itemDropped(itemToGrab)) {
-            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().getPos(), itemToGrab);
+            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), itemToGrab);
         }
 
 
@@ -221,7 +227,7 @@ public class CollectFoodPriorityCalculator extends ItemPriorityCalculator {
             return nearestDrop.get().distanceTo(mod.getPlayer());
         }
         if (nearestBlock.isPresent()) {
-            return Math.sqrt(mod.getPlayer().squaredDistanceTo(WorldHelper.toVec3d(nearestBlock.get())));
+            return Math.sqrt(mod.getPlayer().distanceToSqr(WorldHelper.toVec3d(nearestBlock.get())));
         }
 
         return Double.NEGATIVE_INFINITY;
@@ -234,11 +240,11 @@ public class CollectFoodPriorityCalculator extends ItemPriorityCalculator {
     private double pickupTaskOrNull(AltoClef mod, Item itemToGrab, double maxRange) {
         Optional<ItemEntity> nearestDrop = Optional.empty();
         if (mod.getEntityTracker().itemDropped(itemToGrab)) {
-            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().getPos(), itemToGrab);
+            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), itemToGrab);
         }
         if (nearestDrop.isPresent()) {
-            if (nearestDrop.get().isInRange(mod.getPlayer(), maxRange)) {
-                if (mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(nearestDrop.get().getStack(), false).isEmpty()) {
+            if (nearestDrop.get().closerThan(mod.getPlayer(), maxRange)) {
+                if (mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(nearestDrop.get().getItem(), false).isEmpty()) {
                     Optional<Slot> slot = StorageHelper.getGarbageSlot(mod);
 
                     // tf am I supposed to do if its empty
@@ -257,7 +263,7 @@ public class CollectFoodPriorityCalculator extends ItemPriorityCalculator {
                             } else {
                                 mod.log("unknown food item: " + itemToGrab);
                             }
-                            int groundCost = (int) (hunger * nearestDrop.get().getStack().getCount());
+                            int groundCost = (int) (hunger * nearestDrop.get().getItem().getCount());
 
                             if (inventoryCost > groundCost) return Double.NEGATIVE_INFINITY;
                         }

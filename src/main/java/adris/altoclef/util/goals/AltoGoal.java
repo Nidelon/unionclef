@@ -1,7 +1,7 @@
 package adris.altoclef.util.goals;
 
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Where the bot is trying to get to, owned by altoclef rather than by a pathfinder.
@@ -39,7 +39,7 @@ public interface AltoGoal {
      * <p>Null for a region goal such as FleeLive: its drive uses a condition search rather than
      * guessing a representative point. Other goals may return null when no target is available.
      */
-    Vec3d target();
+    Vec3 target();
 
     /**
      * Is this position good enough to call the goal met?
@@ -49,7 +49,7 @@ public interface AltoGoal {
      * to guess what "close enough" meant for a particular goal.
      */
     default boolean reached(BlockPos pos) {
-        Vec3d t = target();
+        Vec3 t = target();
         return t != null
                 && pos.getX() == (int) Math.floor(t.x)
                 && pos.getY() == (int) Math.floor(t.y)
@@ -59,8 +59,8 @@ public interface AltoGoal {
     /** A goal that is simply a block. */
     record Block(BlockPos pos) implements AltoGoal {
         @Override
-        public Vec3d target() {
-            return new Vec3d(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
+        public Vec3 target() {
+            return new Vec3(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
         }
 
         @Override
@@ -85,7 +85,7 @@ public interface AltoGoal {
 
         public AnyBlock(java.util.Collection<BlockPos> positions) {
             java.util.Set<BlockPos> copy = new java.util.HashSet<>();
-            for (BlockPos pos : positions) copy.add(pos.toImmutable());
+            for (BlockPos pos : positions) copy.add(pos.immutable());
             if (copy.isEmpty()) throw new IllegalArgumentException("No destination cells");
             cells = java.util.Set.copyOf(copy);
         }
@@ -93,7 +93,7 @@ public interface AltoGoal {
         public java.util.Set<BlockPos> cells() { return cells; }
 
         @Override
-        public Vec3d target() { return null; }
+        public Vec3 target() { return null; }
 
         @Override
         public boolean reached(BlockPos at) { return cells.contains(at); }
@@ -114,17 +114,17 @@ public interface AltoGoal {
     record Near(BlockPos pos, int range) implements AltoGoal {
         public Near {
             // The condition search reads this goal on its worker, like AnyBlock.
-            pos = pos.toImmutable();
+            pos = pos.immutable();
         }
 
         @Override
-        public Vec3d target() {
-            return new Vec3d(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
+        public Vec3 target() {
+            return new Vec3(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
         }
 
         @Override
         public boolean reached(BlockPos at) {
-            return at.getSquaredDistance(pos) <= (double) range * range;
+            return at.distSqr(pos) <= (double) range * range;
         }
 
         /** Center heuristic, with arrival decided by the entire radius.
@@ -159,8 +159,8 @@ public interface AltoGoal {
      */
     record Adjacent(BlockPos pos) implements AltoGoal {
         @Override
-        public Vec3d target() {
-            return new Vec3d(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
+        public Vec3 target() {
+            return new Vec3(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
         }
 
         @Override
@@ -177,10 +177,10 @@ public interface AltoGoal {
     /** A goal on the horizontal plane only — any Y will do. */
     record Xz(int x, int z) implements AltoGoal {
         @Override
-        public Vec3d target() {
+        public Vec3 target() {
             // An XZ goal genuinely has no Y, so it names its own height as NaN and the drive fills
             // it in from the player: "keep your height, change your ground".
-            return new Vec3d(x + 0.5, Double.NaN, z + 0.5);
+            return new Vec3(x + 0.5, Double.NaN, z + 0.5);
         }
 
         @Override
@@ -197,8 +197,8 @@ public interface AltoGoal {
     /** A goal that is a height, wherever you happen to stand. */
     record YLevel(int y) implements AltoGoal {
         @Override
-        public Vec3d target() {
-            return new Vec3d(Double.NaN, y, Double.NaN);
+        public Vec3 target() {
+            return new Vec3(Double.NaN, y, Double.NaN);
         }
 
         @Override
@@ -221,10 +221,10 @@ public interface AltoGoal {
      */
     record Chunk(int startX, int startZ) implements AltoGoal {
         @Override
-        public Vec3d target() {
+        public Vec3 target() {
             // The centre of the chunk, and NaN for Y: a chunk goal has no height, exactly as the
             // XZ goal above has none, and the drive fills it in from the player.
-            return new Vec3d(startX + 8.0, Double.NaN, startZ + 8.0);
+            return new Vec3(startX + 8.0, Double.NaN, startZ + 8.0);
         }
 
         @Override
@@ -257,8 +257,8 @@ public interface AltoGoal {
         private static final double PROJECTION = 128.0;
 
         @Override
-        public Vec3d target() {
-            return new Vec3d(originX + dirX * PROJECTION, Double.NaN, originZ + dirZ * PROJECTION);
+        public Vec3 target() {
+            return new Vec3(originX + dirX * PROJECTION, Double.NaN, originZ + dirZ * PROJECTION);
         }
 
         @Override
@@ -312,7 +312,7 @@ public interface AltoGoal {
         private final int maxRadius;
 
         /** Cached answer, and the tick it was computed on — see the note about rescanning. */
-        private Vec3d cached;
+        private Vec3 cached;
         private long cachedAtTick = Long.MIN_VALUE;
 
         public NearestSatisfying(java.util.function.Predicate<BlockPos> satisfies, BlockPos origin,
@@ -323,12 +323,12 @@ public interface AltoGoal {
         }
 
         @Override
-        public Vec3d target() {
+        public Vec3 target() {
             // ONE SCAN PER TICK AT MOST. target() is read by the drive every tick, and an
             // unbounded rescan of a radius-N shell sixty times a second is how a goal type turns
             // into a frame-rate problem.
-            net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
-            long tick = mc.world == null ? 0 : mc.world.getTime();
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            long tick = mc.level == null ? 0 : mc.level.getGameTime();
             if (tick == cachedAtTick) {
                 return cached;
             }
@@ -344,9 +344,9 @@ public interface AltoGoal {
          * satisfies; within a shell the vertical offsets come last, because walking sideways is
          * cheaper than climbing and a goal one block up is rarely what "get out of the water" means.
          */
-        private Vec3d search() {
+        private Vec3 search() {
             if (satisfies.test(origin)) {
-                return new Vec3d(origin.getX() + 0.5, origin.getY(), origin.getZ() + 0.5);
+                return new Vec3(origin.getX() + 0.5, origin.getY(), origin.getZ() + 0.5);
             }
             for (int r = 1; r <= maxRadius; r++) {
                 for (int dy = 0; dy <= r; dy++) {
@@ -357,9 +357,9 @@ public interface AltoGoal {
                                 if (Math.max(Math.abs(dx), Math.abs(dz)) != r && Math.abs(sy) != r) {
                                     continue;
                                 }
-                                BlockPos at = origin.add(dx, sy, dz);
+                                BlockPos at = origin.offset(dx, sy, dz);
                                 if (satisfies.test(at)) {
-                                    return new Vec3d(at.getX() + 0.5, at.getY(), at.getZ() + 0.5);
+                                    return new Vec3(at.getX() + 0.5, at.getY(), at.getZ() + 0.5);
                                 }
                             }
                         }
@@ -398,16 +398,16 @@ public interface AltoGoal {
      * <p>{@code reached} keeps upstream's meaning exactly — clear of EVERY danger position, not
      * merely the nearest one.
      */
-    record Flee(Vec3d away, java.util.List<BlockPos> from, double distance) implements AltoGoal {
+    record Flee(Vec3 away, java.util.List<BlockPos> from, double distance) implements AltoGoal {
         @Override
-        public Vec3d target() {
+        public Vec3 target() {
             return away;
         }
 
         @Override
         public boolean reached(BlockPos at) {
             for (BlockPos danger : from) {
-                if (at.getSquaredDistance(danger) < distance * distance) {
+                if (at.distSqr(danger) < distance * distance) {
                     return false;
                 }
             }
@@ -432,30 +432,30 @@ public interface AltoGoal {
      * completion still checks the live positions on the client thread.
      */
     final class FleeLive implements AltoGoal {
-        private final java.util.function.Supplier<java.util.List<Vec3d>> dangers;
+        private final java.util.function.Supplier<java.util.List<Vec3>> dangers;
         private final double distance;
 
         /** standingAt is retained for constructor compatibility; the planner reads its own start. */
-        public FleeLive(java.util.function.Supplier<java.util.List<Vec3d>> dangers,
-                        java.util.function.Supplier<Vec3d> standingAt, double distance) {
+        public FleeLive(java.util.function.Supplier<java.util.List<Vec3>> dangers,
+                        java.util.function.Supplier<Vec3> standingAt, double distance) {
             this.dangers = dangers;
             this.distance = distance;
         }
 
         /** No arbitrary point represents this region; the drive uses snapshotSafety instead. */
         @Override
-        public Vec3d target() { return null; }
+        public Vec3 target() { return null; }
 
         /** Client thread only: copy entity positions before a worker searches the world. */
         public java.util.function.Predicate<BlockPos> snapshotSafety(double margin) {
             var live = dangers.get();
-            var snapshot = live == null ? java.util.List.<Vec3d>of() : java.util.List.copyOf(live);
+            var snapshot = live == null ? java.util.List.<Vec3>of() : java.util.List.copyOf(live);
             double separation = distance + margin;
             // Not under water: full56 fled a creeper into a flooded cave, stayed under and drowned.
             // A cell whose head space is water is no refuge from anything.
             var world = adris.altoclef.AltoClef.getInstance() == null ? null
                     : adris.altoclef.AltoClef.getInstance().getWorld();
-            return at -> (world == null || world.getFluidState(at.up()).isEmpty())
+            return at -> (world == null || world.getFluidState(at.above()).isEmpty())
                     && safeAt(at, snapshot, separation);
         }
 
@@ -467,11 +467,11 @@ public interface AltoGoal {
          */
         public kaptainwutax.tungsten.path.fast.FastPlanner.CellHeuristic snapshotRunAway(double margin) {
             var live = dangers.get();
-            var snapshot = live == null ? java.util.List.<Vec3d>of() : java.util.List.copyOf(live);
+            var snapshot = live == null ? java.util.List.<Vec3>of() : java.util.List.copyOf(live);
             double separation = distance + margin;
             return (x, y, z) -> {
                 double best = Double.MAX_VALUE;
-                for (Vec3d d : snapshot) {
+                for (Vec3 d : snapshot) {
                     double dx = x + 0.5 - d.x, dz = z + 0.5 - d.z;
                     best = Math.min(best, Math.sqrt(dx * dx + dz * dz));
                 }
@@ -479,9 +479,9 @@ public interface AltoGoal {
             };
         }
 
-        private static boolean safeAt(BlockPos at, java.util.List<Vec3d> from, double separation) {
+        private static boolean safeAt(BlockPos at, java.util.List<Vec3> from, double separation) {
             if (from == null) return true;
-            for (Vec3d danger : from) {
+            for (Vec3 danger : from) {
                 double dx = at.getX() + 0.5 - danger.x;
                 double dz = at.getZ() + 0.5 - danger.z;
                 if (dx * dx + dz * dz < separation * separation) return false;
@@ -530,7 +530,7 @@ public interface AltoGoal {
      * step, and it is what a person would do. Beyond that it keeps walking outward, which is the
      * heuristic's own preference -- further away is better.
      */
-    private static Vec3d firstStandableAlong(double cx, double cz, double ux, double uz,
+    private static Vec3 firstStandableAlong(double cx, double cz, double ux, double uz,
                                              double reach, double baseY) {
         try {
             for (int r = (int) Math.ceil(reach); r <= reach + 12; r++) {
@@ -539,10 +539,10 @@ public interface AltoGoal {
                     int y = (int) baseY + dy;
                     int z = (int) Math.floor(cz + uz * r);
                     BlockPos feet = new BlockPos(x, y, z);
-                    if (adris.altoclef.util.helpers.WorldHelper.isSolidBlock(feet.down())
+                    if (adris.altoclef.util.helpers.WorldHelper.isSolidBlock(feet.below())
                             && !adris.altoclef.util.helpers.WorldHelper.isSolidBlock(feet)
-                            && !adris.altoclef.util.helpers.WorldHelper.isSolidBlock(feet.up())) {
-                        return new Vec3d(x + 0.5, y, z + 0.5);
+                            && !adris.altoclef.util.helpers.WorldHelper.isSolidBlock(feet.above())) {
+                        return new Vec3(x + 0.5, y, z + 0.5);
                     }
                 }
             }
@@ -552,7 +552,7 @@ public interface AltoGoal {
         return null;
     }
 
-    static AltoGoal flee(Vec3d standingAt, java.util.List<BlockPos> from, double distance,
+    static AltoGoal flee(Vec3 standingAt, java.util.List<BlockPos> from, double distance,
                          Integer maintainY) {
         double cx = 0, cz = 0;
         for (BlockPos p : from) {
@@ -577,11 +577,11 @@ public interface AltoGoal {
         // it was. The scan below still needs a concrete height to start from, so it takes the
         // player's own when the caller named none.
         double baseY = maintainY != null ? maintainY : Math.floor(standingAt.y);
-        Vec3d away = new Vec3d(cx + dx / len * reach,
+        Vec3 away = new Vec3(cx + dx / len * reach,
                 maintainY != null ? maintainY : Double.NaN,
                 cz + dz / len * reach);
         if (kaptainwutax.tungsten.TungstenConfig.get().fleePicksStandableSpot) {
-            Vec3d standable = firstStandableAlong(cx, cz, dx / len, dz / len, reach, baseY);
+            Vec3 standable = firstStandableAlong(cx, cz, dx / len, dz / len, reach, baseY);
             if (standable != null) {
                 // Compare in XZ and on the scan base, never against away.y -- that is NaN by
                 // convention when the caller named no height, and every comparison through NaN
@@ -600,9 +600,9 @@ public interface AltoGoal {
     }
 
     /** {@code offset} need not be normalised; it is flattened to XZ and normalised here. */
-    static AltoGoal direction(Vec3d origin, Vec3d offset) {
-        Vec3d flat = offset.multiply(1, 0, 1).normalize();
-        return new Direction(origin.getX(), origin.getZ(), flat.x, flat.z);
+    static AltoGoal direction(Vec3 origin, Vec3 offset) {
+        Vec3 flat = offset.multiply(1, 0, 1).normalize();
+        return new Direction(origin.x(), origin.z(), flat.x, flat.z);
     }
 
     static AltoGoal chunk(int startX, int startZ) {
@@ -625,15 +625,15 @@ public interface AltoGoal {
      */
     record NearLive(java.util.function.Supplier<BlockPos> pos, int range) implements AltoGoal {
         @Override
-        public Vec3d target() {
+        public Vec3 target() {
             BlockPos p = pos.get();
-            return p == null ? null : new Vec3d(p.getX() + 0.5, p.getY(), p.getZ() + 0.5);
+            return p == null ? null : new Vec3(p.getX() + 0.5, p.getY(), p.getZ() + 0.5);
         }
 
         @Override
         public boolean reached(BlockPos at) {
             BlockPos p = pos.get();
-            return p != null && at.getSquaredDistance(p) <= (double) range * range;
+            return p != null && at.distSqr(p) <= (double) range * range;
         }
 
         @Override

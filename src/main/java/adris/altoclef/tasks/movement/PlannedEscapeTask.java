@@ -3,7 +3,7 @@ package adris.altoclef.tasks.movement;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.Task;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * The unstuck task: a PLANNED escape first, a (non-digging) shimmy only if no plan can be made.
@@ -23,7 +23,7 @@ public class PlannedEscapeTask extends Task {
     private static final double MOVED_SQ = 1.5 * 1.5;
 
     private long startedMs;
-    private Vec3d from;
+    private Vec3 from;
     private boolean escaping;
     private long shimmyStartMs = 0L;
     private final SafeRandomShimmyTask shimmy = new SafeRandomShimmyTask();
@@ -32,7 +32,7 @@ public class PlannedEscapeTask extends Task {
     protected void onStart() {
         AltoClef mod = AltoClef.getInstance();
         startedMs = System.currentTimeMillis();
-        from = mod.getPlayer().getPos();
+        from = mod.getPlayer().position();
         escaping = PlannedEscape.tryStart(mod, "unstuck");
         if (!escaping) {
             escapeFellBack++;
@@ -50,7 +50,7 @@ public class PlannedEscapeTask extends Task {
                 return null;   // the navigator drives from the client tick
             }
             // The navigator finished or gave up. Did it get us anywhere?
-            if (mod.getPlayer().getPos().squaredDistanceTo(from) >= MOVED_SQ) {
+            if (mod.getPlayer().position().distanceToSqr(from) >= MOVED_SQ) {
                 escapeMoved++;
                 escaping = false;
                 shimmyStartMs = -1L;    // done, no shimmy needed

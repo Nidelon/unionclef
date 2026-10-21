@@ -1,8 +1,8 @@
 package kaptainwutax.tungsten.combat;
 
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 
 /**
  * Every hit the bot takes, recorded from the CLIENT TICK so it cannot be switched off by whoever
@@ -232,7 +232,7 @@ public final class DamageWatch {
     }
     public static volatile float worstFallHeight;
 
-    private static void classifyDamage(ClientPlayerEntity player, float lost) {
+    private static void classifyDamage(LocalPlayer player, float lost) {
         try {
             float fd = (float) player.fallDistance;   // double in 1.21.11, float in earlier lines
             if (fd > 3.0f) {
@@ -242,7 +242,7 @@ public final class DamageWatch {
                 dmgLava++;
             } else if (player.isOnFire()) {
                 dmgFire++;
-            } else if (player.isSubmergedInWater() && player.getAir() <= 0) {
+            } else if (player.isUnderWater() && player.getAirSupply() <= 0) {
                 dmgDrown++;
             } else {
                 dmgOther++;
@@ -252,7 +252,7 @@ public final class DamageWatch {
         }
     }
 
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         tickNo++;
         if (player == null) {
             lastHealth = -1f;
@@ -274,13 +274,13 @@ public final class DamageWatch {
             if (lostTenths < 20) {
                 takeTiny++;
                 try {
-                    net.minecraft.entity.damage.DamageSource src = player.getRecentDamageSource();
-                    String who = src == null ? "unknown" : src.getName();
-                    net.minecraft.entity.Entity att = src == null ? null : src.getAttacker();
+                    net.minecraft.world.damagesource.DamageSource src = player.getLastDamageSource();
+                    String who = src == null ? "unknown" : src.getMsgId();
+                    net.minecraft.world.entity.Entity att = src == null ? null : src.getEntity();
                     String key = who + "@" + (lostTenths / 10.0f)
                             + "/after" + (prevTenths < 0 ? "?" : String.valueOf(prevTenths / 10.0f))
                             + "/gap" + (prevTick < 0 ? "?" : String.valueOf(tickNo - prevTick))
-                            + (att == null ? "" : "/" + att.getType().getUntranslatedName());
+                            + (att == null ? "" : "/" + att.getType().getDescriptionId());
                     synchronized (smallHitCauses) {
                         smallHitCauses.merge(key, 1, Integer::sum);
                     }
@@ -338,21 +338,21 @@ public final class DamageWatch {
     }
 
     /** Unconditional rim recorder — see the field docs. Runs whatever task is or is not driving. */
-    private static void recordVoid(ClientPlayerEntity player) {
-        boolean airborne = !player.isOnGround();
+    private static void recordVoid(LocalPlayer player) {
+        boolean airborne = !player.onGround();
         boolean bottomless = airborne
-                && VoidDetector.fallHeight(player.getEntityPos(), player.getEntityWorld()) > 20;
+                && VoidDetector.fallHeight(player.position(), player.level()) > 20;
         if (bottomless) {
             voidTicks++;
             if (!overVoid) {
                 voidEntries++;
-                net.minecraft.util.math.Vec3d p = player.getEntityPos();
-                net.minecraft.util.math.Vec3d v = player.getVelocity();
+                net.minecraft.world.phys.Vec3 p = player.position();
+                net.minecraft.world.phys.Vec3 v = player.getDeltaMovement();
                 lastFall = String.format(
                         "pos=%.1f,%.1f,%.1f vel=%.3f,%.3f,%.3f wasOnGround=%b sneak=%b"
                                 + " punk=%b flee=%b bow=%b exec=%b walker=%b",
                         p.x, p.y, p.z, v.x, v.y, v.z, wasOnGround,
-                        net.minecraft.client.MinecraftClient.getInstance().options.sneakKey.isPressed(),
+                        net.minecraft.client.Minecraft.getInstance().options.keyShift.isDown(),
                         kaptainwutax.tungsten.task.PunkPlayerTask.isActive(),
                         kaptainwutax.tungsten.task.RunAwayTask.isActive(),
                         kaptainwutax.tungsten.task.BowShooter.isActive(),
@@ -362,7 +362,7 @@ public final class DamageWatch {
             }
         }
         overVoid = bottomless;
-        wasOnGround = player.isOnGround();
+        wasOnGround = player.onGround();
     }
 
     /**
@@ -371,17 +371,17 @@ public final class DamageWatch {
      * reproduced 4 times from rung-ender with the walker driving and the body stepping off a
      * ledge over a lava lake; the record said "walker=true" and nothing about the route.
      */
-    private static String walkerContext(ClientPlayerEntity player) {
+    private static String walkerContext(LocalPlayer player) {
         try {
             var route = kaptainwutax.tungsten.task.BlockPathWalker.routeForOverlay();
             if (route == null || route.isEmpty()) return " route=-";
             int i = Math.max(0, Math.min(kaptainwutax.tungsten.task.BlockPathWalker.waypointForOverlay(), route.size() - 1));
-            net.minecraft.util.math.BlockPos wp = route.get(i);
-            var w = player.getEntityWorld();
-            String under = w.getBlockState(wp.down()).getBlock().getTranslationKey()
+            net.minecraft.core.BlockPos wp = route.get(i);
+            var w = player.level();
+            String under = w.getBlockState(wp.below()).getBlock().getDescriptionId()
                     .replace("block.minecraft.", "");
             String prev = i > 0 ? route.get(i - 1).toShortString().replace(", ", ",") : "-";
-            return " route=[" + kaptainwutax.tungsten.task.BlockPathWalker.describeAgainstRoute(player.getBlockPos())
+            return " route=[" + kaptainwutax.tungsten.task.BlockPathWalker.describeAgainstRoute(player.blockPosition())
                     + " wp=" + wp.toShortString().replace(", ", ",") + " under=" + under + " prevWp=" + prev + "]";
         } catch (Exception e) {
             return " route=?";
@@ -389,15 +389,15 @@ public final class DamageWatch {
     }
 
     /** Distance to the closest other living entity, or -1 when there is none to blame. */
-    private static double nearestLivingGap(ClientPlayerEntity player) {
+    private static double nearestLivingGap(LocalPlayer player) {
         double best = -1;
         // ClientWorld, not World: only the client side exposes the entity list here.
-        net.minecraft.client.world.ClientWorld world =
-                net.minecraft.client.MinecraftClient.getInstance().world;
+        net.minecraft.client.multiplayer.ClientLevel world =
+                net.minecraft.client.Minecraft.getInstance().level;
         if (world == null) return -1;
-        for (Entity e : world.getEntities()) {
+        for (Entity e : world.entitiesForRendering()) {
             if (e == player || !(e instanceof LivingEntity) || !e.isAlive()) continue;
-            double d = e.getEntityPos().distanceTo(player.getEntityPos());
+            double d = e.position().distanceTo(player.position());
             if (best < 0 || d < best) best = d;
         }
         return best;

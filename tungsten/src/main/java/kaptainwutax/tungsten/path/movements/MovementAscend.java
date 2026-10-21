@@ -3,10 +3,10 @@ package kaptainwutax.tungsten.path.movements;
 import com.google.common.collect.ImmutableSet;
 import java.util.Set;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Direction;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Port of {@code baritone/pathing/movement/movements/MovementAscend.java} — ONE one-block cardinal
@@ -33,9 +33,9 @@ public class MovementAscend extends Movement {
     private int ticksWithoutPlacement = 0;
 
     /**
-     * MovementAscend.java:40-42. {@code positionsToBreak = {dest, src.up(2), dest.up()}} — the cell
+     * MovementAscend.java:40-42. {@code positionsToBreak = {dest, src.up(2), dest.above()}} — the cell
      * we step into, the ceiling above the SOURCE (a jump needs headroom where it starts), and the
-     * head cell at the destination. {@code positionToPlace = dest.down()} is the block to stand on.
+     * head cell at the destination. {@code positionToPlace = dest.below()} is the block to stand on.
      */
     public MovementAscend(BetterBlockPos src, BetterBlockPos dest) {
         // BetterBlockPos.above()/below() are tungsten's names for baritone's up()/down().
@@ -84,12 +84,12 @@ public class MovementAscend extends Movement {
             return state;
         }
 
-        PlayerEntity player = ctx.player();
-        WorldView world = player.getEntityWorld();
+        Player player = ctx.player();
+        LevelReader world = player.level();
 
-        // upstream: dest.add(getDirection().down()) — the cell one step further and one down, i.e.
+        // upstream: dest.add(getDirection().below()) — the cell one step further and one down, i.e.
         // we overshot onto the level we came from. Written out because BlockPos has no down() here.
-        net.minecraft.util.math.Vec3i dir = getDirection();
+        net.minecraft.core.Vec3i dir = getDirection();
         if (ctx.playerFeet().equals(dest)
                 || ctx.playerFeet().equals(dest.add(dir.getX(), dir.getY() - 1, dir.getZ()))) {
             return state.setStatus(MovementStatus.SUCCESS);
@@ -101,7 +101,7 @@ public class MovementAscend extends Movement {
             if (MovementHelperB.attemptToPlaceABlock(state, player, dest.below(), false, true)
                     == MovementHelperB.PlaceResult.READY_TO_PLACE) {
                 state.setInput(Input.SNEAK, true);
-                if (player.isInSneakingPose()) {
+                if (player.isCrouching()) {
                     state.setInput(Input.CLICK_RIGHT, true);
                 }
             }
@@ -125,12 +125,12 @@ public class MovementAscend extends Movement {
 
         int xAxis = Math.abs(src.getX() - dest.getX()); // either 0 or 1
         int zAxis = Math.abs(src.getZ() - dest.getZ()); // either 0 or 1
-        double flatDistToNext = xAxis * Math.abs((dest.getX() + 0.5D) - player.getEntityPos().x)
-                + zAxis * Math.abs((dest.getZ() + 0.5D) - player.getEntityPos().z);
-        double sideDist = zAxis * Math.abs((dest.getX() + 0.5D) - player.getEntityPos().x)
-                + xAxis * Math.abs((dest.getZ() + 0.5D) - player.getEntityPos().z);
+        double flatDistToNext = xAxis * Math.abs((dest.getX() + 0.5D) - player.position().x)
+                + zAxis * Math.abs((dest.getZ() + 0.5D) - player.position().z);
+        double sideDist = zAxis * Math.abs((dest.getX() + 0.5D) - player.position().x)
+                + xAxis * Math.abs((dest.getZ() + 0.5D) - player.position().z);
 
-        double lateralMotion = xAxis * player.getVelocity().z + zAxis * player.getVelocity().x;
+        double lateralMotion = xAxis * player.getDeltaMovement().z + zAxis * player.getDeltaMovement().x;
         if (Math.abs(lateralMotion) > 0.1) {
             return state;
         }
@@ -150,10 +150,10 @@ public class MovementAscend extends Movement {
     /** MovementAscend.java:222-233. */
     public boolean headBonkClear() {
         BetterBlockPos startUp = src.above().above();
-        WorldView world = ctx.player().getEntityWorld();
+        LevelReader world = ctx.player().level();
         for (int i = 0; i < 4; i++) {
             BetterBlockPos check = new BetterBlockPos(
-                    startUp.offset(Direction.fromHorizontalQuarterTurns(i)));
+                    startUp.relative(Direction.from2DDataValue(i)));
             if (!MovementHelperB.canWalkThrough(world, check)) {
                 // We might bonk our head
                 return false;

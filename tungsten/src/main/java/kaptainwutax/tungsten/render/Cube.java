@@ -1,12 +1,12 @@
 package kaptainwutax.tungsten.render;
 
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 public class Cube extends Cuboid {
 
     public Cube() {
-        this(BlockPos.ORIGIN, Color.WHITE);
+        this(BlockPos.ZERO, Color.WHITE);
     }
 
     public Cube(BlockPos pos) {
@@ -14,7 +14,7 @@ public class Cube extends Cuboid {
     }
 
     public Cube(BlockPos pos, Color color) {
-        super(new Vec3d(pos.getX(), pos.getY(), pos.getZ()), new Vec3d(1, 1, 1), color);
+        super(new Vec3(pos.getX(), pos.getY(), pos.getZ()), new Vec3(1, 1, 1), color);
     }
 
 }

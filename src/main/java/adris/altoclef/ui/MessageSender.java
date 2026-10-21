@@ -4,8 +4,8 @@ import adris.altoclef.Debug;
 import adris.altoclef.multiversion.entity.PlayerVer;
 import adris.altoclef.util.time.BaseTimer;
 import adris.altoclef.util.time.TimerReal;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
 
 import java.util.Comparator;
 import java.util.PriorityQueue;
@@ -46,23 +46,23 @@ public class MessageSender {
     }
 
     public void sendChatInstant(String message) {
-        if (MinecraftClient.getInstance().player == null) {
+        if (Minecraft.getInstance().player == null) {
             Debug.logError("Failed to send chat message as no client loaded.");
             return;
         }
-        PlayerVer.sendChatMessage(MinecraftClient.getInstance().player, message);
+        PlayerVer.sendChatMessage(Minecraft.getInstance().player, message);
     }
 
     public void sendCmdInstant(String command) {
-        if (MinecraftClient.getInstance().player == null) {
+        if (Minecraft.getInstance().player == null) {
             Debug.logError("Failed to send command as no client loaded.");
             return;
         }
-        PlayerVer.sendChatCommand(MinecraftClient.getInstance().player, command);
+        PlayerVer.sendChatCommand(Minecraft.getInstance().player, command);
     }
 
     public void enqueueWhisper(String username, String message, MessagePriority priority) {
-        var player = MinecraftClient.getInstance().player;
+        var player = Minecraft.getInstance().player;
         if (player != null && username.equals(player.getName().getString())) return;
         whisperQueue.add(new Whisper(username, message, priority, messageCounter++));
     }
@@ -104,12 +104,12 @@ public class MessageSender {
     }
 
     private void sendChatInstant(String message, boolean command) {
-        if (MinecraftClient.getInstance().player == null) {
+        if (Minecraft.getInstance().player == null) {
             Debug.logError("Failed to send chat message as no client loaded.");
             return;
         }
 
-        ClientPlayNetworkHandler networkHandler =  MinecraftClient.getInstance().getNetworkHandler();
+        ClientPacketListener networkHandler =  Minecraft.getInstance().getConnection();
         assert networkHandler != null;
 
         // Auto-detect commands: messages starting with "/" should be sent as commands, not chat
@@ -119,9 +119,9 @@ public class MessageSender {
         }
 
         if (command) {
-            PlayerVer.sendChatCommand(MinecraftClient.getInstance().player, message);
+            PlayerVer.sendChatCommand(Minecraft.getInstance().player, message);
         } else {
-            PlayerVer.sendChatMessage(MinecraftClient.getInstance().player, message);
+            PlayerVer.sendChatMessage(Minecraft.getInstance().player, message);
         }
     }
 

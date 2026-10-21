@@ -8,7 +8,7 @@ import adris.altoclef.commandsystem.args.StringArg;
 import adris.altoclef.commandsystem.exception.CommandException;
 import adris.altoclef.commandsystem.exception.RuntimeCommandException;
 import adris.altoclef.tasks.entity.ShiftEntityTask;
-import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.Optional;
 
@@ -29,7 +29,7 @@ public class ShiftCommand extends Command {
             return;
         }
 
-        Optional<PlayerEntity> target = mod.getEntityTracker().getPlayerEntity(username);
+        Optional<Player> target = mod.getEntityTracker().getPlayerEntity(username);
         if (target.isEmpty()) {
             throw new RuntimeCommandException("Player " + username + " not found!");
         }

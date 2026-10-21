@@ -9,11 +9,11 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 
 import java.util.Objects;
 
@@ -80,7 +80,7 @@ public class ConstructGraveTask extends Task {
     protected Task onTick() {
         AltoClef mod = AltoClef.getInstance();
 
-        if (mod.getPlayer() == null || mod.getPlayer().getBlockPos() == null)
+        if (mod.getPlayer() == null || mod.getPlayer().blockPosition() == null)
             return null;
 
         // Get required materials first
@@ -96,7 +96,7 @@ public class ConstructGraveTask extends Task {
 
         // Find position for grave if not set
         if (_position == null)
-            _position = mod.getPlayer().getBlockPos();
+            _position = mod.getPlayer().blockPosition();
 
         // Build the vertical cobblestone blocks
         if (_checkpoint <= 0) {
@@ -112,14 +112,14 @@ public class ConstructGraveTask extends Task {
             _checkpoint = 2;
         }
         // always check this
-        if (!WorldHelper.isBlock(_position.up(), Blocks.COBBLESTONE)) {
-            if (!WorldHelper.isBlock(_position.up(), Blocks.AIR)) {
+        if (!WorldHelper.isBlock(_position.above(), Blocks.COBBLESTONE)) {
+            if (!WorldHelper.isBlock(_position.above(), Blocks.AIR)) {
                 setDebugState("Destroying block in way of top cobblestone");
-                return new DestroyBlockTask(_position.up());
+                return new DestroyBlockTask(_position.above());
             }
             setDebugState("Placing top cobblestone");
-            mod.getBehaviour().avoidBlockBreaking(_position.up());
-            return new PlaceBlockTask(_position.up(), Blocks.COBBLESTONE);
+            mod.getBehaviour().avoidBlockBreaking(_position.above());
+            return new PlaceBlockTask(_position.above(), Blocks.COBBLESTONE);
         }
 
         // Place side slabs
@@ -161,7 +161,7 @@ public class ConstructGraveTask extends Task {
         }
 
         // Place sign at the top
-        BlockPos signPos = _position.up().west();
+        BlockPos signPos = _position.above().west();
         setDebugState("Placing grave sign");
 
         if (_placeSignTask != null) {

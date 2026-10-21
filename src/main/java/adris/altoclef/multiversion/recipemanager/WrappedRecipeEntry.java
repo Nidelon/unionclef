@@ -1,20 +1,20 @@
 package adris.altoclef.multiversion.recipemanager;
 
-import net.minecraft.recipe.Recipe;
+import net.minecraft.world.item.crafting.Recipe;
 //#if MC>12001
-import net.minecraft.recipe.RecipeEntry;
+import net.minecraft.world.item.crafting.RecipeHolder;
 //#endif
-import net.minecraft.util.Identifier;
+import net.minecraft.resources.Identifier;
 
 public record WrappedRecipeEntry(Identifier id, Recipe<?> value) {
 
     //#if MC >= 12111
-    //$$ public RecipeEntry<?> asRecipe() {
-    //$$     return null; // TODO [1.21.11] RecipeEntry constructor takes RegistryKey now
+    //$$ public RecipeHolder<?> asRecipe() {
+    //$$     return null; // TODO [1.21.11] RecipeHolder constructor takes RegistryKey now
     //$$ }
     //#elseif MC>12001
-    public RecipeEntry<?> asRecipe() {
-        return new RecipeEntry<Recipe<?>>(id, value);
+    public RecipeHolder<?> asRecipe() {
+        return new RecipeHolder<Recipe<?>>(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.RECIPE, id), value);
     }
     //#else
     //$$ public Recipe<?> asRecipe(){

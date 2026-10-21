@@ -9,10 +9,10 @@ import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -69,7 +69,7 @@ public class ShiftEntityTask extends AbstractDoToEntityTask {
             return Optional.empty();
         }
         // if we constructed via entity
-        if (_target instanceof PlayerEntity && _targetName == null) {
+        if (_target instanceof Player && _targetName == null) {
             _targetName = _target.getName().getString();
         }
         return Optional.of(_target);
@@ -88,7 +88,7 @@ public class ShiftEntityTask extends AbstractDoToEntityTask {
         if (entity != null && entity.getName() != null)
             setDebugState("target = " + entity.getName().getString());
 
-        double yDiff = entity.getPos().getY() - mod.getPlayer().getPos().getY();
+        double yDiff = entity.position().y() - mod.getPlayer().position().y();
         boolean canShift = LookHelper.canHitEntity(mod, entity, (float) _interactDistance) && yDiff <= 1d;
         boolean tooClose;
         boolean shifting;
@@ -99,13 +99,13 @@ public class ShiftEntityTask extends AbstractDoToEntityTask {
         }
         if (_shiftType.equals(ShiftType.Any)) {
             LookHelper.smoothLook(mod, entity);
-            tooClose = mod.getPlayer().getPos().isInRange(entity.getPos(), _stopDistance);
-            shifting = mod.getPlayer().getPos().isInRange(entity.getPos(), _shiftDistance);
+            tooClose = mod.getPlayer().position().closerThan(entity.position(), _stopDistance);
+            shifting = mod.getPlayer().position().closerThan(entity.position(), _shiftDistance);
         } else {
-            Vec3d targetPos = entity.getEyePos();
-            Vec3d originPos = mod.getPlayer().getEyePos();
+            Vec3 targetPos = entity.getEyePosition();
+            Vec3 originPos = mod.getPlayer().getEyePosition();
             // Calculate position behind the entity
-            float entityYaw = entity.getBodyYaw();
+            float entityYaw = entity.getVisualRotationYInDegrees();
             double offsetX = -Math.sin(Math.toRadians(entityYaw));
             double offsetZ = Math.cos(Math.toRadians(entityYaw));
 
@@ -116,11 +116,11 @@ public class ShiftEntityTask extends AbstractDoToEntityTask {
                         offsetZ * _stopDistance
                 );
 
-                yDiff = (entity.getEyePos().getY() - mod.getPlayer().getPos().getY());
+                yDiff = (entity.getEyePosition().y() - mod.getPlayer().position().y());
                 yBorder = 0.8d;
-                originPos = mod.getPlayer().getPos().add(new Vec3d(0d, 0.5d, 0d));
+                originPos = mod.getPlayer().position().add(new Vec3(0d, 0.5d, 0d));
                 BlockPos targetBlockPos = WorldHelper.toBlockPos(targetPos);
-                if (WorldHelper.isSolidBlock(targetBlockPos) && !originPos.isInRange(targetPos, 2d)) {
+                if (WorldHelper.isSolidBlock(targetBlockPos) && !originPos.closerThan(targetPos, 2d)) {
                     return new GetCloseToBlockTask(targetBlockPos);
                 }
             } else if (_shiftType.equals(ShiftType.Back)) {
@@ -131,12 +131,12 @@ public class ShiftEntityTask extends AbstractDoToEntityTask {
                 );
             }
             // Look at the position behind the entity
-            tooClose = originPos.isWithinRangeOf(targetPos, _stopDistance, 1d);
-            shifting = originPos.isWithinRangeOf(targetPos, _shiftDistance, 1d);
+            tooClose = originPos.closerThan(targetPos, _stopDistance, 1d);
+            shifting = originPos.closerThan(targetPos, _shiftDistance, 1d);
             if (tooClose) {
-                LookHelper.smoothLook(mod, new Vec3d(entity.getEyePos().getX(), mod.getPlayer().getEyePos().getY() - 0.3, entity.getEyePos().getZ()));
+                LookHelper.smoothLook(mod, new Vec3(entity.getEyePosition().x(), mod.getPlayer().getEyePosition().y() - 0.3, entity.getEyePosition().z()));
             } else {
-                LookHelper.smoothLook(mod, new Vec3d(targetPos.getX(), mod.getPlayer().getEyePos().getY() - 0.3, targetPos.getZ()));
+                LookHelper.smoothLook(mod, new Vec3(targetPos.x(), mod.getPlayer().getEyePosition().y() - 0.3, targetPos.z()));
             }
         }
 
@@ -157,7 +157,7 @@ public class ShiftEntityTask extends AbstractDoToEntityTask {
         }
 
         if (tooClose) {
-            if (mod.getPlayer().getVelocity().horizontalLengthSquared() > 0.0025) {
+            if (mod.getPlayer().getDeltaMovement().horizontalDistanceSqr() > 0.0025) {
                 mod.getInputControls().hold(Input.MOVE_BACK);
             } else {
                 mod.getInputControls().release(Input.MOVE_BACK);

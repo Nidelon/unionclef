@@ -2,11 +2,11 @@ package kaptainwutax.tungsten.task;
 
 import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.combat.TrajectorySolver;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Bow-shot execution primitive: aim by TrajectorySolver, hold use to charge,
@@ -47,8 +47,8 @@ public class BowShooter {
     private static boolean active = false;
     private static int shotsFired = 0;
     private static int wildShots = 0;
-    private static Vec3d lastTargetPos = null;       // for position-delta velocity
-    private static Vec3d trackedVel = Vec3d.ZERO;
+    private static Vec3 lastTargetPos = null;       // for position-delta velocity
+    private static Vec3 trackedVel = Vec3.ZERO;
 
     /** Draw length past which vanilla fires on key release — see {@link #getWildShots()}. */
     private static final int VANILLA_FIRES_AFTER = 3;
@@ -151,7 +151,7 @@ public class BowShooter {
      */
     public static synchronized boolean shootAt(Entity entity) {
         if (entity == null) return false;
-        ClientPlayerEntity self = MinecraftClient.getInstance().player;
+        LocalPlayer self = Minecraft.getInstance().player;
         if (self != null && RunAwayTask.isActive()) {
             double gap = RunAwayTask.gapTo(self);
             if (gap >= 0 && gap < RunAwayTask.getKeepDistance() * SHOOT_ABOVE_FRACTION) {
@@ -197,7 +197,7 @@ public class BowShooter {
         totalTicks = 0;
         active = true;
         lastTargetPos = null;
-        trackedVel = Vec3d.ZERO;
+        trackedVel = Vec3.ZERO;
         return true;
     }
 
@@ -305,7 +305,7 @@ public class BowShooter {
         }
         if (kaptainwutax.tungsten.TungstenConfig.get().bowYieldsInsideMelee) {
             try {
-                ClientPlayerEntity self = MinecraftClient.getInstance().player;
+                LocalPlayer self = Minecraft.getInstance().player;
                 Entity t = target;
                 if (self != null && t != null && t.isAlive()
                         && self.distanceTo(t) <= kaptainwutax.tungsten.combat.AttackTiming.reach()) {
@@ -340,12 +340,12 @@ public class BowShooter {
         active = false;
         drawing = false;
         target = null;
-        MinecraftClient.getInstance().options.useKey.setPressed(false);
+        Minecraft.getInstance().options.keyUse.setDown(false);
         kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
     }
 
     /** Called every game tick from MixinClientPlayerEntity. */
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         if (!active) return;
 
         // THE GAP CHECK BELONGED IN THE SHOT, NOT ONLY AT ITS START. shootAt refuses to BEGIN a
@@ -360,7 +360,7 @@ public class BowShooter {
         // against a chaser that sprints throughout, and a 12-block order ends in blows at 4.25.
         //
         // So the same threshold is now enforced every tick, not once. Survival outranks the shot.
-        ClientPlayerEntity me = MinecraftClient.getInstance().player;
+        LocalPlayer me = Minecraft.getInstance().player;
         if (me != null && RunAwayTask.isActive()) {
             double gapNow = RunAwayTask.gapTo(me);
             if (gapNow >= 0 && gapNow < RunAwayTask.getKeepDistance() * SHOOT_ABOVE_FRACTION) {
@@ -371,7 +371,7 @@ public class BowShooter {
         }
 
         facingTicks++;      // the camera is claimed for the whole shot — this IS the kiting cost
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
 
         if (target == null || target.isRemoved() || ++totalTicks > TIMEOUT_TICKS) {
             if (totalTicks > TIMEOUT_TICKS) {
@@ -390,26 +390,26 @@ public class BowShooter {
         // position packets), so the Entity-overload solve had no lead on real players
         // (RW-6 / audit F6) — bow whiffed every moving target. Track velocity here and
         // feed the explicit-velocity solver.
-        Vec3d curPos = target.getEntityPos();
+        Vec3 curPos = target.position();
         if (lastTargetPos != null) {
-            Vec3d inst = curPos.subtract(lastTargetPos);   // blocks/tick, arrow-sim units
+            Vec3 inst = curPos.subtract(lastTargetPos);   // blocks/tick, arrow-sim units
             // Reject teleports//tp/respawn jumps and clamp to a physically possible
             // player speed. Without this a single position spike (a falling or
             // teleported target) poisoned the EMA and the solver aimed 57 blocks
             // ahead — straight into the ground (user 2026-07-24).
             if (inst.length() <= MAX_STEP_PER_TICK) {
-                trackedVel = trackedVel.multiply(1 - VEL_EMA).add(inst.multiply(VEL_EMA));
+                trackedVel = trackedVel.scale(1 - VEL_EMA).add(inst.scale(VEL_EMA));
             } else {
-                trackedVel = Vec3d.ZERO;                   // discontinuity: no lead
+                trackedVel = Vec3.ZERO;                   // discontinuity: no lead
             }
             if (trackedVel.length() > MAX_LEAD_SPEED) {
-                trackedVel = trackedVel.normalize().multiply(MAX_LEAD_SPEED);
+                trackedVel = trackedVel.normalize().scale(MAX_LEAD_SPEED);
             }
         }
         lastTargetPos = curPos;
-        Vec3d aimPoint = curPos.add(0, target.getHeight() * 0.6, 0);
-        Vec3d leadVel = target.isOnGround()
-                ? new Vec3d(trackedVel.x, 0, trackedVel.z) : trackedVel;
+        Vec3 aimPoint = curPos.add(0, target.getBbHeight() * 0.6, 0);
+        Vec3 leadVel = target.onGround()
+                ? new Vec3(trackedVel.x, 0, trackedVel.z) : trackedVel;
 
         double charge = Math.min(1.0, chargeTicks / 20.0);
         // The arrow inherits the SHOOTER's movement (vanilla adds it in setVelocity). It costs
@@ -417,9 +417,9 @@ public class BowShooter {
         // up to 2.33 blocks when the motion is ACROSS the shot. Kiting is the second kind: the aim
         // claims the camera while the body keeps running its escape
         // path, so the body is moving sideways relative to where the bow points.
-        Vec3d shooterVel = TrajectorySolver.shooterVelocity(player);
+        Vec3 shooterVel = TrajectorySolver.shooterVelocity(player);
         TrajectorySolver.Solution sol = TrajectorySolver.solve(
-                player.getEyePos(), shooterVel, aimPoint, leadVel, Math.max(charge, 1.0)); // full-draw arc
+                player.getEyePosition(), shooterVel, aimPoint, leadVel, Math.max(charge, 1.0)); // full-draw arc
         if (sol == null) {
             // THE ONLY EXIT HERE THAT COUNTED NOTHING AT ALL.
             // aimTO and drawTO cover the two timeouts and wildShots covers a teardown mid-draw,
@@ -442,8 +442,8 @@ public class BowShooter {
         // VISUALIZE the ballistic solution — the user must SEE the arc the solver
         // chose (RW-6 / "where are the bow shot trajectories").
         renderTrajectory(player, sol, Math.max(charge, 1.0));
-        float dYaw = MathHelper.wrapDegrees(sol.yaw - player.getYaw());
-        float dPitch = MathHelper.wrapDegrees(sol.pitch - player.getPitch());
+        float dYaw = Mth.wrapDegrees(sol.yaw - player.getYRot(1.0f));
+        float dPitch = Mth.wrapDegrees(sol.pitch - player.getXRot(1.0f));
 
         // AIM FIRST, DRAW SECOND — the draw is not free, it costs the sprint.
         //
@@ -466,23 +466,23 @@ public class BowShooter {
             if (!onSolution) return;                  // still turning — bow stays down
             drawing = true;
         }
-        mc.options.useKey.setPressed(true);
+        mc.options.keyUse.setDown(true);
         chargeTicks++;
         // ARE THE LEGS STILL CLOSING WHILE THIS DRAW RUNS? See the counter's own note: the course
         // gives the bot a bow phase by design, but whether that phase is ALSO spent walking is the
         // mod's decision, and it is the difference between a paid second and a wasted one.
-        if (mc.options.forwardKey.isPressed()) drawTicksMoving++; else drawTicksStill++;
+        if (mc.options.keyUp.isDown()) drawTicksMoving++; else drawTicksStill++;
 
         // RELEASE ON PREDICTED IMPACT, NOT ON AN ANGLE. What matters is where the arrow lands, and
         // the same simulator that solved the shot can answer that from the CURRENT aim. An angular
         // cone cannot: the lateral miss it permits grows with range, so 3.5 degrees was 0.37 blocks
         // at 6 and 1.53 at 25 against a target ~0.6 wide. This also needs no separate allowance for
         // the shooter's inherited velocity — the simulation already carries it.
-        double miss = TrajectorySolver.predictedMiss(player.getEyePos(), shooterVel,
-                player.getYaw(), player.getPitch(), 1.0, sol.predictedTarget);
+        double miss = TrajectorySolver.predictedMiss(player.getEyePosition(), shooterVel,
+                player.getYRot(1.0f), player.getXRot(1.0f), 1.0, sol.predictedTarget);
         if (bestMiss < 0 || miss < bestMiss) bestMiss = miss;
         if (chargeTicks >= CHARGE_TICKS && miss <= HIT_RADIUS) {
-            mc.options.useKey.setPressed(false);
+            mc.options.keyUse.setDown(false);
             kaptainwutax.tungsten.TungstenModRenderContainer.COMBAT_TRAJECTORY.clear();
             shotsFired++;
             Debug.logMessage(String.format(
@@ -507,7 +507,7 @@ public class BowShooter {
      * while drawing, so the arc visibly re-aims as the target moves. Gated by
      * renderCombat / renderVisualization in the debug-renderer mixin.
      */
-    private static void renderTrajectory(ClientPlayerEntity player,
+    private static void renderTrajectory(LocalPlayer player,
                                          TrajectorySolver.Solution sol, double charge) {
         if (!kaptainwutax.tungsten.TungstenConfig.get().renderVisualization
                 || !kaptainwutax.tungsten.TungstenConfig.get().renderCombat) return;
@@ -520,24 +520,24 @@ public class BowShooter {
         // Same inherited-movement term the solver corrects for. Drawing the aim direction alone
         // would show an arc through the crosshair, which is NOT the arc the arrow flies while the
         // bot is kiting — the picture has to match the physics or it is worse than no picture.
-        Vec3d vel = new Vec3d(-Math.sin(yawRad) * horiz,
+        Vec3 vel = new Vec3(-Math.sin(yawRad) * horiz,
                               -v0 * Math.sin(pitchRad),
                                Math.cos(yawRad) * horiz)
                 .add(TrajectorySolver.shooterVelocity(player));
-        Vec3d pos = player.getEyePos();
+        Vec3 pos = player.getEyePosition();
         kaptainwutax.tungsten.render.Color arc =
                 new kaptainwutax.tungsten.render.Color(80, 220, 255);   // cyan flight arc
         for (int t = 0; t < Math.max(20, sol.flightTicks + 6); t++) {
-            Vec3d next = pos.add(vel);
+            Vec3 next = pos.add(vel);
             kaptainwutax.tungsten.TungstenModRenderContainer.COMBAT_TRAJECTORY.add(
                     new kaptainwutax.tungsten.render.Line(pos, next, arc));
             pos = next;
-            vel = new Vec3d(vel.x * 0.99, vel.y * 0.99 - 0.05, vel.z * 0.99);
+            vel = new Vec3(vel.x * 0.99, vel.y * 0.99 - 0.05, vel.z * 0.99);
         }
-        Vec3d p = sol.predictedTarget;                     // where the lead expects the target
+        Vec3 p = sol.predictedTarget;                     // where the lead expects the target
         kaptainwutax.tungsten.TungstenModRenderContainer.COMBAT_TRAJECTORY.add(
                 new kaptainwutax.tungsten.render.Cuboid(
-                        p.subtract(0.3, 0.3, 0.3), new Vec3d(0.6, 0.6, 0.6),
+                        p.subtract(0.3, 0.3, 0.3), new Vec3(0.6, 0.6, 0.6),
                         new kaptainwutax.tungsten.render.Color(255, 80, 80)));
     }
 }

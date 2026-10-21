@@ -17,23 +17,23 @@ import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.TungstenModDataContainer;
 import kaptainwutax.tungsten.commandsystem.Command;
 import kaptainwutax.tungsten.commandsystem.CommandExecutor;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientCommonNetworkHandler;
-import net.minecraft.client.network.ClientConnectionState;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.network.ClientConnection;
-import net.minecraft.network.packet.s2c.play.EntityTrackerUpdateS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
+import net.minecraft.client.multiplayer.CommonListenerCookie;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.network.Connection;
+import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 
-@Mixin(ClientPlayNetworkHandler.class)
-public abstract class MixinClientPlayNetworkHandler extends ClientCommonNetworkHandler {
+@Mixin(ClientPacketListener.class)
+public abstract class MixinClientPlayNetworkHandler extends ClientCommonPacketListenerImpl {
 	
 	@Shadow
-    private ClientWorld world;
+    private ClientLevel level;
 
     @Shadow
-    public abstract void sendChatMessage(String content);
+    public abstract void sendChat(String content);
 
     @Unique
     private boolean ignoreChatMessage;
@@ -41,11 +41,11 @@ public abstract class MixinClientPlayNetworkHandler extends ClientCommonNetworkH
     @Unique
     private boolean worldNotNull;
     
-    protected MixinClientPlayNetworkHandler(MinecraftClient client, ClientConnection connection, ClientConnectionState connectionState) {
+    protected MixinClientPlayNetworkHandler(Minecraft client, Connection connection, CommonListenerCookie connectionState) {
         super(client, connection, connectionState);
     }
     
-    @Inject(method = "sendChatMessage", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "sendChat", at = @At("HEAD"), cancellable = true)
     private void onSendChatMessage(String message, CallbackInfo ci) {
         if (ignoreChatMessage) return;
 		String prefix = TungstenMod.getCommandPrefix();
@@ -72,21 +72,20 @@ public abstract class MixinClientPlayNetworkHandler extends ClientCommonNetworkH
                 Debug.logWarning(e.getMessage());
             }
 
-            client.inGameHud.getChatHud().addToMessageHistory(message);
-            ci.cancel();
+                        ci.cancel();
         }
     }
 
-    @Inject(method = "onEntityTrackerUpdate", at = @At(value = "INVOKE", target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/util/thread/ThreadExecutor;)V",
+    @Inject(method = "handleSetEntityData", at = @At(value = "INVOKE", target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/util/thread/ThreadExecutor;)V",
         shift = At.Shift.AFTER), cancellable = false)
-    public void onEntityTrackerUpdate(EntityTrackerUpdateS2CPacket packet, CallbackInfo ci) {
+    public void onEntityTrackerUpdate(ClientboundSetEntityDataPacket packet, CallbackInfo ci) {
         // Previously cancelled tracker updates for our player during execution,
         // which could desync pose/metadata. Now let vanilla handle them normally.
     }
 
-    @Inject(method = "onPlayerPositionLook", at = @At(value = "INVOKE", target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/util/thread/ThreadExecutor;)V",
+    @Inject(method = "handleMovePlayer", at = @At(value = "INVOKE", target = "Lnet/minecraft/network/NetworkThreadUtils;forceMainThread(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/listener/PacketListener;Lnet/minecraft/util/thread/ThreadExecutor;)V",
         shift = At.Shift.AFTER), cancellable = false)
-    public void onPlayerPositionLook(PlayerPositionLookS2CPacket packet, CallbackInfo ci) {
+    public void onPlayerPositionLook(ClientboundPlayerPositionPacket packet, CallbackInfo ci) {
         if(TungstenModDataContainer.isExecutorRunning()) {
             // Server teleported us — stop executor and let vanilla handle the teleport.
             // Previously this ci.cancel()'d the packet, which caused a deadlock:

@@ -6,12 +6,12 @@ import kaptainwutax.tungsten.path.Node;
 import kaptainwutax.tungsten.path.PathInput;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode;
 import kaptainwutax.tungsten.render.Color;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.LevelReader;
 
 public class ClimbALadderMove {
 
 	public static Node generateMove(Node parent, BlockNode nextBlockNode) {
-		WorldView world = TungstenModDataContainer.world;
+		LevelReader world = TungstenModDataContainer.world;
 		Agent agent = parent.agent;
 
 		// A ladder is climbed by holding FORWARD INTO it — that is what keeps the player

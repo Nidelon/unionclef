@@ -13,37 +13,37 @@ import com.mojang.brigadier.suggestion.Suggestion;
 
 import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.helpers.StringProcessorHelper;
-import net.minecraft.client.gui.screen.ChatInputSuggestor;
-import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.gui.components.CommandSuggestions;
+import net.minecraft.client.gui.components.EditBox;
 
-@Mixin(ChatInputSuggestor.SuggestionWindow.class)
+@Mixin(net.minecraft.client.gui.components.CommandSuggestions.SuggestionsList.class)
 public class MixinSuggestionWindow {
 	@Shadow
     @Final
-    ChatInputSuggestor field_21615;
+    CommandSuggestions field_21615;
     @Shadow
-    private int selection;
+    private int current;
     @Shadow
     @Final
     private List<Suggestion> suggestions;
     
-    @Inject(method = "complete", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "useSuggestion", at = @At("HEAD"), cancellable = true)
     private void overwriteComplete(CallbackInfo ci) {
     	AccessorChatInputSuggestor inputSuggestor = (AccessorChatInputSuggestor) this.field_21615;
         if (inputSuggestor == null) return;
-        TextFieldWidget textFieldWidget = inputSuggestor.getTextField();
-        Suggestion suggestion = this.suggestions.get(this.selection);
+        EditBox textFieldWidget = inputSuggestor.getTextField();
+        Suggestion suggestion = this.suggestions.get(this.current);
         int just = suggestion.getRange().getStart() + suggestion.getText().length();
-            if (textFieldWidget.getText().contains("|")) {
-            	int closestIDXOfDivider = StringProcessorHelper.findClosestCharIndex(textFieldWidget.getText(), '|', textFieldWidget.getCursor()-1);
+            if (textFieldWidget.getValue().contains("|")) {
+            	int closestIDXOfDivider = StringProcessorHelper.findClosestCharIndex(textFieldWidget.getValue(), '|', textFieldWidget.getCursorPosition()-1);
                 if (TungstenMod.getCommandExecutor().allCommands().stream().anyMatch(cmd -> cmd.getName().equals(suggestion.getText()))) {
-	                textFieldWidget.eraseCharacters(closestIDXOfDivider+1 - textFieldWidget.getCursor());
+	                textFieldWidget.deleteChars(closestIDXOfDivider+1 - textFieldWidget.getCursorPosition());
                 } else {
-                	closestIDXOfDivider = StringProcessorHelper.findClosestCharIndex(textFieldWidget.getText(), ' ', textFieldWidget.getCursor()-1);
-                	textFieldWidget.eraseCharacters(closestIDXOfDivider+1 - textFieldWidget.getCursor());
+                	closestIDXOfDivider = StringProcessorHelper.findClosestCharIndex(textFieldWidget.getValue(), ' ', textFieldWidget.getCursorPosition()-1);
+                	textFieldWidget.deleteChars(closestIDXOfDivider+1 - textFieldWidget.getCursorPosition());
                 }
-                textFieldWidget.setSelectionEnd(textFieldWidget.getText().length());
-                textFieldWidget.write(suggestion.getText());
+                textFieldWidget.setHighlightPos(textFieldWidget.getValue().length());
+                textFieldWidget.insertText(suggestion.getText());
                 ci.cancel();
             }
     }

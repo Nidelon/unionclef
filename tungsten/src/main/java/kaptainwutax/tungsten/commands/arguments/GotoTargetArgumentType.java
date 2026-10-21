@@ -22,16 +22,16 @@ import kaptainwutax.tungsten.commandsystem.CommandException;
 import kaptainwutax.tungsten.path.targets.BlockTarget;
 import kaptainwutax.tungsten.path.targets.BlockTarget.BlockTargetCoordType;
 import kaptainwutax.tungsten.world.Dimension;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.command.CommandSource;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.network.chat.Component;
 
 public class GotoTargetArgumentType implements ArgumentType<BlockTarget> {
     private static final GotoTargetArgumentType INSTANCE = new GotoTargetArgumentType();
     private static final Collection<String> EXAMPLES = List
 	    .of("[x y z dimension]/[x z dimension]/[y dimension]/[dimension]/[x y z]/[x z]/[y]");
     static final DynamicCommandExceptionType INVALID_NUM_OF_COORD_ARGS = new DynamicCommandExceptionType(
-	    numbers -> Text.literal("Unexpected number of integers passed to coordinate: " + numbers));
+	    numbers -> Component.literal("Unexpected number of integers passed to coordinate: " + numbers));
 
     public GotoTargetArgumentType() {
     }
@@ -135,9 +135,9 @@ public class GotoTargetArgumentType implements ArgumentType<BlockTarget> {
 		}
 	    }
 
-	    return CommandSource.suggestMatching(suggestions, builder);
+	    return SharedSuggestionProvider.suggest(suggestions, builder);
 	} catch (ConcurrentModificationException e) {
-	    return CommandSource.suggestMatching(new ArrayList<String>(), builder);
+	    return SharedSuggestionProvider.suggest(new ArrayList<String>(), builder);
 	}
     }
 

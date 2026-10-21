@@ -17,16 +17,16 @@ import adris.altoclef.util.helpers.TimersHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,8 +40,8 @@ public class KitPVPTask extends Task {
     private final TimerGame _runAwayExtraTime = new TimerGame(10);
     private final TimerGame _funnyMessageTimer = new TimerGame(10);
     private final TimerGame _performExtraActionsTimer = new TimerGame(2.5);
-    private Vec3d _closestPlayerLastPos;
-    private Vec3d _closestPlayerLastObservePos;
+    private Vec3 _closestPlayerLastPos;
+    private Vec3 _closestPlayerLastObservePos;
     private double _closestDistance;
 
     private Task _runAwayTask;
@@ -96,14 +96,14 @@ public class KitPVPTask extends Task {
         AltoClef mod = AltoClef.getInstance();
 
         Optional<Entity> closest = mod.getEntityTracker()
-                .getClosestEntity(mod.getPlayer().getPos(),
-                        toPunk -> shouldPunk(mod, (PlayerEntity) toPunk),
-                        PlayerEntity.class);
+                .getClosestEntity(mod.getPlayer().position(),
+                        toPunk -> shouldPunk(mod, (Player) toPunk),
+                        Player.class);
         boolean targetIsNear = false;
 
         if (closest.isPresent()) {
-            _closestPlayerLastPos = closest.get().getPos();
-            _closestPlayerLastObservePos = mod.getPlayer().getPos();
+            _closestPlayerLastPos = closest.get().position();
+            _closestPlayerLastObservePos = mod.getPlayer().position();
             _closestDistance = _closestPlayerLastPos.distanceTo(_closestPlayerLastObservePos);
             if (_closestDistance <= 8 && mod.getEntityTracker().isEntityReachable(closest.get())) {
                 targetIsNear = true;
@@ -136,7 +136,7 @@ public class KitPVPTask extends Task {
             }
 
             // Use strength potion
-            if (!mod.getPlayer().hasStatusEffect(StatusEffects.STRENGTH)
+            if (!mod.getPlayer().hasEffect(MobEffects.STRENGTH)
                     && mod.getItemStorage().hasItem(Items.GUNPOWDER)) {
                 if (LookHelper.tryAvoidingInteractable(mod)) {
                     setDebugState("Found a strength potion; drinking it");
@@ -151,7 +151,7 @@ public class KitPVPTask extends Task {
             }
 
             // Eat gapples
-            boolean needEatGapple = !mod.getPlayer().hasStatusEffect(StatusEffects.ABSORPTION)
+            boolean needEatGapple = !mod.getPlayer().hasEffect(MobEffects.ABSORPTION)
                     || (mod.getPlayer().getHealth() < 18 && _eatingGappleTimer.getDuration() > 6);
             if (needEatGapple && mod.getItemStorage()
                     .hasItemInventoryOnly(Items.GOLDEN_APPLE, Items.ENCHANTED_GOLDEN_APPLE)) {
@@ -209,7 +209,7 @@ public class KitPVPTask extends Task {
             // Loot nearby chests
             Optional<BlockPos> closestCont = mod.getBlockScanner().getNearestBlock(
                     blockPos -> WorldHelper.isUnopenedChest(blockPos)
-                            && mod.getPlayer().getBlockPos().isWithinDistance(blockPos, 10)
+                            && mod.getPlayer().blockPosition().closerThan(blockPos, 10)
                             && WorldHelper.canReach(blockPos),
                     Blocks.CHEST);
             if (closestCont.isPresent() && WorldHelper.canReach(closestCont.get())
@@ -224,7 +224,7 @@ public class KitPVPTask extends Task {
             for (Item check : lootableItems(mod)) {
                 if (mod.getEntityTracker().itemDropped(check)) {
                     Optional<ItemEntity> closestEnt = mod.getEntityTracker().getClosestItemDrop(
-                            ent -> mod.getPlayer().getPos().isInRange(ent.getEyePos(), 10), check);
+                            ent -> mod.getPlayer().position().closerThan(ent.getEyePosition(), 10), check);
                     if (closestEnt.isPresent()) {
                         _pickupTask = new PickupDroppedItemTask(new ItemTarget(check, 1), true);
                         return _pickupTask;
@@ -246,11 +246,11 @@ public class KitPVPTask extends Task {
 
         if (closest.isPresent()) {
             setDebugState("ATTACK");
-            PlayerEntity entity = (PlayerEntity) closest.get();
-            if (LookHelper.cleanLineOfSight(entity.getPos(), 100)) {
+            Player entity = (Player) closest.get();
+            if (LookHelper.cleanLineOfSight(entity.position(), 100)) {
                 if (mod.getPlayer().distanceTo(entity) > 10) {
                     if (mod.getItemStorage().getItemCount(Items.ENDER_PEARL) > 2) {
-                        return new ThrowEnderPearlSimpleProjectileTask(entity.getBlockPos().add(0, -1, 0));
+                        return new ThrowEnderPearlSimpleProjectileTask(entity.blockPosition().offset(0, -1, 0));
                     } else if (shouldBow(mod)) {
                         _shootArrowTask = new ShootArrowSimpleProjectileTask(entity);
                         return _shootArrowTask;
@@ -356,8 +356,8 @@ public class KitPVPTask extends Task {
         }
     }
 
-    private boolean shouldPunk(AltoClef mod, PlayerEntity player) {
-        if (player == null || player.isDead() || !player.isAlive()) return false;
+    private boolean shouldPunk(AltoClef mod, Player player) {
+        if (player == null || player.isDeadOrDying() || !player.isAlive()) return false;
         if (player.isCreative() || player.isSpectator()) return false;
         return !mod.getButler().isUserAuthorized(player.getName().getString());
     }

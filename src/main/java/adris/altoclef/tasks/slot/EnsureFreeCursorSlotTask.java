@@ -5,8 +5,8 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.ContainerInput;
 
 import java.util.Optional;
 
@@ -51,7 +51,7 @@ public class EnsureFreeCursorSlotTask extends Task {
         // PROGRESS IS THE CURSOR CHANGING, NOT THE CLICK BEING SENT.
         // Any change -- a different item, a different count, or an empty cursor -- means the
         // exchange is working and the budget starts again.
-        if (cursor.isEmpty() || !ItemStack.areEqual(cursor, lastCursor)) {
+        if (cursor.isEmpty() || !ItemStack.matches(cursor, lastCursor)) {
             clicksOnThisStack = 0;
             lastCursor = cursor.copy();
         }
@@ -61,7 +61,7 @@ public class EnsureFreeCursorSlotTask extends Task {
             if (moveTo.isPresent() && clicksOnThisStack < CLICKS_BEFORE_GIVING_UP) {
                 setDebugState("Moving cursor stack back");
                 clicksOnThisStack++;
-                mod.getSlotHandler().clickSlot(moveTo.get(), 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                 return null;
             }
             if (moveTo.isPresent()) {
@@ -71,20 +71,20 @@ public class EnsureFreeCursorSlotTask extends Task {
                 setDebugState("Cursor will not go down — throwing it");
                 cursorGaveUp++;
                 clicksOnThisStack = 0;
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 return null;
             }
             if (ItemHelper.canThrowAwayStack(mod, cursor)) {
                 setDebugState("Incompatible cursor stack, throwing");
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             } else {
                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
                 if (garbage.isPresent()) {
                     // Pick up garbage so we throw it out next frame
                     setDebugState("Picking up garbage");
-                    mod.getSlotHandler().clickSlot(garbage.get(), 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                 } else {
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 }
             }
             return null;

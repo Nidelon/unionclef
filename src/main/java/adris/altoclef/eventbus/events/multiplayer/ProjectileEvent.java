@@ -1,12 +1,12 @@
 package adris.altoclef.eventbus.events.multiplayer;
 
-import net.minecraft.entity.projectile.ProjectileEntity;
+import net.minecraft.world.entity.projectile.Projectile;
 
 public class ProjectileEvent {
-    public ProjectileEntity entity;
+    public Projectile entity;
     public boolean sticked;
 
-    public ProjectileEvent(ProjectileEntity entity, boolean sticked) {
+    public ProjectileEvent(Projectile entity, boolean sticked) {
         this.entity = entity;
         this.sticked = sticked;
     }

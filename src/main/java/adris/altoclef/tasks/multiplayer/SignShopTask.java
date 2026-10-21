@@ -11,16 +11,16 @@ import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.ChestSlot;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.block.entity.SignBlockEntity;
-import net.minecraft.block.entity.SignText;
-import net.minecraft.block.BlockState;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.state.property.Properties;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.SignText;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.Level;
 
 import java.util.Optional;
 
@@ -124,7 +124,7 @@ public class SignShopTask extends Task {
                     // never walked to a sign, and the retry counter above then reached MAX_RETRIES
                     // and BLACKLISTED the sign as unreachable: a real symptom with an invented
                     // cause. Fifth site of this shape in the port (see KillEnderDragonTask).
-                    TungstenHelper.tryPathTo(new Vec3d(
+                    TungstenHelper.tryPathTo(new Vec3(
                             signPos.getX() + 0.5, signPos.getY(), signPos.getZ() + 0.5));
                     setDebugState("Walking to sign (" + approachTicks + "/" + MAX_APPROACH_TICKS + ")");
                     return null;
@@ -139,7 +139,7 @@ public class SignShopTask extends Task {
                 if (!looking && lookTicks <= LOOK_GIVEUP_TICKS) {
                     if (lookTicks > LOOK_JIGGLE_TICKS) {
                         // Jiggle around the sign block + spam RMB every 3 ticks
-                        Vec3d center = signPos.toCenterPos();
+                        Vec3 center = net.minecraft.world.phys.Vec3.atCenterOf(signPos);
                         double jx = (Math.random() - 0.5) * 0.6;
                         double jy = (Math.random() - 0.5) * 0.6;
                         double jz = (Math.random() - 0.5) * 0.6;
@@ -204,7 +204,7 @@ public class SignShopTask extends Task {
                 // Slot 0 = top-left of the chest
                 ChestSlot slot = new ChestSlot(0, false);
                 // QUICK_MOVE (shift-click) moves it straight to player inventory
-                mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.QUICK_MOVE);
+                mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.QUICK_MOVE);
                 state = State.CLOSE;
                 return null;
             }
@@ -256,11 +256,11 @@ public class SignShopTask extends Task {
      */
     private Direction getSignFacing(AltoClef mod) {
         BlockState state = mod.getWorld().getBlockState(signPos);
-        if (state.contains(Properties.HORIZONTAL_FACING)) {
-            return state.get(Properties.HORIZONTAL_FACING);
+        if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
+            return state.getValue(BlockStateProperties.HORIZONTAL_FACING);
         }
-        if (state.contains(Properties.ROTATION)) {
-            int rot = state.get(Properties.ROTATION);
+        if (state.hasProperty(BlockStateProperties.ROTATION_16)) {
+            int rot = state.getValue(BlockStateProperties.ROTATION_16);
             // 0=south, 4=west, 8=north, 12=east (each unit = 22.5°); round to nearest quarter
             return switch (((rot + 2) / 4) % 4) {
                 case 1 -> Direction.WEST;
@@ -278,7 +278,7 @@ public class SignShopTask extends Task {
      * Reads the front text lines of a sign at the given position.
      * Returns null if no sign found. Array is always length 4.
      */
-    public static String[] readSignLines(World world, BlockPos pos) {
+    public static String[] readSignLines(Level world, BlockPos pos) {
         BlockEntity be = world.getBlockEntity(pos);
         if (!(be instanceof SignBlockEntity sign)) return null;
         SignText text = sign.getFrontText();
@@ -290,21 +290,21 @@ public class SignShopTask extends Task {
     }
 
     /** Returns true if the sign at pos is a [Free] shop sign. */
-    public static boolean isFreeShopSign(World world, BlockPos pos) {
+    public static boolean isFreeShopSign(Level world, BlockPos pos) {
         String[] lines = readSignLines(world, pos);
         if (lines == null) return false;
         return lines[0].equalsIgnoreCase("[Free]");
     }
 
     /** Returns true if the sign at pos is a [Buy] shop sign. */
-    public static boolean isBuyShopSign(World world, BlockPos pos) {
+    public static boolean isBuyShopSign(Level world, BlockPos pos) {
         String[] lines = readSignLines(world, pos);
         if (lines == null) return false;
         return lines[0].equalsIgnoreCase("[Buy]");
     }
 
     /** Returns true if the sign at pos is a [Sell] shop sign. */
-    public static boolean isSellShopSign(World world, BlockPos pos) {
+    public static boolean isSellShopSign(Level world, BlockPos pos) {
         String[] lines = readSignLines(world, pos);
         if (lines == null) return false;
         return lines[0].equalsIgnoreCase("[Sell]");
@@ -315,7 +315,7 @@ public class SignShopTask extends Task {
      * For [Free] signs, item id is on line 2 (index 1).
      * Returns null if not a [Free] sign.
      */
-    public static String getFreeSignItemId(World world, BlockPos pos) {
+    public static String getFreeSignItemId(Level world, BlockPos pos) {
         String[] lines = readSignLines(world, pos);
         if (lines == null) return null;
         if (!lines[0].equalsIgnoreCase("[Free]")) return null;
@@ -327,10 +327,10 @@ public class SignShopTask extends Task {
      * Scans all loaded sign block entities.
      */
     public static Optional<BlockPos> findNearestFreeSign(AltoClef mod, String itemId) {
-        World world = mod.getWorld();
+        Level world = mod.getWorld();
         // Use block scanner to find signs nearby
         return mod.getBlockScanner().getNearestBlock(
-                mod.getPlayer().getPos(),
+                mod.getPlayer().position(),
                 pos -> {
                     String id = getFreeSignItemId(world, pos);
                     return id != null && id.equals(itemId);

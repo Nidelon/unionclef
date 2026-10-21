@@ -18,22 +18,22 @@ import kaptainwutax.tungsten.path.PathFinder;
 import kaptainwutax.tungsten.render.Renderer;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.util.InputUtil;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.WorldView;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Camera;
+import com.mojang.blaze3d.platform.InputConstants;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.LevelReader;
 
 public class TungstenMod implements ClientModInitializer {
 
@@ -41,10 +41,10 @@ public class TungstenMod implements ClientModInitializer {
 //    public static final ModMetadata MOD_META;
     public static final String NAME;
 
-    public static MinecraftClient mc = null;
-    public static PlayerEntity player = null;
-    public static WorldView world = null;
-	public static Vec3d TARGET = new Vec3d(0.5D, 10.0D, 0.5D);
+    public static Minecraft mc = null;
+    public static Player player = null;
+    public static LevelReader world = null;
+	public static Vec3 TARGET = new Vec3(0.5D, 10.0D, 0.5D);
 
 	/**
 	 * Has anything actually ASKED for a goto, or is TARGET still the debug default?
@@ -80,10 +80,10 @@ public class TungstenMod implements ClientModInitializer {
 	}
 	public static clickModeEnum clickMode = clickModeEnum.OFF;
 	public static final Logger LOG;
-	public static KeyBinding pauseKeyBinding;
-	public static KeyBinding runKeyBinding;
-	public static KeyBinding runBlockSearchKeyBinding;
-	public static KeyBinding createGoalKeyBinding;
+	public static KeyMapping pauseKeyBinding;
+	public static KeyMapping runKeyBinding;
+	public static KeyMapping runBlockSearchKeyBinding;
+	public static KeyMapping createGoalKeyBinding;
     private static CommandExecutor _commandExecutor;
     public static boolean renderPositonBoxes = true;
 	
@@ -165,19 +165,19 @@ public class TungstenMod implements ClientModInitializer {
 			kaptainwutax.tungsten.task.BowShooter.stop();
 			var ex = TungstenModDataContainer.EXECUTOR;
 			if (ex != null) ex.breakQueue = null;
-			MinecraftClient m = MinecraftClient.getInstance();
+			Minecraft m = Minecraft.getInstance();
 			if (m.options != null) {
-				m.options.attackKey.setPressed(false);
-				m.options.useKey.setPressed(false);
-				m.options.forwardKey.setPressed(false);
-				m.options.backKey.setPressed(false);
-				m.options.leftKey.setPressed(false);
-				m.options.rightKey.setPressed(false);
-				m.options.sprintKey.setPressed(false);
-				m.options.jumpKey.setPressed(false);
-				m.options.sneakKey.setPressed(false);
+				m.options.keyAttack.setDown(false);
+				m.options.keyUse.setDown(false);
+				m.options.keyUp.setDown(false);
+				m.options.keyDown.setDown(false);
+				m.options.keyLeft.setDown(false);
+				m.options.keyRight.setDown(false);
+				m.options.keySprint.setDown(false);
+				m.options.keyJump.setDown(false);
+				m.options.keyShift.setDown(false);
 			}
-			if (m.interactionManager != null) m.interactionManager.cancelBlockBreaking();
+			if (m.gameMode != null) m.gameMode.stopDestroyBlock();
 		} catch (Exception e) {
 			Debug.logMessage("resetAllState error: " + e.getMessage());
 		}
@@ -202,50 +202,50 @@ public class TungstenMod implements ClientModInitializer {
 		LOG.info("[Tungsten] Diagonal normalization: ENABLED (MC >= 1.21.4)");
 		//#endif
 		//#if MC < 12111
-		//$$ pauseKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+		//$$ pauseKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 	            //$$ "key.tungsten.pause", // The translation key of the keybinding's name
-	            //$$ InputUtil.Type.KEYSYM, // The type of the keybinding, KEYSYM for keyboard, MOUSE for mouse.
+	            //$$ InputConstants.Type.KEYSYM, // The type of the keybinding, KEYSYM for keyboard, MOUSE for mouse.
 	            //$$ GLFW.GLFW_KEY_P, // The keycode of the key
 	            //$$ "key.category.tungsten.test" // The translation key of the keybinding's category.
         //$$ ));
-		//$$ runKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+		//$$ runKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 	            //$$ "key.tungsten.run", // The translation key of the keybinding's name
-	            //$$ InputUtil.Type.KEYSYM, // The type of the keybinding, KEYSYM for keyboard, MOUSE for mouse.
+	            //$$ InputConstants.Type.KEYSYM, // The type of the keybinding, KEYSYM for keyboard, MOUSE for mouse.
 	            //$$ GLFW.GLFW_KEY_G, // The keycode of the key
 	            //$$ "key.category.tungsten.test" // The translation key of the keybinding's category.
         //$$ ));
-		//$$ runBlockSearchKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+		//$$ runBlockSearchKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 	            //$$ "key.tungsten.run_block_search", // The translation key of the keybinding's name
-	            //$$ InputUtil.Type.KEYSYM, // The type of the keybinding, KEYSYM for keyboard, MOUSE for mouse.
+	            //$$ InputConstants.Type.KEYSYM, // The type of the keybinding, KEYSYM for keyboard, MOUSE for mouse.
 	            //$$ GLFW.GLFW_KEY_J, // The keycode of the key
 	            //$$ "key.category.tungsten.test.development" // The translation key of the keybinding's category.
         //$$ ));
-		//$$ createGoalKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+		//$$ createGoalKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 	            //$$ "key.tungsten.create_goal", // The translation key of the keybinding's name
-	            //$$ InputUtil.Type.KEYSYM, // The type of the keybinding, KEYSYM for keyboard, MOUSE for mouse.
+	            //$$ InputConstants.Type.KEYSYM, // The type of the keybinding, KEYSYM for keyboard, MOUSE for mouse.
 	            //$$ GLFW.GLFW_KEY_H, // The keycode of the key
 	            //$$ "key.category.tungsten.test" // The translation key of the keybinding's category.
         //$$ ));
 		//#else
-		pauseKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-		    "key.tungsten.pause", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_P,
-		    net.minecraft.client.option.KeyBinding.Category.MISC));
-		runKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-		    "key.tungsten.run", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_G,
-		    net.minecraft.client.option.KeyBinding.Category.MISC));
-		runBlockSearchKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-		    "key.tungsten.run_block_search", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_J,
-		    net.minecraft.client.option.KeyBinding.Category.MISC));
-		createGoalKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-		    "key.tungsten.create_goal", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_H,
-		    net.minecraft.client.option.KeyBinding.Category.MISC));
+		pauseKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+		    "key.tungsten.pause", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_P,
+		    net.minecraft.client.KeyMapping.Category.MISC));
+		runKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+		    "key.tungsten.run", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G,
+		    net.minecraft.client.KeyMapping.Category.MISC));
+		runBlockSearchKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+		    "key.tungsten.run_block_search", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_J,
+		    net.minecraft.client.KeyMapping.Category.MISC));
+		createGoalKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+		    "key.tungsten.create_goal", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_H,
+		    net.minecraft.client.KeyMapping.Category.MISC));
 		//#endif
         _commandExecutor = new CommandExecutor(this);
 
         // Global minecraft client accessor
-        mc = MinecraftClient.getInstance();
+        mc = Minecraft.getInstance();
         TungstenModDataContainer.player = mc.player;
-        TungstenModDataContainer.world = mc.world;
+        TungstenModDataContainer.world = mc.level;
         TungstenModDataContainer.gameRenderer = mc.gameRenderer;
 
         initializeCommands();
@@ -281,42 +281,42 @@ public class TungstenMod implements ClientModInitializer {
 	        		TungstenModRenderContainer.TEST.clear();
 	        	}
         	}
-        	if (clickMode != clickModeEnum.OFF && mc.options.useKey.isPressed() && !isRunning) {
+        	if (clickMode != clickModeEnum.OFF && mc.options.keyUse.isDown() && !isRunning) {
         		
-        		 Camera camera = mc.gameRenderer.getCamera();
-                 Vec3d cameraPos = camera.getCameraPos();
+        		 Camera camera = mc.gameRenderer.mainCamera();
+                 Vec3 cameraPos = camera.position();
 
                  // Calculate the direction the camera is looking based on its pitch and yaw, and extend this direction 210 units away from the camera position
                  // 210 is used here as the maximum distance of 200 blocks
                  // This is done to be able to set target while in freecam
-                 Vec3d direction = Vec3d.fromPolar(camera.getPitch(), camera.getYaw()).multiply(210);
-                 Vec3d targetPos = cameraPos.add(direction);
+                 Vec3 direction = Vec3.directionFromRotation(camera.xRot(), camera.yRot()).scale(210);
+                 Vec3 targetPos = cameraPos.add(direction);
                  
-                 RaycastContext context = new RaycastContext(
+                 ClipContext context = new ClipContext(
                          cameraPos,   // start position of the ray
                          targetPos,   // end position of the ray
-                         RaycastContext.ShapeType.OUTLINE,
-                         RaycastContext.FluidHandling.NONE,
+                         net.minecraft.world.level.ClipContext.Block.OUTLINE,
+                         net.minecraft.world.level.ClipContext.Fluid.NONE,
                          mc.player
                  );
                  
-                 HitResult hitResult = mc.world.raycast(context);
+                 HitResult hitResult = mc.level.clip(context);
                  
                  if (hitResult.getType() == HitResult.Type.BLOCK) {
                      BlockPos pos = ((BlockHitResult) hitResult).getBlockPos();
-	                 if (mc.world.getBlockState(pos).onUse(mc.world, mc.player, (BlockHitResult) hitResult) != ActionResult.PASS) return;
+	                 if (mc.level.getBlockState(pos).useWithoutItem(mc.level, mc.player, (BlockHitResult) hitResult) != InteractionResult.PASS) return;
 	
-		                 BlockState state = mc.world.getBlockState(pos);
+		                 BlockState state = mc.level.getBlockState(pos);
 		
-		                 VoxelShape shape = state.getCollisionShape(mc.world, pos);
+		                 VoxelShape shape = state.getCollisionShape(mc.level, pos);
 //		                 if (shape.isEmpty()) shape = state.getOutlineShape(mc.world, pos);
 		
-		                 double height = shape.isEmpty() ? 0 : shape.getMax(Direction.Axis.Y);
+		                 double height = shape.isEmpty() ? 0 : shape.max(Direction.Axis.Y);
 		
-		                 Vec3d newPos = new Vec3d(pos.getX() + 0.5, pos.getY() + height, pos.getZ() + 0.5);
+		                 Vec3 newPos = new Vec3(pos.getX() + 0.5, pos.getY() + height, pos.getZ() + 0.5);
 		                 // Snap a non-standable click (air / tall grass / flowers) to the
 		                 // reachable ground so the search doesn't spin forever near it.
-		                 newPos = kaptainwutax.tungsten.path.GoalSnap.snap(newPos, mc.world);
+		                 newPos = kaptainwutax.tungsten.path.GoalSnap.snap(newPos, mc.level);
 		         		TungstenMod.TARGET = newPos;
 
 
@@ -332,7 +332,7 @@ public class TungstenMod implements ClientModInitializer {
 		        			// Scoped to the GOTO branch specifically, not PLACE_GOAL above it -- placing a
 		        			// goal marker without starting navigation is not "asking for a goto".
 		        			TungstenMod.markGotoTarget();
-		        			TungstenModDataContainer.PATHFINDER.find(TungstenMod.mc.world, TARGET, TungstenMod.mc.player);
+		        			TungstenModDataContainer.PATHFINDER.find(TungstenMod.mc.level, TARGET, TungstenMod.mc.player);
 		        		}
 	        		}
         		}

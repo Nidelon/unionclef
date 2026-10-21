@@ -1,14 +1,14 @@
 package adris.altoclef.util.projectiles;
 
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 import java.lang.reflect.Type;
 
 public class CachedProjectile {
     private final TimerGame lastCache = new TimerGame(2);
-    public Vec3d velocity;
-    public Vec3d position;
+    public Vec3 velocity;
+    public Vec3 position;
     public double gravity;
     public Type projectileType;
     /**
@@ -20,14 +20,14 @@ public class CachedProjectile {
      * at that moment the range it was fired from.
      */
     public int entityId = -1;
-    private Vec3d cachedHit;
+    private Vec3 cachedHit;
     private boolean cacheHeld = false;
 
-    public Vec3d getCachedHit() {
+    public Vec3 getCachedHit() {
         return cachedHit;
     }
 
-    public void setCacheHit(Vec3d cache) {
+    public void setCacheHit(Vec3 cache) {
         cachedHit = cache;
         cacheHeld = true;
         lastCache.reset();

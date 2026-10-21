@@ -25,17 +25,17 @@ import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.BedBlock;
-import net.minecraft.block.Block;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.SleepingChatScreen;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.Vec3i;
+import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.InBedChatScreen;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.core.Vec3i;
 import org.apache.commons.lang3.ArrayUtils;
 
 public class PlaceBedAndSetSpawnTask extends Task {
@@ -62,22 +62,22 @@ public class PlaceBedAndSetSpawnTask extends Task {
             BED_PLACE_POS.south(),
             BED_PLACE_POS.east(),
             BED_PLACE_POS.west(),
-            BED_PLACE_POS.add(-1,0,1),
-            BED_PLACE_POS.add(1,0,1),
-            BED_PLACE_POS.add(-1,0,-1),
-            BED_PLACE_POS.add(1,0,-1),
+            BED_PLACE_POS.offset(-1,0,1),
+            BED_PLACE_POS.offset(1,0,1),
+            BED_PLACE_POS.offset(-1,0,-1),
+            BED_PLACE_POS.offset(1,0,-1),
             BED_PLACE_POS.north(2),
             BED_PLACE_POS.south(2),
             BED_PLACE_POS.east(2),
             BED_PLACE_POS.west(2),
-            BED_PLACE_POS.add(-2,0,1),
-            BED_PLACE_POS.add(-2,0,2),
-            BED_PLACE_POS.add(2,0,1),
-            BED_PLACE_POS.add(2,0,2),
-            BED_PLACE_POS.add(-2,0,-1),
-            BED_PLACE_POS.add(-2,0,-2),
-            BED_PLACE_POS.add(2,0,-1),
-            BED_PLACE_POS.add(2,0,-2)
+            BED_PLACE_POS.offset(-2,0,1),
+            BED_PLACE_POS.offset(-2,0,2),
+            BED_PLACE_POS.offset(2,0,1),
+            BED_PLACE_POS.offset(2,0,2),
+            BED_PLACE_POS.offset(-2,0,-1),
+            BED_PLACE_POS.offset(-2,0,-2),
+            BED_PLACE_POS.offset(2,0,-1),
+            BED_PLACE_POS.offset(2,0,-2)
     };
     private final Direction BED_PLACE_DIRECTION = Direction.UP;
     private final TimerGame bedInteractTimeout = new TimerGame(5);
@@ -135,7 +135,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
         mod.getBehaviour().avoidBlockPlacing(pos -> {
             if (currentBedRegion != null) {
                 BlockPos start = currentBedRegion;
-                BlockPos end = currentBedRegion.add(BED_CLEAR_SIZE);
+                BlockPos end = currentBedRegion.offset(BED_CLEAR_SIZE);
                 return start.getX() <= pos.getX() && pos.getX() < end.getX()
                         && start.getZ() <= pos.getZ() && pos.getZ() < end.getZ()
                         && start.getY() <= pos.getY() && pos.getY() < end.getY();
@@ -147,7 +147,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
         mod.getBehaviour().avoidBlockBreaking(pos -> {
             if (currentBedRegion != null) {
                 for (Vec3i baseOffs : BED_BOTTOM_PLATFORM) {
-                    BlockPos base = currentBedRegion.add(baseOffs);
+                    BlockPos base = currentBedRegion.offset(baseOffs);
                     if (base.equals(pos)) return true;
                 }
             }
@@ -227,8 +227,8 @@ public class PlaceBedAndSetSpawnTask extends Task {
             setDebugState("Going to the overworld first.");
             return new DefaultGoToDimensionTask(Dimension.OVERWORLD);
         }
-        Screen screen = MinecraftClient.getInstance().currentScreen;
-        if (screen instanceof SleepingChatScreen) {
+        Screen screen = Minecraft.getInstance().gui.screen();
+        if (screen instanceof InBedChatScreen) {
             progressChecker.reset();
             setDebugState("Sleeping...");
             wasSleeping = true;
@@ -245,16 +245,16 @@ public class PlaceBedAndSetSpawnTask extends Task {
             }
         }
         if (mod.getBlockScanner().anyFound(blockPos -> (WorldHelper.canReach(blockPos) &&
-                blockPos.isWithinDistance(mod.getPlayer().getPos(), 40) &&
+                blockPos.closerThan(BlockPos.containing(mod.getPlayer().position()), 40) &&
                 mod.getItemStorage().hasItem(ItemHelper.BED)) || (WorldHelper.canReach(blockPos) &&
                 !mod.getItemStorage().hasItem(ItemHelper.BED)), ItemHelper.itemsToBlocks(ItemHelper.BED))) {
             // Sleep in the nearest bed
             setDebugState("Going to bed to sleep...");
             return new DoToClosestBlockTask(toSleepIn -> {
-                boolean closeEnough = toSleepIn.isWithinDistance(mod.getPlayer().getPos(), 3);
+                boolean closeEnough = toSleepIn.closerThan(BlockPos.containing(mod.getPlayer().position()), 3);
                 if (closeEnough) {
                     // why 0.2? I'm tired.
-                    Vec3d centerBed = new Vec3d(toSleepIn.getX() + 0.5, toSleepIn.getY() + 0.2, toSleepIn.getZ() + 0.5);
+                    Vec3 centerBed = new Vec3(toSleepIn.getX() + 0.5, toSleepIn.getY() + 0.2, toSleepIn.getZ() + 0.5);
                     BlockHitResult hit = LookHelper.raycast(mod.getPlayer(), centerBed, 6);
                     // TODO: Kinda ugly, but I'm tired and fixing for the 2nd attempt speedrun so I will fix this block later
                     closeEnough = false;
@@ -273,12 +273,12 @@ public class PlaceBedAndSetSpawnTask extends Task {
                 }
                 if (!closeEnough) {
                     try {
-                        Direction face = mod.getWorld().getBlockState(toSleepIn).get(BedBlock.FACING);
-                        Direction side = face.rotateYClockwise();
+                        Direction face = mod.getWorld().getBlockState(toSleepIn).getValue(BedBlock.FACING);
+                        Direction side = face.getClockWise();
                         /*
                         BlockPos targetMove = toSleepIn.offset(side).offset(side); // Twice, juust to make sure...
                          */
-                        return new GetToBlockTask(bedForSpawnPoint.add(side.getVector()));
+                        return new GetToBlockTask(bedForSpawnPoint.offset(side.getUnitVec3i()));
                     } catch (IllegalArgumentException e) {
                         // If bed is not loaded, this will happen. In that case just get to the bed first.
                     }
@@ -294,7 +294,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
             }, ItemHelper.itemsToBlocks(ItemHelper.BED));
         }
 
-        if (mod.getPlayer().isTouchingWater() && mod.getItemStorage().hasItem(ItemHelper.BED)) {
+        if (mod.getPlayer().isInWater() && mod.getItemStorage().hasItem(ItemHelper.BED)) {
             setDebugState("We are in water. Wandering");
             currentBedRegion = null;
             return new TimeoutWanderTask();
@@ -302,9 +302,9 @@ public class PlaceBedAndSetSpawnTask extends Task {
 
         if (currentBedRegion != null) {
             for (Vec3i BedPlacePos : BED_PLACE_POS_OFFSET) {
-                Block getBlock = mod.getWorld().getBlockState(currentBedRegion.add(BedPlacePos)).getBlock();
+                Block getBlock = mod.getWorld().getBlockState(currentBedRegion.offset(BedPlacePos)).getBlock();
                 if (getBlock instanceof BedBlock) {
-                    mod.getBlockScanner().addBlock(getBlock, currentBedRegion.add(BedPlacePos));
+                    mod.getBlockScanner().addBlock(getBlock, currentBedRegion.offset(BedPlacePos));
                     break;
                 }
             }
@@ -319,7 +319,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
             if (regionScanTimer.elapsed()) {
                 Debug.logMessage("Rescanning for nearby bed place position...");
                 regionScanTimer.reset();
-                currentBedRegion = this.locateBedRegion(mod, mod.getPlayer().getBlockPos());
+                currentBedRegion = this.locateBedRegion(mod, mod.getPlayer().blockPosition());
             }
         }
         if (currentBedRegion == null) {
@@ -335,7 +335,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
         // full51/full52 spent whole nights on them ("Failed to place, wandering timeout", "Place
         // structure" stuck for a minute) with the bed in the pack.
         for (int dx = 0; dx < 3; ++dx) {
-            BlockPos floor = currentBedRegion.add(dx, -1, 1);
+            BlockPos floor = currentBedRegion.offset(dx, -1, 1);
             if (!WorldHelper.isSolidBlock(floor)) {
                 currentStructure = floor;
                 break;
@@ -345,7 +345,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
         outer:
         for (int dx = 0; dx < 3; ++dx) {
             for (int dy = 0; dy < 2; ++dy) {
-                BlockPos toClear = currentBedRegion.add(dx, dy, 1);
+                BlockPos toClear = currentBedRegion.offset(dx, dy, 1);
                 if (WorldHelper.isSolidBlock(toClear)) {
                     currentBreak = toClear;
                     break outer;
@@ -370,14 +370,14 @@ public class PlaceBedAndSetSpawnTask extends Task {
             }
         }
 
-        BlockPos toStand = currentBedRegion.add(BED_PLACE_STAND_POS);
+        BlockPos toStand = currentBedRegion.offset(BED_PLACE_STAND_POS);
         // Our bed region is READY TO BE PLACED
-        if (!mod.getPlayer().getBlockPos().equals(toStand)) {
+        if (!mod.getPlayer().blockPosition().equals(toStand)) {
             return new GetToBlockTask(toStand);
         }
 
-        BlockPos toPlace = currentBedRegion.add(BED_PLACE_POS);
-        if (mod.getWorld().getBlockState(toPlace.offset(BED_PLACE_DIRECTION)).getBlock() instanceof BedBlock) {
+        BlockPos toPlace = currentBedRegion.offset(BED_PLACE_POS);
+        if (mod.getWorld().getBlockState(toPlace.relative(BED_PLACE_DIRECTION)).getBlock() instanceof BedBlock) {
             setDebugState("Waiting to rescan + find bed that we just placed. Should be almost instant.");
             progressChecker.reset();
             return null;
@@ -401,7 +401,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
         })) {
             mod.getInputControls().tryPress(Input.MOVE_BACK);
         }
-        return new InteractWithBlockTask(new ItemTarget("bed", 1), BED_PLACE_DIRECTION, toPlace.offset(BED_PLACE_DIRECTION.getOpposite()), false);
+        return new InteractWithBlockTask(new ItemTarget("bed", 1), BED_PLACE_DIRECTION, toPlace.relative(BED_PLACE_DIRECTION.getOpposite()), false);
     }
 
     /**
@@ -542,7 +542,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
                     BlockPos attemptPos = new BlockPos(x, y, z);
                     int work = stripWork(mod, attemptPos);
                     if (work < 0) continue;
-                    double score = Math.sqrt(BlockPosVer.getSquaredDistance(attemptPos, mod.getPlayer().getPos()))
+                    double score = Math.sqrt(BlockPosVer.getSquaredDistance(attemptPos, mod.getPlayer().position()))
                             + WORK_BLOCKS * work;
                     if (score < bestScore) {
                         bestScore = score;
@@ -568,22 +568,22 @@ public class PlaceBedAndSetSpawnTask extends Task {
     private int stripWork(AltoClef mod, BlockPos region) {
         int work = 0;
         for (int dx = 0; dx < 3; ++dx) {
-            BlockPos floor = region.add(dx, -1, 1);
+            BlockPos floor = region.offset(dx, -1, 1);
             if (!mod.getWorld().getFluidState(floor).isEmpty()) return -1;
             if (WorldHelper.isSolidBlock(floor)) {
                 // a floor as it is
-            } else if (WorldHelper.isAir(floor) || mod.getWorld().getBlockState(floor).isReplaceable()) {
+            } else if (WorldHelper.isAir(floor) || mod.getWorld().getBlockState(floor).canBeReplaced()) {
                 work++;
             } else {
                 return -1;
             }
             for (int dy = 0; dy < 2; ++dy) {
-                BlockPos c = region.add(dx, dy, 1);
+                BlockPos c = region.offset(dx, dy, 1);
                 if (!mod.getWorld().getFluidState(c).isEmpty()) return -1;
                 if (WorldHelper.isSolidBlock(c)) {
                     if (!WorldHelper.canBreak(c)) return -1;
                     work++;
-                } else if (!WorldHelper.isAir(c) && !mod.getWorld().getBlockState(c).isReplaceable()) {
+                } else if (!WorldHelper.isAir(c) && !mod.getWorld().getBlockState(c).canBeReplaced()) {
                     return -1;
                 }
             }

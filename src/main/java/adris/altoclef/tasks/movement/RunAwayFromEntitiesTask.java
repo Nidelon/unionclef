@@ -2,7 +2,7 @@ package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.goals.AltoGoal;
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -47,10 +47,10 @@ public abstract class RunAwayFromEntitiesTask extends CustomBaritoneGoalTask {
                         return java.util.List.of();
                     }
                     return from.stream()
-                            .map(e -> new net.minecraft.util.math.Vec3d(e.getX(), e.getY(), e.getZ()))
+                            .map(e -> new net.minecraft.world.phys.Vec3(e.getX(), e.getY(), e.getZ()))
                             .collect(java.util.stream.Collectors.toList());
                 },
-                () -> mod.getPlayer() == null ? null : mod.getPlayer().getPos(),
+                () -> mod.getPlayer() == null ? null : mod.getPlayer().position(),
                 _distanceToRun);
     }
 

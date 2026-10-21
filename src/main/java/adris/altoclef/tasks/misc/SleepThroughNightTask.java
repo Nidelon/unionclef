@@ -33,7 +33,7 @@ public class SleepThroughNightTask extends Task {
     @Override
     public boolean isFinished() {
         // We're in daytime
-        int time = (int) (AltoClef.getInstance().getWorld().getTimeOfDay() % 24000);
+        int time = (int) (AltoClef.getInstance().getWorld().getDefaultClockTime() % 24000);
         return 0 <= time && time < 13000;
     }
 }

@@ -13,24 +13,24 @@ import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.path.PlaceRules;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.block.AirBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.CarpetBlock;
-import net.minecraft.block.DoorBlock;
-import net.minecraft.block.FenceGateBlock;
-import net.minecraft.block.LadderBlock;
-import net.minecraft.block.SlabBlock;
-import net.minecraft.block.enums.SlabType;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.BlockItem;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.AirBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CarpetBlock;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.LadderBlock;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * ONE one-block cardinal step, walked or bridged — a verbatim port of
@@ -54,8 +54,8 @@ import net.minecraft.world.WorldView;
  * <h2>Adapters used in place of baritone services (spec unit 1's substitution table)</h2>
  * <ul>
  *   <li>{@code IPlayerContext} — gone. The base {@link Movement} holds the tick's
- *       {@code ClientPlayerEntity} in {@code player}; {@code ctx.world()} is
- *       {@code player.getEntityWorld()}, {@code ctx.playerFeet()/playerHead()} are
+ *       {@code LocalPlayer} in {@code player}; {@code ctx.world()} is
+ *       {@code player.level()}, {@code ctx.playerFeet()/playerHead()} are
  *       {@link RotationHelper}, and {@code ctx.playerRotations()} /
  *       {@code ctx.playerController().getBlockReachDistance()} / {@code ctx.isLookingAt(pos)}
  *       are the three private statics at the bottom of this file. {@code isLookingAt} goes
@@ -64,7 +64,7 @@ import net.minecraft.world.WorldView;
  *       stale — exactly the width of the sneak-pose window.</li>
  *   <li>{@code BlockStateInterface.get(ctx, pos)} — {@code world.getBlockState(pos)}.</li>
  *   <li>{@code CalculationContext} — gone; {@link #cost} takes {@code (world, player, …)} and
- *       {@code context.get(x,y,z)} is a {@link BlockPos.Mutable} scratch lookup. Its two
+ *       {@code context.get(x,y,z)} is a {@link net.minecraft.core.BlockPos.MutableBlockPos} scratch lookup. Its two
  *       derived values are the private {@link #canSprint} and {@link #costOfPlacingAt} below;
  *       {@code assumeWalkOnWater} / {@code waterWalkSpeed} / {@code walkOnWaterOnePenalty} are
  *       the named constants below.</li>
@@ -88,7 +88,7 @@ import net.minecraft.world.WorldView;
  *       top-level {@code MovementStatus} / {@code Input} enums.</li>
  *   <li>{@code MovementHelperB} — the ported {@code MovementHelper} statics, with
  *       {@code CalculationContext}/{@code BlockStateInterface} replaced by
- *       {@code WorldView} in the same argument position (plus {@code PlayerEntity} where the
+ *       {@code LevelReader} in the same argument position (plus {@code Player} where the
  *       upstream body reads the tool set or an enchantment), and the nested
  *       {@code PlaceResult} enum.</li>
  *   <li>{@code RotationHelper} — {@code calcRotationFromVec3d}, {@code calculateBlockCenter},
@@ -163,12 +163,12 @@ public class MovementTraverse extends Movement {
         wasTheBridgeBlockAlwaysThere = true;
     }
 
-    // ClientPlayerEntity, not PlayerEntity, so this genuinely overrides Movement.calculateCost —
+    // LocalPlayer, not Player, so this genuinely overrides Movement.calculateCost —
     // with the wider parameter it was a silent OVERLOAD and the base's "no instance cost" throw
-    // stayed live. The static cost(...) below keeps PlayerEntity, as upstream's CalculationContext
+    // stayed live. The static cost(...) below keeps Player, as upstream's CalculationContext
     // is not client-specific.
     @Override
-    public double calculateCost(WorldView world, ClientPlayerEntity player) {
+    public double calculateCost(LevelReader world, LocalPlayer player) {
         return cost(world, player, src.x, src.y, src.z, dest.x, dest.z);
     }
 
@@ -177,8 +177,8 @@ public class MovementTraverse extends Movement {
         return ImmutableSet.of(src, dest); // src.above means that we don't get caught in an infinite loop in water
     }
 
-    public static double cost(WorldView world, PlayerEntity player, int x, int y, int z, int destX, int destZ) {
-        BlockPos.Mutable scratch = new BlockPos.Mutable();
+    public static double cost(LevelReader world, Player player, int x, int y, int z, int destX, int destZ) {
+        net.minecraft.core.BlockPos.MutableBlockPos scratch = new net.minecraft.core.BlockPos.MutableBlockPos();
         BlockState pb0 = world.getBlockState(scratch.set(destX, y + 1, destZ));
         BlockState pb1 = world.getBlockState(scratch.set(destX, y, destZ));
         BlockState destOn = world.getBlockState(scratch.set(destX, y - 1, destZ));
@@ -244,9 +244,9 @@ public class MovementTraverse extends Movement {
                 double hardness2 = MovementHelperB.getMiningDurationTicks(world, player, destX, y + 1, destZ, pb0, true); // only include falling on the upper block to break
                 double WC = throughWater ? WALK_ONE_IN_WATER_COST : WALK_ONE_BLOCK_COST;
                 for (int i = 0; i < 5; i++) {
-                    int againstX = destX + HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i].getOffsetX();
-                    int againstY = y - 1 + HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i].getOffsetY();
-                    int againstZ = destZ + HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i].getOffsetZ();
+                    int againstX = destX + HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i].getStepX();
+                    int againstY = y - 1 + HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i].getStepY();
+                    int againstZ = destZ + HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i].getStepZ();
                     if (againstX == x && againstZ == z) { // this would be a backplace
                         continue;
                     }
@@ -255,7 +255,7 @@ public class MovementTraverse extends Movement {
                     }
                 }
                 // now that we've checked all possible directions to side place, we actually need to backplace
-                if (srcDownBlock == Blocks.SOUL_SAND || (srcDownBlock instanceof SlabBlock && srcDown.get(SlabBlock.TYPE) != SlabType.DOUBLE)) {
+                if (srcDownBlock == Blocks.SOUL_SAND || (srcDownBlock instanceof SlabBlock && srcDown.getValue(SlabBlock.TYPE) != SlabType.DOUBLE)) {
                     return COST_INF; // can't sneak and backplace against soul sand or half slabs (regardless of whether it's top half or bottom half) =/
                 }
                 if (!standingOnABlock) { // standing on water / swimming
@@ -278,9 +278,9 @@ public class MovementTraverse extends Movement {
         // `ctx` is the base's IPlayerContext stand-in (Movement.PlayerCtx), so ctx.player() IS
         // upstream's ctx.player(). Bound to a local named `player` so every copied line below reads
         // as upstream wrote it; ctx.world() is the same world, reached through the player here
-        // because the ported MovementHelper statics take a WorldView in that argument position.
-        PlayerEntity player = ctx.player();
-        WorldView world = player.getEntityWorld();
+        // because the ported MovementHelper statics take a LevelReader in that argument position.
+        Player player = ctx.player();
+        LevelReader world = player.level();
         BlockState pb0 = world.getBlockState(positionsToBreak[0]);
         BlockState pb1 = world.getBlockState(positionsToBreak[1]);
         if (state.getStatus() != MovementStatus.RUNNING) {
@@ -302,7 +302,7 @@ public class MovementTraverse extends Movement {
             // upstream :192 also bails when altoclef has force-marked either cell as
             // "do not walk through". No tungsten equivalent — dropped, per the spec.
             // and we aren't already pressed up against the block
-            double dist = Math.max(Math.abs(player.getEntityPos().x - (dest.getX() + 0.5D)), Math.abs(player.getEntityPos().z - (dest.getZ() + 0.5D)));
+            double dist = Math.max(Math.abs(player.position().x - (dest.getX() + 0.5D)), Math.abs(player.position().z - (dest.getZ() + 0.5D)));
             if (dist < 0.83) {
                 return state;
             }
@@ -379,14 +379,14 @@ public class MovementTraverse extends Movement {
             }
             Block low = world.getBlockState(src).getBlock();
             Block high = world.getBlockState(src.above()).getBlock();
-            if (player.getEntityPos().y > src.y + 0.1D && !player.isOnGround() && (low == Blocks.VINE || low == Blocks.LADDER || high == Blocks.VINE || high == Blocks.LADDER)) {
+            if (player.position().y > src.y + 0.1D && !player.onGround() && (low == Blocks.VINE || low == Blocks.LADDER || high == Blocks.VINE || high == Blocks.LADDER)) {
                 // hitting W could cause us to climb the ladder instead of going forward
                 // wait until we're on the ground
                 return state;
             }
-            BlockPos into = dest.subtract(src).add(dest);
+            BlockPos into = dest.subtract(src).offset(dest);
             BlockState intoBelow = world.getBlockState(into);
-            BlockState intoAbove = world.getBlockState(into.up());
+            BlockState intoAbove = world.getBlockState(into.above());
             // wasTheBridgeBlockAlwaysThere is the whole sprint guard: a step whose floor this
             // route just placed is NEVER sprinted out of. At 8-12 fps one sprinting tick
             // carries the bot past the lip — measured 20.7 and 22.5 blocks short, twice each.
@@ -397,7 +397,7 @@ public class MovementTraverse extends Movement {
             BlockState destDown = world.getBlockState(dest.below());
             BlockPos against = positionsToBreak[0];
             if (feet.getY() != dest.getY() && ladder && (destDown.getBlock() == Blocks.VINE || destDown.getBlock() == Blocks.LADDER)) {
-                against = destDown.getBlock() == Blocks.VINE ? getAgainst(world, dest.below()) : dest.offset(destDown.get(LadderBlock.FACING).getOpposite());
+                against = destDown.getBlock() == Blocks.VINE ? getAgainst(world, dest.below()) : dest.relative(destDown.getValue(LadderBlock.FACING).getOpposite());
                 if (against == null) {
                     // upstream logDirect — always shown; the movement is about to give up
                     Debug.logMessage("Unable to climb vines. Consider disabling allowVines.");
@@ -408,18 +408,18 @@ public class MovementTraverse extends Movement {
             return state;
         } else {
             wasTheBridgeBlockAlwaysThere = false;
-            Block standingOn = world.getBlockState(feet.down()).getBlock();
+            Block standingOn = world.getBlockState(feet.below()).getBlock();
             // upstream also lets altoclef declare soul sand ordinary; its default is false, so
             // this is plain upstream baritone (:293, "see issue #118").
             if (standingOn.equals(Blocks.SOUL_SAND) || standingOn instanceof SlabBlock) { // see issue #118
-                double dist = Math.max(Math.abs(dest.getX() + 0.5 - player.getEntityPos().x), Math.abs(dest.getZ() + 0.5 - player.getEntityPos().z));
+                double dist = Math.max(Math.abs(dest.getX() + 0.5 - player.position().x), Math.abs(dest.getZ() + 0.5 - player.position().z));
                 if (dist < 0.85) { // 0.5 + 0.3 + epsilon
                     MovementHelperB.moveTowards(player, state, dest);
                     return state.setInput(Input.MOVE_FORWARD, false)
                             .setInput(Input.MOVE_BACK, true);
                 }
             }
-            double dist1 = Math.max(Math.abs(player.getEntityPos().x - (dest.getX() + 0.5D)), Math.abs(player.getEntityPos().z - (dest.getZ() + 0.5D)));
+            double dist1 = Math.max(Math.abs(player.position().x - (dest.getX() + 0.5D)), Math.abs(player.position().z - (dest.getZ() + 0.5D)));
             MovementHelperB.PlaceResult p = MovementHelperB.attemptToPlaceABlock(state, player, dest.below(), false, true);
             if ((p == MovementHelperB.PlaceResult.READY_TO_PLACE || dist1 < 0.6) && !ASSUME_SAFE_WALK) {
                 state.setInput(Input.SNEAK, true);
@@ -429,7 +429,7 @@ public class MovementTraverse extends Movement {
                     // the sneak KEY is not the sneak POSE: the pose lags the key by a tick, and
                     // a click in that tick raytraces from the standing eye (1.62) instead of the
                     // sneaking one (1.27) and misses the face.
-                    if (player.isInSneakingPose() || ASSUME_SAFE_WALK) {
+                    if (player.isCrouching() || ASSUME_SAFE_WALK) {
                         state.setInput(Input.CLICK_RIGHT, true);
                     }
                     return state;
@@ -463,9 +463,9 @@ public class MovementTraverse extends Movement {
                 // different geometry, do not unify them.
                 BlockPos goalLook = src.below(); // this is the block we were just standing on, and the one we want to place against
 
-                Rotation backToFace = RotationHelper.calcRotationFromVec3d(RotationHelper.playerHead(player), new Vec3d(faceX, faceY, faceZ), playerRotations(player));
+                Rotation backToFace = RotationHelper.calcRotationFromVec3d(RotationHelper.playerHead(player), new Vec3(faceX, faceY, faceZ), playerRotations(player));
                 float pitch = backToFace.getPitch();
-                double dist2 = Math.max(Math.abs(player.getEntityPos().x - faceX), Math.abs(player.getEntityPos().z - faceZ));
+                double dist2 = Math.max(Math.abs(player.position().x - faceX), Math.abs(player.position().z - faceZ));
                 if (dist2 < 0.29) { // see issue #208
                     // SWAPPED ARGUMENTS, deliberately: the yaw FROM the cell being paved
                     // TOWARDS the head, i.e. facing back up the bridge. With the body reversed,
@@ -502,10 +502,10 @@ public class MovementTraverse extends Movement {
 
     @Override
     protected boolean prepared(MovementState state) {
-        PlayerEntity player = ctx.player();
+        Player player = ctx.player();
         BetterBlockPos feet = RotationHelper.playerFeet(player);
         if (feet.equals(src) || feet.equals(src.below())) {
-            Block block = player.getEntityWorld().getBlockState(src.below()).getBlock();
+            Block block = player.level().getBlockState(src.below()).getBlock();
             if (block == Blocks.LADDER || block == Blocks.VINE) {
                 state.setInput(Input.SNEAK, true);
             }
@@ -519,14 +519,14 @@ public class MovementTraverse extends Movement {
     // -------------------------------------------------------------------------------------------
 
     /** {@code ctx.playerRotations()} (IPlayerContext.java) — the CURRENT rotations, not a target. */
-    private static Rotation playerRotations(PlayerEntity player) {
-        return new Rotation(player.getYaw(), player.getPitch());
+    private static Rotation playerRotations(Player player) {
+        return new Rotation(player.getYRot(1.0f), player.getXRot(1.0f));
     }
 
     /** {@code ctx.playerController().getBlockReachDistance()} — baritone pins it at 4.5
      *  (Settings.java:385), so take whichever of the two is smaller. */
-    private static double blockReachDistance(PlayerEntity player) {
-        return Math.min(player.getBlockInteractionRange(), 4.5D);
+    private static double blockReachDistance(Player player) {
+        return Math.min(player.blockInteractionRange(), 4.5D);
     }
 
     /**
@@ -536,15 +536,15 @@ public class MovementTraverse extends Movement {
      * {@code mc.crosshairTarget} is a per-frame value and at the stand's 10 fps it is one to
      * two ticks stale — the exact width of the sneak-pose window this gate exists to wait for.
      */
-    private static boolean isLookingAt(PlayerEntity player, BlockPos pos) {
+    private static boolean isLookingAt(Player player, BlockPos pos) {
         HitResult result = RotationHelper.liveHit(player, playerRotations(player), blockReachDistance(player));
         return result != null && result.getType() == HitResult.Type.BLOCK
                 && ((BlockHitResult) result).getBlockPos().equals(pos);
     }
 
     /** {@code context.canSprint} (CalculationContext.java:108) — hunger above the sprint floor. */
-    private static boolean canSprint(PlayerEntity player) {
-        return player.getHungerManager().getFoodLevel() > 6;
+    private static boolean canSprint(Player player) {
+        return player.getFoodData().getFoodLevel() > 6;
     }
 
     /**
@@ -553,8 +553,8 @@ public class MovementTraverse extends Movement {
      * so this can only ask whether there is a block in hand. KNOWN divergence (spec unit 1's
      * table) — not faked, and not a reason to skip the refusal it feeds.
      */
-    private static boolean hasThrowaway(PlayerEntity player) {
-        return TungstenConfig.get().allowPlace && player.getMainHandStack().getItem() instanceof BlockItem;
+    private static boolean hasThrowaway(Player player) {
+        return TungstenConfig.get().allowPlace && player.getMainHandItem().getItem() instanceof BlockItem;
     }
 
     /**
@@ -568,7 +568,7 @@ public class MovementTraverse extends Movement {
      * <p>Kept private rather than shared: {@code MovementPillar} (unit 3) needs the same
      * adapter, and when it lands this belongs in one place.
      */
-    private static double costOfPlacingAt(WorldView world, PlayerEntity player, int x, int y, int z, BlockState current) {
+    private static double costOfPlacingAt(LevelReader world, Player player, int x, int y, int z, BlockState current) {
         if (!hasThrowaway(player)) { // only true if allowPlace is true, see hasThrowaway
             return COST_INF;
         }
@@ -583,7 +583,7 @@ public class MovementTraverse extends Movement {
      * MovementPillar from here (MovementTraverse.java:282); the private copy that lived in this file
      * while unit 3 was unwritten has been deleted and this delegates, as its own note said to.
      */
-    private static BlockPos getAgainst(WorldView world, BetterBlockPos vine) {
+    private static BlockPos getAgainst(LevelReader world, BetterBlockPos vine) {
         return MovementPillar.getAgainst(world, vine);
     }
 

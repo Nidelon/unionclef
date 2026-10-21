@@ -9,13 +9,13 @@ import kaptainwutax.tungsten.path.Node;
 import kaptainwutax.tungsten.path.PathInput;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode;
 import kaptainwutax.tungsten.render.Color;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.LevelReader;
 
 public class SwimmingMove {
 
 	public static Node generateMove(Node parent, BlockNode nextBlockNode) {
 		double cost = 0.02;
-		WorldView world = TungstenModDataContainer.world;
+		LevelReader world = TungstenModDataContainer.world;
 		Agent agent = parent.agent;
 		float desiredYaw = (float) DirectionHelper.calcYawFromVec3d(agent.getPos(), nextBlockNode.getPos(true));
 		double distance = DistanceCalculator.getHorizontalEuclideanDistance(agent.getPos(), nextBlockNode.getPos(true));

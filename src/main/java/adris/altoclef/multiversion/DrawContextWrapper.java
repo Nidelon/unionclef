@@ -9,7 +9,7 @@ import org.joml.Matrix3x2fStack;
 /**
  * Thin wrapper over the GUI draw context, written against the 26.2 API.
  * <p>
- * 26.2 replaced {@code GuiGraphics} with {@code GuiGraphicsExtractor}, moved the
+ * 26.2 replaced {@code GuiGraphicsExtractor} with {@code GuiGraphicsExtractor}, moved the
  * pose stack to {@code Matrix3x2fStack}, and dropped the per-call render layer.
  * The wrapper keeps the call shape the rest of the mod already uses.
  */

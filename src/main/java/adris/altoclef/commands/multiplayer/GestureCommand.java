@@ -9,8 +9,8 @@ import adris.altoclef.commandsystem.args.StringArg;
 import adris.altoclef.commandsystem.exception.CommandException;
 import adris.altoclef.commandsystem.exception.RuntimeCommandException;
 import adris.altoclef.tasks.multiplayer.GestureTask;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Optional;
 
@@ -57,7 +57,7 @@ public class GestureCommand extends Command {
             if (player.isPresent()) {
                 return player.get();
             } else {
-                Optional<Vec3d> pos = mod.getEntityTracker().getPlayerMostRecentPosition(username);
+                Optional<Vec3> pos = mod.getEntityTracker().getPlayerMostRecentPosition(username);
                 if (pos.isPresent()) {
                     throw new RuntimeCommandException("Player " + username
                             + " is not in view now, but last time was at " + pos.get());

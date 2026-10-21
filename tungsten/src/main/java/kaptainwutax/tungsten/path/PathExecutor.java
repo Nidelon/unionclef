@@ -9,12 +9,12 @@ import kaptainwutax.tungsten.agent.Agent;
 import kaptainwutax.tungsten.helpers.DirectionHelper;
 import kaptainwutax.tungsten.helpers.render.RenderHelper;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.option.GameOptions;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.Options;
 import kaptainwutax.tungsten.agent.TungstenPlayerInput;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,12 +37,12 @@ public class PathExecutor {
      *  current path segment (set by PathFinder from the block path's break
      *  plan). The path is held "unfinished" while mining so the search
      *  thread's continuation machinery waits for the opened wall. */
-    public volatile List<net.minecraft.util.math.BlockPos> breakQueue = null;
+    public volatile List<net.minecraft.core.BlockPos> breakQueue = null;
     private int breakingTicks = 0;
     private int settleTicks = 0;
     /** G13: the cell breakingTicks is currently counting against, and the budget sized for it.
      *  See tickBreaking's target-change check for why this exists. */
-    private net.minecraft.util.math.BlockPos breakBudgetTarget = null;
+    private net.minecraft.core.BlockPos breakBudgetTarget = null;
     private int breakBudgetTicks = 300;
     /** The planner-side estimate the current budget was sized from, for the abort line. */
     private double breakBudgetEstimate = 0;
@@ -80,7 +80,7 @@ public class PathExecutor {
     }
 
     /** Queue mining after the current replay, preserving its index and armed state. */
-    public synchronized void queueBreakingAfterPath(java.util.List<net.minecraft.util.math.BlockPos> blocks) {
+    public synchronized void queueBreakingAfterPath(java.util.List<net.minecraft.core.BlockPos> blocks) {
         breakQueue = blocks == null ? null : new java.util.ArrayList<>(blocks);
         breakingTicks = 0;
         breakBudgetTarget = null;
@@ -89,7 +89,7 @@ public class PathExecutor {
     }
 
     /** Start a dig at the current position without an approach replay. */
-    public synchronized void startBreaking(java.util.List<net.minecraft.util.math.BlockPos> blocks) {
+    public synchronized void startBreaking(java.util.List<net.minecraft.core.BlockPos> blocks) {
         queueBreakingAfterPath(blocks);
         // AND PUT THE EXECUTOR WHERE IT WILL ACTUALLY RUN THE JOB. Mining only happens inside
         // the "segment finished" branch (tick == path.size()), and the caller only ticks this
@@ -129,11 +129,11 @@ public class PathExecutor {
         armed = false;
         stop = false;
         cb = null;
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.interactionManager != null) mc.interactionManager.cancelBlockBreaking();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.gameMode != null) mc.gameMode.stopDestroyBlock();
         if (mc.options != null) {
-            mc.options.attackKey.setPressed(false);
-            mc.options.useKey.setPressed(false);
+            mc.options.keyAttack.setDown(false);
+            mc.options.keyUse.setDown(false);
             releaseMovementKeys(mc.options);
         }
         kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
@@ -145,7 +145,7 @@ public class PathExecutor {
 
     /** Support cells to PLACE (bridge floor) once the replay reaches the segment end
      *  (set by PathFinder from the block path's place plan) — the mirror of breakQueue. */
-    public volatile List<net.minecraft.util.math.BlockPos> placeQueue = null;
+    public volatile List<net.minecraft.core.BlockPos> placeQueue = null;
     /**
      * The placer is aiming RIGHT NOW and owns the camera. Baritone has exactly one thing
      * steering at a time — the movement sets a MovementTarget and LookBehavior applies it —
@@ -204,13 +204,13 @@ public class PathExecutor {
 	private boolean armed = false;
 
 	/** Body to the current node, then node to node, for the next ten ticks of the replay. */
-	private boolean replayAheadLethal(ClientPlayerEntity player) {
+	private boolean replayAheadLethal(LocalPlayer player) {
 		List<Node> p = this.path;
 		if (p == null) return false;
-		var w = player.getEntityWorld();
-		net.minecraft.util.math.Vec3d prev = player.getEntityPos();
+		var w = player.level();
+		net.minecraft.world.phys.Vec3 prev = player.position();
 		for (int i = this.tick; i < Math.min(p.size(), this.tick + 10); i++) {
-			net.minecraft.util.math.Vec3d next = p.get(i).agent.getPos();
+			net.minecraft.world.phys.Vec3 next = p.get(i).agent.getPos();
 			if (kaptainwutax.tungsten.path.RouteHazards.segmentLethal(w, prev, next)) return true;
 			prev = next;
 		}
@@ -225,19 +225,19 @@ public class PathExecutor {
 	 * y=30. Look ahead along the velocity, or the pressed heading when barely moving, by at least
 	 * 1.4 blocks (sprint scales it), with the same column rule RouteHazards gives every executor.
 	 */
-	private boolean motionAheadLethal(ClientPlayerEntity player) {
-		var w = player.getEntityWorld();
-		net.minecraft.util.math.Vec3d pos = player.getEntityPos();
-		net.minecraft.util.math.Vec3d v = player.getVelocity();
+	private boolean motionAheadLethal(LocalPlayer player) {
+		var w = player.level();
+		net.minecraft.world.phys.Vec3 pos = player.position();
+		net.minecraft.world.phys.Vec3 v = player.getDeltaMovement();
 		double hx = v.x, hz = v.z;
 		double speed = Math.sqrt(hx * hx + hz * hz);
 		if (speed < 0.03) {
-			double yaw = Math.toRadians(player.getYaw());
-			if (!TungstenMod.mc.options.forwardKey.isPressed()) return false;
+			double yaw = Math.toRadians(player.getYRot(1.0f));
+			if (!TungstenMod.mc.options.keyUp.isDown()) return false;
 			hx = -Math.sin(yaw); hz = Math.cos(yaw); speed = 1;
 		}
 		double look = Math.max(1.4, Math.sqrt(v.x * v.x + v.z * v.z) * 8.0);
-		net.minecraft.util.math.Vec3d ahead = pos.add(hx / speed * look, 0, hz / speed * look);
+		net.minecraft.world.phys.Vec3 ahead = pos.add(hx / speed * look, 0, hz / speed * look);
 		return kaptainwutax.tungsten.path.RouteHazards.segmentLethal(w, pos, ahead);
 	}
 
@@ -256,7 +256,7 @@ public class PathExecutor {
     	this.tick = 0;
     	this.armed = false;
     	if (isClient && path != null && !path.isEmpty() && TungstenMod.mc.player != null) {
-    		double toRoot = TungstenMod.mc.player.getEntityPos()
+    		double toRoot = TungstenMod.mc.player.position()
     				.distanceTo(path.get(0).agent.getPos());
     		// Arming exists for ONE reason: the walker is still travelling toward the root,
     		// so replaying now would compare against a position the bot has not reached yet.
@@ -405,9 +405,9 @@ public class PathExecutor {
     // Server-side tick disabled: requires ServerPlayerEntity.setPlayerInput() (MC 1.21.4+ only)
     // public void tick(ServerPlayerEntity player) { ... }
     
-    public synchronized void tick(ClientPlayerEntity player, GameOptions options) {
+    public synchronized void tick(LocalPlayer player, Options options) {
         if (this.path == null) return;
-    	if(TungstenMod.pauseKeyBinding.isPressed() || stop) {
+    	if(TungstenMod.pauseKeyBinding.isDown() || stop) {
     		// A MINING/BRIDGING segment runs with an EMPTY path (the "At the wall" and
     		// "At the gap" shortcuts): there is no recorded replay, so a drift abort —
     		// which is a statement about the REPLAY diverging from reality — has nothing
@@ -419,7 +419,7 @@ public class PathExecutor {
     		// on it firing. Only the consequence is narrowed, here, where the distinction
     		// between "abandon a replay" and "abandon the work" actually lives.
     		boolean replayInProgress = this.path != null && !this.path.isEmpty();
-    		boolean explicitStop = TungstenMod.pauseKeyBinding.isPressed();
+    		boolean explicitStop = TungstenMod.pauseKeyBinding.isDown();
     		if (!replayInProgress && !explicitStop && (breakQueue != null || placeQueue != null)) {
     			stop = false;                 // consume the flag, keep doing the real work
     			// fall through to the normal tick so tickBreaking/tickPlacing can run
@@ -428,7 +428,7 @@ public class PathExecutor {
     			// Never discard a mining plan silently — that hid the nav_break failure for
     			// a whole session (mining started, then simply ceased to exist).
     			Debug.logMessage("Mining cancelled by stop flag (" + breakQueue.size() + " block(s) left)");
-    			MinecraftClient.getInstance().interactionManager.cancelBlockBreaking();
+    			Minecraft.getInstance().gameMode.stopDestroyBlock();
     			TungstenModRenderContainer.BREAK_PLAN.clear();
     			breakQueue = null; breakingTicks = 0; breakBudgetTarget = null; settleTicks = 0;
     		}
@@ -436,17 +436,17 @@ public class PathExecutor {
     		// A stop mid-mine must release the attack key and the aim immediately —
     		// otherwise the bot keeps swinging and the camera stays locked on the
     		// block until the stale-aim timeout (part of the #29 frozen-camera fix).
-    		options.attackKey.setPressed(false);
+    		options.keyAttack.setDown(false);
     		kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
     		this.tick = this.path.size();
     		// player.input.playerInput = ... // MC 1.21: Input has no playerInput field
-		    options.forwardKey.setPressed(false);
-		    options.backKey.setPressed(false);
-		    options.leftKey.setPressed(false);
-		    options.rightKey.setPressed(false);
-		    options.jumpKey.setPressed(false);
-		    options.sneakKey.setPressed(false);
-		    options.sprintKey.setPressed(false);
+		    options.keyUp.setDown(false);
+		    options.keyDown.setDown(false);
+		    options.keyLeft.setDown(false);
+		    options.keyRight.setDown(false);
+		    options.keyJump.setDown(false);
+		    options.keyShift.setDown(false);
+		    options.keySprint.setDown(false);
 		    this.path = null;
 		    stop = false;
 		    TungstenModRenderContainer.RUNNING_PATH_RENDERER.clear();
@@ -459,7 +459,7 @@ public class PathExecutor {
     	// moment the bot is at the root; give up if it never arrives, so a stale
     	// splice cannot pin the executor forever.
     	if (this.armed) {
-    		double toRoot = player.getEntityPos().distanceTo(this.path.get(0).agent.getPos());
+    		double toRoot = player.position().distanceTo(this.path.get(0).agent.getPos());
     		if (toRoot <= armTolerance()) {
     			this.armed = false;
     			this.startTime = System.currentTimeMillis();
@@ -493,28 +493,28 @@ public class PathExecutor {
     		}
     	}
 
-        if (this.tick == 0 && !this.path.isEmpty() && player.isOnGround()
-                && !player.isTouchingWater() && !player.isClimbing()
+        if (this.tick == 0 && !this.path.isEmpty() && player.onGround()
+                && !player.isInWater() && !player.onClimbable()
                 // Vanilla can keep onGround for one tick after moving beyond a
                 // lip. That flag alone is not permission to cancel a jump:
                 // Baritone MovementParkour.java:244-248 cancels only before it runs.
-                && !player.getEntityWorld().isSpaceEmpty(player,
-                        player.getBoundingBox().offset(0.0, -1.0E-5, 0.0))
+                && !player.level().noCollision(player,
+                        player.getBoundingBox().move(0.0, -1.0E-5, 0.0))
                 && !kaptainwutax.tungsten.task.BowShooter.isActive()
                 && !TungstenModDataContainer.minerOwnsAim()) {
             // Read all player fields on the client thread, before any replay input.
             // Do not merely tighten G91's rest-speed threshold: the body can move
             // while a search runs, and a worker can sample different tick phases.
-            PathInput currentKeys = new PathInput(options.forwardKey.isPressed(),
-                    options.backKey.isPressed(), options.rightKey.isPressed(),
-                    options.leftKey.isPressed(), options.jumpKey.isPressed(),
-                    options.sneakKey.isPressed(), options.sprintKey.isPressed(),
-                    player.getPitch(), player.getYaw());
+            PathInput currentKeys = new PathInput(options.keyUp.isDown(),
+                    options.keyDown.isDown(), options.keyRight.isDown(),
+                    options.keyLeft.isDown(), options.keyJump.isDown(),
+                    options.keyShift.isDown(), options.keySprint.isDown(),
+                    player.getXRot(1.0f), player.getYRot(1.0f));
             long started = System.nanoTime();
-            int missed = ReplayFeasibility.firstMissedLanding(player.getEntityWorld(),
+            int missed = ReplayFeasibility.firstMissedLanding(player.level(),
                     Agent.of(player), this.path, currentKeys,
                     TungstenConfig.get().enableNativeRotation,
-                    options.getMouseSensitivity().getValue());
+                    options.sensitivity().get());
             replayLiveChecks++;
             replayLiveMaxNanos = Math.max(replayLiveMaxNanos, System.nanoTime() - started);
             if (missed >= 0) {
@@ -557,7 +557,7 @@ public class PathExecutor {
     		// times as many paths run out. Count arrival against the path's own last cell
     		// before declaring the segment finished, so the two outcomes stop looking alike.
     		try {
-    			net.minecraft.util.math.Vec3d last = this.path.get(this.path.size() - 1)
+    			net.minecraft.world.phys.Vec3 last = this.path.get(this.path.size() - 1)
     					.agent.getPos();
     			double dx = player.getX() - last.x, dy = player.getY() - last.y,
     					dz = player.getZ() - last.z;
@@ -578,13 +578,13 @@ public class PathExecutor {
                 Debug.logMessage("Time taken to execute: " + minutes + " minutes, " + seconds + " seconds, " + milliseconds + " milliseconds");
             }
     		
-		    options.forwardKey.setPressed(false);
-		    options.backKey.setPressed(false);
-		    options.leftKey.setPressed(false);
-		    options.rightKey.setPressed(false);
-		    options.jumpKey.setPressed(false);
-		    options.sneakKey.setPressed(false);
-		    options.sprintKey.setPressed(false);
+		    options.keyUp.setDown(false);
+		    options.keyDown.setDown(false);
+		    options.keyLeft.setDown(false);
+		    options.keyRight.setDown(false);
+		    options.keyJump.setDown(false);
+		    options.keyShift.setDown(false);
+		    options.keySprint.setDown(false);
 		    this.path = null;
 		    stop = false;
 		    TungstenModRenderContainer.RUNNING_PATH_RENDERER.clear();
@@ -604,23 +604,23 @@ public class PathExecutor {
 		    // -- body to node, node to node -- is checked against the same RouteHazards the planners
 		    // use. Only while on the ground: that is when a cancel can still change where the body
 		    // goes (baritone's safeToCancel), and mid-arc it would only drop the keys.
-		    if (player.isOnGround() && motionAheadLethal(player)) {
+		    if (player.onGround() && motionAheadLethal(player)) {
 		        execMotionLethal++;
 		        kaptainwutax.tungsten.path.RouteHazards.refusedExecutor++;
 		        Debug.logMessage("Path stopped: the body is heading into a lethal column (off the plan) -- replanning");
 		        stop = true;
-		        options.forwardKey.setPressed(false);
-		        options.sprintKey.setPressed(false);
-		        options.jumpKey.setPressed(false);
+		        options.keyUp.setDown(false);
+		        options.keySprint.setDown(false);
+		        options.keyJump.setDown(false);
 		        return;
 		    }
-		    if (player.isOnGround() && replayAheadLethal(player)) {
+		    if (player.onGround() && replayAheadLethal(player)) {
 		        kaptainwutax.tungsten.path.RouteHazards.refusedExecutor++;
 		        Debug.logMessage("Path stopped: the next steps of the replay are lethal (hazard) -- replanning");
 		        stop = true;
-		        options.forwardKey.setPressed(false);
-		        options.sprintKey.setPressed(false);
-		        options.jumpKey.setPressed(false);
+		        options.keyUp.setDown(false);
+		        options.keySprint.setDown(false);
+		        options.keyJump.setDown(false);
 		        return;
 		    }
 		    Node node = this.path.get(this.tick);
@@ -674,7 +674,7 @@ public class PathExecutor {
 			    boolean left = node.input.left, right = node.input.right;
 
 			    if (aiming) {
-			        float[] keys = reframeMovement(node.input, player.getYaw());
+			        float[] keys = reframeMovement(node.input, player.getYRot(1.0f));
 			        fwd = keys[0] > 0.35f;
 			        back = keys[0] < -0.35f;
 			        right = keys[1] > 0.35f;
@@ -682,17 +682,17 @@ public class PathExecutor {
 			    } else if (TungstenConfig.get().enableNativeRotation) {
 			        applyNativeRotation(player, targetYaw, targetPitch);
 			    } else {
-			        player.setYaw(targetYaw);
-			        player.setPitch(targetPitch);
+			        player.setYRot(targetYaw);
+			        player.setXRot(targetPitch);
 			    }
 			    // player.stopGliding() removed in MC 1.21
-	    		options.forwardKey.setPressed(fwd);
-			    options.backKey.setPressed(back);
-			    options.leftKey.setPressed(left);
-			    options.rightKey.setPressed(right);
-			    options.jumpKey.setPressed(node.input.jump);
-			    options.sneakKey.setPressed(node.input.sneak);
-			    options.sprintKey.setPressed(node.input.sprint);
+	    		options.keyUp.setDown(fwd);
+			    options.keyDown.setDown(back);
+			    options.keyLeft.setDown(left);
+			    options.keyRight.setDown(right);
+			    options.keyJump.setDown(node.input.jump);
+			    options.keyShift.setDown(node.input.sneak);
+			    options.keySprint.setDown(node.input.sprint);
 			    // HOW MUCH OF A JOURNEY IS ACTUALLY SPRINTED — never counted until now, and it is
 			    // the quantity every "the bot is too slow" reading has been assuming. The sprint
 			    // comes from the PATH NODE, i.e. from SprintPolicy during move generation; the
@@ -729,10 +729,10 @@ public class PathExecutor {
      * re-mined; after everything is passable it lingers a few ticks to let
      * falling blocks settle before declaring done.
      */
-    private boolean tickBreaking(ClientPlayerEntity player, GameOptions options) {
+    private boolean tickBreaking(LocalPlayer player, Options options) {
         if (breakQueue == null || breakQueue.isEmpty()) return false;
-        MinecraftClient mc = MinecraftClient.getInstance();
-        var world = player.getEntityWorld();
+        Minecraft mc = Minecraft.getInstance();
+        var world = player.level();
 
         // "STILL THERE?" IS NOT A COLLISION-VOLUME QUESTION. This asked getShapeVolume > 0, so
         // every block with an empty collision shape — grass, torches, flowers, snow layers,
@@ -748,8 +748,8 @@ public class PathExecutor {
         // asked for the same dig, and the bench stood on its carpet for ninety seconds, "at the
         // dig" a hundred and twenty times. A cell that still has a collision box has not been
         // dug, whatever can be walked through it.
-        net.minecraft.util.math.BlockPos target = null;
-        for (net.minecraft.util.math.BlockPos pos : breakQueue) {
+        net.minecraft.core.BlockPos target = null;
+        for (net.minecraft.core.BlockPos pos : breakQueue) {
             if (!kaptainwutax.tungsten.path.movements.MovementHelperB.canWalkThrough(
                     world, pos.getX(), pos.getY(), pos.getZ())
                     || !world.getBlockState(pos).getCollisionShape(world, pos).isEmpty()
@@ -766,11 +766,11 @@ public class PathExecutor {
             // MovementPillar / MovementTraverse checking FallingBlock above).
             if ((!TungstenConfig.get().settleOnlyNearFalling || fallingNear(world, breakQueue)) && settleTicks++ < 12) {
                 releaseMovementKeys(options);
-                options.attackKey.setPressed(false);
+                options.keyAttack.setDown(false);
                 return true;
             }
             Debug.logMessage("Mining done — passage open");
-            options.attackKey.setPressed(false);
+            options.keyAttack.setDown(false);
             TungstenModRenderContainer.BREAK_PLAN.clear();
             breakQueue = null; breakingTicks = 0; breakBudgetTarget = null; settleTicks = 0; kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
             resumeGotoAfterMining(player);
@@ -780,11 +780,11 @@ public class PathExecutor {
 
         // Re-check the policy against the LIVE world every tick — zones/hooks
         // can change and the plan may be stale.
-        if (!BreakRules.canBreak(player.getEntityWorld(), target,
-                player.getEntityWorld().getBlockState(target))) {
+        if (!BreakRules.canBreak(player.level(), target,
+                player.level().getBlockState(target))) {
             Debug.logMessage("Mining aborted (denied by break rules)");
-            options.attackKey.setPressed(false);
-            mc.interactionManager.cancelBlockBreaking();
+            options.keyAttack.setDown(false);
+            mc.gameMode.stopDestroyBlock();
             TungstenModRenderContainer.BREAK_PLAN.clear();
             breakQueue = null; breakingTicks = 0; breakBudgetTarget = null; settleTicks = 0; kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
             return false;
@@ -806,7 +806,7 @@ public class PathExecutor {
         if (!target.equals(breakBudgetTarget)) {
             breakBudgetTarget = target;
             breakingTicks = 0;
-            net.minecraft.block.BlockState targetState = world.getBlockState(target);
+            net.minecraft.world.level.block.state.BlockState targetState = world.getBlockState(target);
             double estimate = kaptainwutax.tungsten.path.movements.MovementHelperB
                     .getMiningDurationTicks(world, player, target.getX(), target.getY(),
                                             target.getZ(), targetState, false);
@@ -826,8 +826,8 @@ public class PathExecutor {
             breakBudgetEstimate = estimate;
             breakBudgetSized++;
         }
-        Vec3d eye = player.getEyePos();
-        Vec3d center = Vec3d.ofCenter(target);
+        Vec3 eye = player.getEyePosition();
+        Vec3 center = net.minecraft.world.phys.Vec3.atCenterOf(target);
         // DECIDE WHICH HALF BEFORE THE INCREMENT, NOT AFTER. The guard used to read
         // `breakingTicks++ > 300 || out of reach`, and re-testing breakingTicks inside the block
         // is off by one: at exactly 300 the guard falls through to the reach test, the
@@ -853,11 +853,11 @@ public class PathExecutor {
         if (TungstenConfig.get().executorYieldsAimToMiner
                 && kaptainwutax.tungsten.TungstenModDataContainer.minerOwnsMining()) {
             execDigYieldMiner++;
-            options.attackKey.setPressed(false);
+            options.keyAttack.setDown(false);
             return true;   // still breaking -- just not this tick
         }
         boolean timedOut = breakingTicks++ > breakBudgetTicks;
-        boolean outOfReach = eye.squaredDistanceTo(center) > 4.5 * 4.5;
+        boolean outOfReach = eye.distanceToSqr(center) > 4.5 * 4.5;
         if (timedOut || outOfReach) {
             // SAY WHICH HALF. "timeout or out of reach" is two different failures wearing one
             // message, and telling them apart by eye cost a whole diagnosis pass: one means the
@@ -879,7 +879,7 @@ public class PathExecutor {
                 // Near is a bot that walked and stopped a little short; far is a plan handed over
                 // for a cell the bot never approached. Three sites call startBreaking with no
                 // distance guard at all, while a fourth checks < 4.0 first.
-                double d = Math.sqrt(eye.squaredDistanceTo(center));
+                double d = Math.sqrt(eye.distanceToSqr(center));
                 if (d < 6.0) breakReachNear++;
                 else if (d < 12.0) breakReachMid++;
                 else breakReachFar++;
@@ -889,12 +889,12 @@ public class PathExecutor {
             Debug.logMessage(String.format(
                     "Mining aborted: ticks=%d dist=%.2f target=%s eye=(%.2f,%.2f,%.2f) est=%.0f budget=%d"
                             + " ground=%b held=%s progress=%.2f",
-                    breakingTicks, Math.sqrt(eye.squaredDistanceTo(center)),
+                    breakingTicks, Math.sqrt(eye.distanceToSqr(center)),
                     target.toShortString(), eye.x, eye.y, eye.z, breakBudgetEstimate, breakBudgetTicks,
-                    player.isOnGround(), player.getMainHandStack().getItem().toString(),
-                    mc.interactionManager.getBlockBreakingProgress() / 10.0));
-            options.attackKey.setPressed(false);
-            mc.interactionManager.cancelBlockBreaking();
+                    player.onGround(), player.getMainHandItem().getItem().toString(),
+                    mc.gameMode.getDestroyStage() / 10.0));
+            options.keyAttack.setDown(false);
+            mc.gameMode.stopDestroyBlock();
             TungstenModRenderContainer.BREAK_PLAN.clear();
             breakQueue = null; breakingTicks = 0; breakBudgetTarget = null; settleTicks = 0; kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
             return false;
@@ -902,11 +902,11 @@ public class PathExecutor {
 
         // Visualize the plan: queued blocks orange, the one being mined red.
         TungstenModRenderContainer.BREAK_PLAN.clear();
-        for (net.minecraft.util.math.BlockPos pos : breakQueue) {
+        for (net.minecraft.core.BlockPos pos : breakQueue) {
             boolean current = pos.equals(target);
             TungstenModRenderContainer.BREAK_PLAN.add(new kaptainwutax.tungsten.render.Cuboid(
-                    new Vec3d(pos.getX(), pos.getY(), pos.getZ()).add(current ? -0.02 : 0.05, current ? -0.02 : 0.05, current ? -0.02 : 0.05),
-                    current ? new Vec3d(1.04, 1.04, 1.04) : new Vec3d(0.9, 0.9, 0.9),
+                    new Vec3(pos.getX(), pos.getY(), pos.getZ()).add(current ? -0.02 : 0.05, current ? -0.02 : 0.05, current ? -0.02 : 0.05),
+                    current ? new Vec3(1.04, 1.04, 1.04) : new Vec3(0.9, 0.9, 0.9),
                     current ? new kaptainwutax.tungsten.render.Color(255, 60, 40)
                             : new kaptainwutax.tungsten.render.Color(255, 170, 40)));
         }
@@ -917,7 +917,7 @@ public class PathExecutor {
         if (kaptainwutax.tungsten.TungstenModDataContainer.equipToolHook != null) {
             try {
                 kaptainwutax.tungsten.TungstenModDataContainer.equipToolHook
-                        .accept(target, player.getEntityWorld().getBlockState(target));
+                        .accept(target, player.level().getBlockState(target));
             } catch (Throwable ignored) {}
         }
         // AIM AT A FACE YOU CAN SEE, NOT AT THE CENTRE (G31, 2026-09-11). The centre of a block
@@ -930,15 +930,15 @@ public class PathExecutor {
         // reaches the target is the aim. With none visible the block is genuinely occluded: mine
         // the occluder first when policy allows (it becomes the head of the queue), else give this
         // cell up NOW rather than in fifteen seconds -- the navigator re-plans from a better cell.
-        Vec3d aim = visibleAimPoint(player, world, target, eye, center);
+        Vec3 aim = visibleAimPoint(player, world, target, eye, center);
         if (aim == null) {
-            net.minecraft.util.hit.BlockHitResult blk = world.raycast(new net.minecraft.world.RaycastContext(
-                    eye, center, net.minecraft.world.RaycastContext.ShapeType.OUTLINE,
-                    net.minecraft.world.RaycastContext.FluidHandling.NONE, player));
-            net.minecraft.util.math.BlockPos occ = blk != null
-                    && blk.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK
+            net.minecraft.world.phys.BlockHitResult blk = world.clip(new net.minecraft.world.level.ClipContext(
+                    eye, center, net.minecraft.world.level.ClipContext.Block.OUTLINE,
+                    net.minecraft.world.level.ClipContext.Fluid.NONE, player));
+            net.minecraft.core.BlockPos occ = blk != null
+                    && blk.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK
                     ? blk.getBlockPos() : null;
-            net.minecraft.util.math.BlockPos floor = player.getBlockPos().down();
+            net.minecraft.core.BlockPos floor = player.blockPosition().below();
             if (occ != null && !occ.equals(target) && !occ.equals(floor)
                     && BreakRules.canBreak(world, occ, world.getBlockState(occ))) {
                 if (!occ.equals(breakQueue.get(0))) {
@@ -949,7 +949,7 @@ public class PathExecutor {
                             + occ.toShortString() + " — clearing that first");
                 }
                 target = occ;
-                center = Vec3d.ofCenter(target);
+                center = net.minecraft.world.phys.Vec3.atCenterOf(target);
                 aim = visibleAimPoint(player, world, target, eye, center);
             }
             if (aim == null) {
@@ -957,8 +957,8 @@ public class PathExecutor {
                 Debug.logMessage("Mining aborted: no visible face of " + target.toShortString()
                         + (occ != null ? " (behind " + occ.toShortString() + ")" : "")
                         + " — re-planning from a better cell");
-                options.attackKey.setPressed(false);
-                mc.interactionManager.cancelBlockBreaking();
+                options.keyAttack.setDown(false);
+                mc.gameMode.stopDestroyBlock();
                 TungstenModRenderContainer.BREAK_PLAN.clear();
                 breakQueue = null; breakingTicks = 0; breakBudgetTarget = null; settleTicks = 0;
                 kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
@@ -970,15 +970,15 @@ public class PathExecutor {
         // handleBlockBreaking then drives the mining against crosshairTarget.
         // (Direct updateBlockBreakingProgress does not work: with the key up,
         // vanilla cancels the breaking progress every tick.)
-        Vec3d d = aim.subtract(eye);
+        Vec3 d = aim.subtract(eye);
         float wantYaw = (float) Math.toDegrees(-Math.atan2(d.x, d.z));
         float wantPitch = (float) Math.toDegrees(-Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)));
         // Humanized aim via WindMouse (mouse pipeline) — no setYaw/setPitch that
         // anti-cheats flag. Attack only once the crosshair has actually reached
         // the block (read the real, WindMouse-converged rotation).
         kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.setTarget(wantYaw, wantPitch);
-        float dYaw = net.minecraft.util.math.MathHelper.wrapDegrees(wantYaw - player.getYaw());
-        float dPitch = net.minecraft.util.math.MathHelper.wrapDegrees(wantPitch - player.getPitch());
+        float dYaw = net.minecraft.util.Mth.wrapDegrees(wantYaw - player.getYRot(1.0f));
+        float dPitch = net.minecraft.util.Mth.wrapDegrees(wantPitch - player.getXRot(1.0f));
         // MINE THE BLOCK IN THE PLAN, NOT WHATEVER IS WITHIN 12 DEGREES. The gate was an ANGLE
         // test, and vanilla's handleBlockBreaking then mines whatever the CROSSHAIR is on — so
         // any block nearer along the ray gets dug instead, and BreakRules were checked against
@@ -987,9 +987,9 @@ public class PathExecutor {
         // game's own ray trace. Baritone gates on ctx.isLookingAt(pos) for exactly this reason.
         //
         // The aim above is unchanged; only the trigger is now identity rather than proximity.
-        var look = mc.crosshairTarget;
-        boolean onTarget = look instanceof net.minecraft.util.hit.BlockHitResult bhr
-                && look.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK
+        var look = mc.hitResult;
+        boolean onTarget = look instanceof net.minecraft.world.phys.BlockHitResult bhr
+                && look.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK
                 && bhr.getBlockPos().equals(target);
         // ⛔ DOES THE AIM EVER ARRIVE? The attack key is pressed ONLY on identity with the planned
         // cell, so a crosshair that never lands there mines nothing while breakQueue stays
@@ -1002,8 +1002,8 @@ public class PathExecutor {
         // this line, and a counter belongs where its subject is computed.
         if (onTarget) breakOnTarget++; else {
             breakOffTarget++;
-            if (look instanceof net.minecraft.util.hit.BlockHitResult miss
-                    && look.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK) {
+            if (look instanceof net.minecraft.world.phys.BlockHitResult miss
+                    && look.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
                 breakAimedElsewhere++;
                 // ⛔ SPLIT "AIM STILL TRAVELLING" FROM "AIM ARRIVED AT A WALL". Both look like a
                 // miss and they need opposite fixes. With the residual near zero the crosshair has
@@ -1049,11 +1049,11 @@ public class PathExecutor {
         boolean clearTheWay = false;
         if (!onTarget && TungstenConfig.get().mineTheBlockInTheWay
                 && Math.abs(dYaw) < 2.0f && Math.abs(dPitch) < 2.0f
-                && look instanceof net.minecraft.util.hit.BlockHitResult blocker
-                && look.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK) {
-            net.minecraft.util.math.BlockPos in = blocker.getBlockPos();
-            if (BreakRules.canBreak(player.getEntityWorld(), in,
-                    player.getEntityWorld().getBlockState(in))) {
+                && look instanceof net.minecraft.world.phys.BlockHitResult blocker
+                && look.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+            net.minecraft.core.BlockPos in = blocker.getBlockPos();
+            if (BreakRules.canBreak(player.level(), in,
+                    player.level().getBlockState(in))) {
                 clearTheWay = true;
                 breakClearedOccluder++;
             } else {
@@ -1073,11 +1073,11 @@ public class PathExecutor {
         // failure. Two consecutive pressed ticks and still nothing breaking is not lag.
         boolean pressed = onTarget || clearTheWay;
         if (pressed && prevPressed) {
-            if (mc.interactionManager != null && mc.interactionManager.isBreakingBlock()) mineHits++;
+            if (mc.gameMode != null && mc.gameMode.isDestroying()) mineHits++;
             else mineNoProgress++;
         }
         prevPressed = pressed;
-        options.attackKey.setPressed(pressed);
+        options.keyAttack.setDown(pressed);
         return true;
     }
 
@@ -1099,11 +1099,11 @@ public class PathExecutor {
      * stopped by another block. The centre first (the common case), then the six faces, then the
      * corners -- a sliver of a block seen past an edge is still a valid thing to hit.
      */
-    private static Vec3d visibleAimPoint(ClientPlayerEntity player, net.minecraft.world.World world,
-                                         net.minecraft.util.math.BlockPos target, Vec3d eye, Vec3d center) {
+    private static Vec3 visibleAimPoint(LocalPlayer player, net.minecraft.world.level.Level world,
+                                         net.minecraft.core.BlockPos target, Vec3 eye, Vec3 center) {
         if (rayReaches(player, world, target, eye, center)) return center;
         for (double[] o : AIM_OFFSETS) {
-            Vec3d p = center.add(o[0], o[1], o[2]);
+            Vec3 p = center.add(o[0], o[1], o[2]);
             if (rayReaches(player, world, target, eye, p)) return p;
         }
         return null;
@@ -1111,13 +1111,13 @@ public class PathExecutor {
 
     // Mining selects outlines just like the real crosshair. Collision rays cannot see
     // hanging plants and can incorrectly see through them to a different block.
-    private static boolean rayReaches(ClientPlayerEntity player, net.minecraft.world.World world,
-                                      net.minecraft.util.math.BlockPos target, Vec3d from, Vec3d to) {
+    private static boolean rayReaches(LocalPlayer player, net.minecraft.world.level.Level world,
+                                      net.minecraft.core.BlockPos target, Vec3 from, Vec3 to) {
         try {
-            net.minecraft.util.hit.BlockHitResult hit = world.raycast(new net.minecraft.world.RaycastContext(
-                    from, to, net.minecraft.world.RaycastContext.ShapeType.OUTLINE,
-                    net.minecraft.world.RaycastContext.FluidHandling.NONE, player));
-            return hit != null && hit.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK
+            net.minecraft.world.phys.BlockHitResult hit = world.clip(new net.minecraft.world.level.ClipContext(
+                    from, to, net.minecraft.world.level.ClipContext.Block.OUTLINE,
+                    net.minecraft.world.level.ClipContext.Fluid.NONE, player));
+            return hit != null && hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK
                     && hit.getBlockPos().equals(target);
         } catch (Throwable t) {
             return false;
@@ -1231,9 +1231,9 @@ public class PathExecutor {
      * "Bridge place aborted (TIMEOUT) dist=1.16 ticks=202 target=1217, 59, 368" every 30 s with the
      * bot standing at 1217.7,59.0,368.7 (G28).
      */
-    public static boolean cellHoldsTheBody(net.minecraft.entity.player.PlayerEntity player,
-                                           net.minecraft.util.math.BlockPos cell) {
-        return player.getBoundingBox().intersects(new net.minecraft.util.math.Box(cell));
+    public static boolean cellHoldsTheBody(net.minecraft.world.entity.player.Player player,
+                                           net.minecraft.core.BlockPos cell) {
+        return player.getBoundingBox().intersects(new net.minecraft.world.phys.AABB(cell));
     }
 
     /**
@@ -1243,21 +1243,21 @@ public class PathExecutor {
      * the continuation search sees the bridged world. The caller (altoclef) equips a
      * block; tungsten does not depend on the inventory layer.
      */
-    private boolean tickPlacing(ClientPlayerEntity player, GameOptions options) {
+    private boolean tickPlacing(LocalPlayer player, Options options) {
         if (placeQueue == null || placeQueue.isEmpty()) return false;
         // Counters over py4j: does the bot ever ARRIVE at a bridge point, or does it spend
         // the whole run deferring? The chat cannot answer this — it floods on these courses.
         placeCalled++;
-        MinecraftClient mc = MinecraftClient.getInstance();
-        var world = player.getEntityWorld();
+        Minecraft mc = Minecraft.getInstance();
+        var world = player.level();
 
-        net.minecraft.util.math.BlockPos target = null;
-        for (net.minecraft.util.math.BlockPos pos : placeQueue) {
+        net.minecraft.core.BlockPos target = null;
+        for (net.minecraft.core.BlockPos pos : placeQueue) {
             if (kaptainwutax.tungsten.helpers.BlockShapeChecker.getShapeVolume(pos, world) == 0) { target = pos; break; }
         }
         if (target == null) {                       // all placed — bridge floor is in
-            options.useKey.setPressed(false);
-            options.sneakKey.setPressed(false);
+            options.keyUse.setDown(false);
+            options.keyShift.setDown(false);
             placingNow = false;
             TungstenModRenderContainer.PLACE_PLAN.clear();
             placeQueue = null; placingTicks = 0;
@@ -1269,10 +1269,10 @@ public class PathExecutor {
         if (kaptainwutax.tungsten.TungstenModDataContainer.equipBlockHook != null) {
             try { kaptainwutax.tungsten.TungstenModDataContainer.equipBlockHook.run(); } catch (Throwable ignored) {}
         }
-        if (!kaptainwutax.tungsten.helpers.BlockPlaceHelper.isScaffold(player.getMainHandStack())) {
+        if (!kaptainwutax.tungsten.helpers.BlockPlaceHelper.isScaffold(player.getMainHandItem())) {
             Debug.logMessage("Bridge place aborted (no block in hand)");
-            options.useKey.setPressed(false);
-            options.sneakKey.setPressed(false);
+            options.keyUse.setDown(false);
+            options.keyShift.setDown(false);
             placingNow = false;
             placeQueue = null; placingTicks = 0;
             kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
@@ -1287,8 +1287,8 @@ public class PathExecutor {
             ownCellPlaceAsPillar++;
             Debug.logMessage("Bridge place target is my own cell " + target.toShortString()
                     + " — pillaring instead");
-            options.useKey.setPressed(false);
-            options.sneakKey.setPressed(false);
+            options.keyUse.setDown(false);
+            options.keyShift.setDown(false);
             placingNow = false;
             TungstenModRenderContainer.PLACE_PLAN.clear();
             placeQueue = null; placingTicks = 0;
@@ -1298,12 +1298,12 @@ public class PathExecutor {
             }
             return false;
         }
-        Vec3d eye = player.getEyePos();
-        Vec3d center = Vec3d.ofCenter(target);
+        Vec3 eye = player.getEyePosition();
+        Vec3 center = net.minecraft.world.phys.Vec3.atCenterOf(target);
         // ONE MESSAGE FOR TWO CAUSES TELLS YOU NOTHING. "timeout or out of reach" cannot
         // distinguish "the bot never arrived" from "it arrived and the placement stalled",
         // and those need opposite fixes. Say which, and how far.
-        double placeDist = Math.sqrt(eye.squaredDistanceTo(center));
+        double placeDist = Math.sqrt(eye.distanceToSqr(center));
         // TOO FAR IS "NOT YET", NOT "GIVE UP". The place queue is armed the moment a path is
         // handed over, and the bot is normally still walking TOWARDS the gap — so throwing the
         // plan away on distance destroyed every bridge before it could be built. Measured:
@@ -1322,8 +1322,8 @@ public class PathExecutor {
                     placeDist, placingTicks, target.toShortString()));
             // G67: the plan must not hand this cell back; see PlaceRules.refuseForAWhile
             kaptainwutax.tungsten.path.PlaceRules.refuseForAWhile(target);
-            options.useKey.setPressed(false);
-            options.sneakKey.setPressed(false);
+            options.keyUse.setDown(false);
+            options.keyShift.setDown(false);
             placingNow = false;
             TungstenModRenderContainer.PLACE_PLAN.clear();
             placeQueue = null; placingTicks = 0;
@@ -1332,18 +1332,18 @@ public class PathExecutor {
         }
         if (!kaptainwutax.tungsten.path.PlaceRules.canPlace(world, target)) {
             Debug.logMessage("Bridge place aborted (denied by place rules)");
-            options.useKey.setPressed(false);
-            options.sneakKey.setPressed(false);
+            options.keyUse.setDown(false);
+            options.keyShift.setDown(false);
             placingNow = false;
             placeQueue = null; placingTicks = 0;
             kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
             return false;
         }
         // find a solid neighbour to place against (its face toward the target)
-        net.minecraft.util.math.BlockPos against = null;
-        net.minecraft.util.math.Direction side = null;
-        for (net.minecraft.util.math.Direction dir : net.minecraft.util.math.Direction.values()) {
-            net.minecraft.util.math.BlockPos n = target.offset(dir);
+        net.minecraft.core.BlockPos against = null;
+        net.minecraft.core.Direction side = null;
+        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+            net.minecraft.core.BlockPos n = target.relative(dir);
             // Stricter than "the collision shape is not empty" — RealPlacement.canPlaceAgainst
             // forwards to MovementHelperB's faithful port (protection, world border, blacklist),
             // ported from baritone: the question is whether a side face can actually be clicked.
@@ -1374,12 +1374,12 @@ public class PathExecutor {
                 Debug.logMessage(String.format(
                         "PLACENOSUPPORT want=%s policyRefused=%d shapeRefused=%d feet=%s",
                         target.toShortString(), placeDeniedPolicy, placeDeniedShape,
-                        player.getBlockPos().toShortString()));
+                        player.blockPosition().toShortString()));
             }
             return true;                            // no support yet — wait a tick
         }
 
-        options.attackKey.setPressed(false);
+        options.keyAttack.setDown(false);
         // SNEAK WHILE BRIDGING — PORTED FROM BARITONE, NOT INVENTED. MovementTraverse holds
         // SNEAK the moment it is close to the cell it is paving and only clicks once the
         // player is actually in the sneaking pose; its cost function even prices the manoeuvre
@@ -1389,13 +1389,13 @@ public class PathExecutor {
         // 20.7 blocks short — the void-fall signature. Sneaking is what makes an edge safe in
         // vanilla, so hold it whenever the block we are laying is BELOW our feet and we are
         // standing over it, and do not click until the pose has actually taken effect.
-        boolean bridging = target.getY() < net.minecraft.util.math.MathHelper.floor(player.getY());
+        boolean bridging = target.getY() < net.minecraft.util.Mth.floor(player.getY());
         double edgeDist = Math.max(Math.abs(player.getX() - (target.getX() + 0.5)),
                                    Math.abs(player.getZ() - (target.getZ() + 0.5)));
         boolean sneakToPlace = bridging && edgeDist < 1.6;
-        options.sneakKey.setPressed(sneakToPlace);
-        Vec3d faceCenter = Vec3d.ofCenter(against).add(Vec3d.of(side.getVector()).multiply(0.5));
-        Vec3d d = faceCenter.subtract(eye);
+        options.keyShift.setDown(sneakToPlace);
+        Vec3 faceCenter = net.minecraft.world.phys.Vec3.atCenterOf(against).add(Vec3.atLowerCornerOf(side.getUnitVec3i()).scale(0.5));
+        Vec3 d = faceCenter.subtract(eye);
         float wantYaw = (float) Math.toDegrees(-Math.atan2(d.x, d.z));
         float wantPitch = (float) Math.toDegrees(-Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)));
 
@@ -1418,7 +1418,7 @@ public class PathExecutor {
         // separate movement that finishes first; the placement runs when the bot is already in
         // the cell it places from. So: while the bot is not standing on the block it will click,
         // keep hands off and let the walker deliver it.
-        net.minecraft.util.math.BlockPos feetCell = player.getBlockPos();
+        net.minecraft.core.BlockPos feetCell = player.blockPosition();
         boolean onAgainst = feetCell.getX() == against.getX() && feetCell.getZ() == against.getZ()
                 && feetCell.getY() == against.getY() + 1;
         placingNow = onAgainst;
@@ -1429,19 +1429,19 @@ public class PathExecutor {
                         "PLACEWAIT want=%s against=%s feet=%s pos=(%.2f,%.2f) onGround=%b",
                         target.toShortString(), against.toShortString(),
                         feetCell.toShortString(), player.getX(), player.getZ(),
-                        player.isOnGround()));
+                        player.onGround()));
             }
             return true;                        // still being walked there — do not touch it
         }
 
         if (sneakToPlace) {
-            Vec3d destCentre = Vec3d.ofCenter(target);
+            Vec3 destCentre = net.minecraft.world.phys.Vec3.atCenterOf(target);
             // yaw FROM the cell being paved TOWARDS the head — i.e. facing back up the bridge.
-            Vec3d back = eye.subtract(destCentre);
+            Vec3 back = eye.subtract(destCentre);
             wantYaw = (float) Math.toDegrees(-Math.atan2(back.x, back.z));
             releaseMovementKeys(options);
-            options.backKey.setPressed(true);     // MOVE_BACK: forward in world, facing back
-            options.sneakKey.setPressed(true);
+            options.keyDown.setDown(true);     // MOVE_BACK: forward in world, facing back
+            options.keyShift.setDown(true);
         } else {
             releaseMovementKeys(options);
         }
@@ -1453,24 +1453,24 @@ public class PathExecutor {
         // this still renders the executor's own queue.
         if (!kaptainwutax.tungsten.task.FastNavigator.isActive()) {
         TungstenModRenderContainer.PLACE_PLAN.clear();
-        java.util.List<net.minecraft.util.math.BlockPos> pq = placeQueue;
+        java.util.List<net.minecraft.core.BlockPos> pq = placeQueue;
         if (pq != null) {
-            for (net.minecraft.util.math.BlockPos pos : pq) {
+            for (net.minecraft.core.BlockPos pos : pq) {
                 boolean current = pos.equals(target);
                 TungstenModRenderContainer.PLACE_PLAN.add(new kaptainwutax.tungsten.render.Cuboid(
-                        new Vec3d(pos.getX(), pos.getY(), pos.getZ()).add(current ? -0.02 : 0.1, current ? -0.02 : 0.1, current ? -0.02 : 0.1),
-                        current ? new Vec3d(1.04, 1.04, 1.04) : new Vec3d(0.8, 0.8, 0.8),
+                        new Vec3(pos.getX(), pos.getY(), pos.getZ()).add(current ? -0.02 : 0.1, current ? -0.02 : 0.1, current ? -0.02 : 0.1),
+                        current ? new Vec3(1.04, 1.04, 1.04) : new Vec3(0.8, 0.8, 0.8),
                         current ? new kaptainwutax.tungsten.render.Color(60, 255, 120)
                                 : new kaptainwutax.tungsten.render.Color(60, 200, 110)));
             }
         } else {
             TungstenModRenderContainer.PLACE_PLAN.add(new kaptainwutax.tungsten.render.Cuboid(
-                    new Vec3d(target.getX() + 0.1, target.getY() + 0.1, target.getZ() + 0.1),
-                    new Vec3d(0.8, 0.8, 0.8), new kaptainwutax.tungsten.render.Color(60, 220, 120)));
+                    new Vec3(target.getX() + 0.1, target.getY() + 0.1, target.getZ() + 0.1),
+                    new Vec3(0.8, 0.8, 0.8), new kaptainwutax.tungsten.render.Color(60, 220, 120)));
         }
         }   // end !FastNavigator.isActive() overlay guard
-        float dYaw = net.minecraft.util.math.MathHelper.wrapDegrees(wantYaw - player.getYaw());
-        float dPitch = net.minecraft.util.math.MathHelper.wrapDegrees(wantPitch - player.getPitch());
+        float dYaw = net.minecraft.util.Mth.wrapDegrees(wantYaw - player.getYRot(1.0f));
+        float dPitch = net.minecraft.util.Mth.wrapDegrees(wantPitch - player.getXRot(1.0f));
         // PLACE THROUGH THE GAME'S OWN RAY TRACE. What stood here forged a BlockHitResult
         // out of the face centre and handed it to interactBlock, so the packet claimed the
         // player had clicked a face the player was never looking at — blocks appeared through
@@ -1488,23 +1488,23 @@ public class PathExecutor {
         // ownership while "clicked=0" could have been explained by one line.
         if (realHit == null && kaptainwutax.tungsten.TungstenConfig.get().verboseDebugLogging
                 && (placingTicks % 20 == 0)) {
-            var ct = mc.crosshairTarget;
+            var ct = mc.hitResult;
             String what = "null";
-            if (ct instanceof net.minecraft.util.hit.BlockHitResult b
-                    && ct.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK) {
-                what = b.getBlockPos().toShortString() + " side=" + b.getSide()
-                        + " -> would fill " + b.getBlockPos().offset(b.getSide()).toShortString();
+            if (ct instanceof net.minecraft.world.phys.BlockHitResult b
+                    && ct.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                what = b.getBlockPos().toShortString() + " side=" + b.getDirection()
+                        + " -> would fill " + b.getBlockPos().relative(b.getDirection()).toShortString();
             } else if (ct != null) {
                 what = String.valueOf(ct.getType());
             }
             Debug.logMessage(String.format(
                     "PLACEAIM want=%s against=%s side=%s pos=(%.2f,%.2f) pitch=%.0f/%.0f hit=%s",
                     target.toShortString(), against.toShortString(), side,
-                    player.getX(), player.getZ(), player.getPitch(), wantPitch, what));
+                    player.getX(), player.getZ(), player.getXRot(1.0f), wantPitch, what));
         }
         // ...and at the rate a player can place: this runs once per client tick, so without the
         // shared gate it placed 20 blocks a second, four times what holding the use key does.
-        if (realHit != null && (!sneakToPlace || player.isInSneakingPose())
+        if (realHit != null && (!sneakToPlace || player.isCrouching())
                 && kaptainwutax.tungsten.helpers.BlockPlaceHelper.tryPlace(realHit)) {
             placeClicked++;
         }
@@ -1516,7 +1516,7 @@ public class PathExecutor {
      * restart the search immediately instead of waiting on the retry chain
      * (which sleeps and polls; the visible "task died after mining" gap).
      */
-    private void resumeGotoAfterMining(ClientPlayerEntity player) {
+    private void resumeGotoAfterMining(LocalPlayer player) {
         // A break run FastNavigator owns is resumed by FastNavigator (it re-plans from the cell
         // the dig left the body in). Starting a physics search here would put a second driver
         // under its walker -- the two-owners seam this file has paid for before.
@@ -1524,7 +1524,7 @@ public class PathExecutor {
             navResumeSkipped++;
             return;
         }
-        Vec3d goal = TungstenMod.TARGET;
+        Vec3 goal = TungstenMod.TARGET;
         // ⛔ RESUME WHAT THE SEARCH WAS ACTUALLY GIVEN. TungstenMod.TARGET is written only by
         // hand-driven entries (;goto, the keybinding, follow-entity, py4j), so every altoclef-driven
         // path leaves it stale and the gate below returns on its first line -- which is why 135
@@ -1533,9 +1533,9 @@ public class PathExecutor {
         if (kaptainwutax.tungsten.TungstenConfig.get().resumeUsesSearchTarget
                 && kaptainwutax.tungsten.path.PathFinder.lastSearchTarget != null
                 && !TungstenMod.hasRealGotoTarget()) {
-            final Vec3d searchGoal = kaptainwutax.tungsten.path.PathFinder.lastSearchTarget;
+            final Vec3 searchGoal = kaptainwutax.tungsten.path.PathFinder.lastSearchTarget;
             gotoResumedFromSearch++;
-            if (searchGoal != null && player.getEntityPos().distanceTo(searchGoal) >= 2.0) {
+            if (searchGoal != null && player.position().distanceTo(searchGoal) >= 2.0) {
                 // A RESUME MUST NOT KILL A SEARCH THAT IS ALREADY SOLVING THIS GOAL.
                 // The dance below is stop -> wait up to five seconds for the thread to die -> search
                 // again from scratch, so every resume discards all progress. When resumes arrive faster
@@ -1547,7 +1547,7 @@ public class PathExecutor {
                 if (kaptainwutax.tungsten.TungstenConfig.get().resumeLetsTheSameSearchFinish
                         && TungstenModDataContainer.PATHFINDER.active.get()
                         && kaptainwutax.tungsten.path.PathFinder.lastSearchTarget != null
-                        && kaptainwutax.tungsten.path.PathFinder.lastSearchTarget.squaredDistanceTo(searchGoal) < 4.0) {
+                        && kaptainwutax.tungsten.path.PathFinder.lastSearchTarget.distanceToSqr(searchGoal) < 4.0) {
                     kaptainwutax.tungsten.path.PathFinder.resumeLetItFinish++;
                     return;
                 }
@@ -1560,7 +1560,7 @@ public class PathExecutor {
                         }
                         TungstenModDataContainer.PATHFINDER.stop.set(false);
                         TungstenModDataContainer.PATHFINDER.find(
-                                player.getEntityWorld(),
+                                player.level(),
                                 searchGoal, player);
                     } catch (Throwable ignored) {}
                 }, "tungsten-mine-resume").start();
@@ -1591,7 +1591,7 @@ public class PathExecutor {
                 && !TungstenMod.hasRealGotoTarget()) {
             return;
         }
-        if (goal == null || player.getEntityPos().distanceTo(goal) < 2.0) return;
+        if (goal == null || player.position().distanceTo(goal) < 2.0) return;
         // THE NAVIGATOR DOES NOT NEED THE PHYSICS THREAD DEAD. Waiting for it costs up to
         // FIVE SECONDS per resume, and a bridge is a loop: place, resume, walk, place. That
         // wait is why a sixty-second run managed one or two blocks — most of it was spent
@@ -1615,7 +1615,7 @@ public class PathExecutor {
         if (kaptainwutax.tungsten.TungstenConfig.get().resumeLetsTheSameSearchFinish
                 && TungstenModDataContainer.PATHFINDER.active.get()
                 && kaptainwutax.tungsten.path.PathFinder.lastSearchTarget != null
-                && kaptainwutax.tungsten.path.PathFinder.lastSearchTarget.squaredDistanceTo(goal) < 4.0) {
+                && kaptainwutax.tungsten.path.PathFinder.lastSearchTarget.distanceToSqr(goal) < 4.0) {
             kaptainwutax.tungsten.path.PathFinder.resumeLetItFinish++;
             return;
         }
@@ -1633,19 +1633,19 @@ public class PathExecutor {
                 // so a bridge that needs many blocks got one or two placements in a whole run:
                 // place, hand the whole route to physics, wait 20 s, repeat. When the
                 // navigator is driving, hand it back to the navigator instead.
-                TungstenModDataContainer.PATHFINDER.find(player.getEntityWorld(), goal, player);
+                TungstenModDataContainer.PATHFINDER.find(player.level(), goal, player);
             } catch (Throwable ignored) {}
         }, "tungsten-build-resume").start();
     }
 
-    private static void releaseMovementKeys(GameOptions options) {
-        options.forwardKey.setPressed(false);
-        options.backKey.setPressed(false);
-        options.leftKey.setPressed(false);
-        options.rightKey.setPressed(false);
-        options.jumpKey.setPressed(false);
-        options.sneakKey.setPressed(false);
-        options.sprintKey.setPressed(false);
+    private static void releaseMovementKeys(Options options) {
+        options.keyUp.setDown(false);
+        options.keyDown.setDown(false);
+        options.keyLeft.setDown(false);
+        options.keyRight.setDown(false);
+        options.keyJump.setDown(false);
+        options.keyShift.setDown(false);
+        options.keySprint.setDown(false);
     }
 
     /**
@@ -1691,18 +1691,18 @@ public class PathExecutor {
         return new float[]{(float) fwd, (float) str};
     }
 
-    private static void applyNativeRotation(ClientPlayerEntity player, float targetYaw, float targetPitch) {
-        double deltaYaw = targetYaw - player.getYaw();
-        double deltaPitch = targetPitch - player.getPitch();
+    private static void applyNativeRotation(LocalPlayer player, float targetYaw, float targetPitch) {
+        double deltaYaw = targetYaw - player.getYRot(1.0f);
+        double deltaPitch = targetPitch - player.getXRot(1.0f);
 
-        double sens = MinecraftClient.getInstance().options.getMouseSensitivity().getValue();
+        double sens = Minecraft.getInstance().options.sensitivity().get();
         double sensScale = ReplayFeasibility.nativeScale(sens);
         double degreesPerPixel = sensScale * 0.15;
 
         long pixelsX = Math.round(deltaYaw / degreesPerPixel);
         long pixelsY = Math.round(deltaPitch / degreesPerPixel);
 
-        player.changeLookDirection(pixelsX * sensScale, pixelsY * sensScale);
+        player.turn(pixelsX * sensScale, pixelsY * sensScale);
     }
 
     /**
@@ -1730,26 +1730,26 @@ public class PathExecutor {
 
         if (targetIdx <= this.tick) return currentNode.input.pitch;
 
-        Vec3d from = currentNode.agent.getPos().add(0, currentNode.agent.standingEyeHeight, 0);
-        Vec3d to = this.path.get(targetIdx).agent.getPos();
+        Vec3 from = currentNode.agent.getPos().add(0, currentNode.agent.standingEyeHeight, 0);
+        Vec3 to = this.path.get(targetIdx).agent.getPos();
 
         float pitch = (float) DirectionHelper.calcPitchFromVec3d(from, to);
-        return net.minecraft.util.math.MathHelper.clamp(pitch, -90.0F, 90.0F);
+        return net.minecraft.util.Mth.clamp(pitch, -90.0F, 90.0F);
     }
 
-    public static TungstenPlayerInput optionsToPlayerInput(GameOptions options) {
-    	return new TungstenPlayerInput(options.forwardKey.isPressed(), options.backKey.isPressed(), options.leftKey.isPressed(), options.rightKey.isPressed(), options.jumpKey.isPressed(), options.sneakKey.isPressed(), options.sprintKey.isPressed());
+    public static TungstenPlayerInput optionsToPlayerInput(Options options) {
+    	return new TungstenPlayerInput(options.keyUp.isDown(), options.keyDown.isDown(), options.keyLeft.isDown(), options.keyRight.isDown(), options.keyJump.isDown(), options.keyShift.isDown(), options.keySprint.isDown());
     }
 
 
     /** A falling block above any dug cell, or a falling-block entity near one: worth a settle. */
-    private static boolean fallingNear(net.minecraft.world.World world,
-                                       java.util.List<net.minecraft.util.math.BlockPos> cells) {
+    private static boolean fallingNear(net.minecraft.world.level.Level world,
+                                       java.util.List<net.minecraft.core.BlockPos> cells) {
         if (cells == null) return false;
-        for (net.minecraft.util.math.BlockPos c : cells) {
-            if (world.getBlockState(c.up()).getBlock() instanceof net.minecraft.block.FallingBlock) return true;
-            if (!world.getEntitiesByClass(net.minecraft.entity.FallingBlockEntity.class,
-                    new net.minecraft.util.math.Box(c).expand(1.5), e -> true).isEmpty()) return true;
+        for (net.minecraft.core.BlockPos c : cells) {
+            if (world.getBlockState(c.above()).getBlock() instanceof net.minecraft.world.level.block.FallingBlock) return true;
+            if (!world.getEntitiesOfClass(net.minecraft.world.entity.item.FallingBlockEntity.class,
+                    new net.minecraft.world.phys.AABB(c).inflate(1.5), e -> true).isEmpty()) return true;
         }
         return false;
     }

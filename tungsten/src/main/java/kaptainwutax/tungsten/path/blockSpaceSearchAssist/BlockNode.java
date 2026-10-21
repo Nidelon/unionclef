@@ -27,32 +27,32 @@ import kaptainwutax.tungsten.path.calculators.ActionCosts;
 import kaptainwutax.tungsten.render.Color;
 import kaptainwutax.tungsten.render.Cuboid;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.block.AirBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.CarpetBlock;
-import net.minecraft.block.CropBlock;
-import net.minecraft.block.DaylightDetectorBlock;
-import net.minecraft.block.LadderBlock;
-import net.minecraft.block.LanternBlock;
-import net.minecraft.block.LilyPadBlock;
-import net.minecraft.block.SeaPickleBlock;
-import net.minecraft.block.SlabBlock;
-import net.minecraft.block.SlimeBlock;
-import net.minecraft.block.SnowBlock;
-import net.minecraft.block.StairsBlock;
-import net.minecraft.block.VineBlock;
-import net.minecraft.block.enums.SlabType;
-import net.minecraft.entity.ai.pathing.PathNode;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.state.property.Properties;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Direction.Axis;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.AirBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CarpetBlock;
+import net.minecraft.world.level.block.CropBlock;
+import net.minecraft.world.level.block.DaylightDetectorBlock;
+import net.minecraft.world.level.block.LadderBlock;
+import net.minecraft.world.level.block.LanternBlock;
+import net.minecraft.world.level.block.LilyPadBlock;
+import net.minecraft.world.level.block.SeaPickleBlock;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.SlimeBlock;
+import net.minecraft.world.level.block.SnowLayerBlock;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.VineBlock;
+import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.world.level.pathfinder.Node;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Direction.Axis;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.level.LevelReader;
 
 public class BlockNode {
 	/** Three-block drops the block-space guard now allows. Proof this fired. */
@@ -66,7 +66,7 @@ public class BlockNode {
 
 	public static volatile int blockFallPriced = 0;
 	
-	private PlayerEntity player;
+	private Player player;
 
 	/**
 	 * The position of this node
@@ -76,8 +76,8 @@ public class BlockNode {
 	public final int z;
 	
 
-	public Vec3d chachedPos = null;
-	public Vec3d chachedWithOffsetPos = null;
+	public Vec3 chachedPos = null;
+	public Vec3 chachedWithOffsetPos = null;
 	public BlockState chachedBlockState = null;
 	public BlockPos chachedBlockPos = null;
 	
@@ -147,7 +147,7 @@ public class BlockNode {
 	 */
 	public int heapPosition;
 
-	public BlockNode(BlockPos pos, Goal goal, PlayerEntity player, WorldView world) {
+	public BlockNode(BlockPos pos, Goal goal, Player player, LevelReader world) {
 		this.player = player;
 		this.previous = null;
 		this.cost = ActionCosts.COST_INF;
@@ -160,11 +160,11 @@ public class BlockNode {
 		this.x = pos.getX();
 		this.y = pos.getY();
 		this.z = pos.getZ();
-		this.wasOnSlime = world.getBlockState(pos.down()).getBlock() instanceof SlimeBlock;
+		this.wasOnSlime = world.getBlockState(pos.below()).getBlock() instanceof SlimeBlock;
 		this.wasOnLadder = world.getBlockState(pos).getBlock() instanceof LadderBlock;
 	}
 
-	public BlockNode(int x, int y, int z, Goal goal, PlayerEntity player) {
+	public BlockNode(int x, int y, int z, Goal goal, Player player) {
 		this.player = player;
 		this.previous = null;
 		this.cost = ActionCosts.COST_INF;
@@ -177,17 +177,17 @@ public class BlockNode {
 		this.x = x;
 		this.y = y;
 		this.z = z;
-		this.wasOnSlime = player.getEntityWorld().getBlockState(new BlockPos(x, y - 1, z))
+		this.wasOnSlime = player.level().getBlockState(new BlockPos(x, y - 1, z))
 				.getBlock() instanceof SlimeBlock;
-		this.wasOnLadder = player.getEntityWorld().getBlockState(new BlockPos(x, y, z)).getBlock() instanceof LadderBlock;
+		this.wasOnLadder = player.level().getBlockState(new BlockPos(x, y, z)).getBlock() instanceof LadderBlock;
 	}
 
-	public BlockNode(int x, int y, int z, Goal goal, BlockNode parent, double cost, PlayerEntity player) {
+	public BlockNode(int x, int y, int z, Goal goal, BlockNode parent, double cost, Player player) {
 		this.player = player;
 		this.previous = parent;
-		this.wasOnSlime = player.getEntityWorld().getBlockState(new BlockPos(x, y - 1, z))
+		this.wasOnSlime = player.level().getBlockState(new BlockPos(x, y - 1, z))
 				.getBlock() instanceof SlimeBlock;
-		this.wasOnLadder = player.getEntityWorld().getBlockState(new BlockPos(x, y, z)).getBlock() instanceof LadderBlock;
+		this.wasOnLadder = player.level().getBlockState(new BlockPos(x, y, z)).getBlock() instanceof LadderBlock;
 		// g is "infinity until relaxed" for EVERY node, the start included — upstream sets the
 		// start's to 0 by hand and nothing else (AStarPathFinder.java:55). This read
 		// `parent != null ? 0 : COST_INF`, i.e. every child was born already free, which the
@@ -213,27 +213,27 @@ public class BlockNode {
 	 * TODO: Possibly reimplement hashCode and equals. They are necessary for this
 	 * class to function but they could be done better
 	 *
-	 * @return The hash code value for this {@link PathNode}
+	 * @return The hash code value for this {@link Node}
 	 */
 	@Override
 	public int hashCode() {
 		return (int) BetterBlockPos.longHash(x, y, z);
 	}
 
-	public Vec3d getPos() {
+	public Vec3 getPos() {
 		return getPos(false, TungstenModDataContainer.world);
 	}
 	
 
-	public Vec3d getPos(boolean shift) {
+	public Vec3 getPos(boolean shift) {
 		return getPos(shift, TungstenModDataContainer.world);
 	}
 	
-	public Vec3d getPos(WorldView world) {
+	public Vec3 getPos(LevelReader world) {
 		return getPos(false, world);
 	}
 
-	public Vec3d getPos(boolean shift, WorldView world) {
+	public Vec3 getPos(boolean shift, LevelReader world) {
 		if (!shift && chachedPos != null) return chachedPos;
 		if (shift) {
 			if (isDoingNeo && !(this.getBlockState(world).getBlock() instanceof LadderBlock)) {
@@ -246,9 +246,9 @@ public class BlockNode {
 				chachedWithOffsetPos = BlockPosShifter.shiftForStraightNeo(this, neoSide);
 				return chachedWithOffsetPos;
 			}
-			if (BlockShapeChecker.getBlockHeight(this.getBlockPos().down(), world) > 1) {
+			if (BlockShapeChecker.getBlockHeight(this.getBlockPos().below(), world) > 1) {
 				chachedWithOffsetPos = BlockPosShifter.getPosOnLadder(this, world);
-				chachedWithOffsetPos = chachedWithOffsetPos.add(0, BlockShapeChecker.getBlockHeight(this.getBlockPos().down(), world)-1, 0);
+				chachedWithOffsetPos = chachedWithOffsetPos.add(0, BlockShapeChecker.getBlockHeight(this.getBlockPos().below(), world)-1, 0);
 				if (isDoingNeo) chachedWithOffsetPos = BlockPosShifter.shiftForStraightNeo(this, neoSide);
 				return chachedWithOffsetPos;
 			}
@@ -263,11 +263,11 @@ public class BlockNode {
 			if (isDoingNeo) chachedWithOffsetPos = BlockPosShifter.shiftForStraightNeo(this, neoSide);
 			return chachedWithOffsetPos;
 		}
-		chachedPos = new Vec3d(x, y, z);
+		chachedPos = new Vec3(x, y, z);
 		return chachedPos;
 	}
 
-	public boolean isDoingLongJump(WorldView world) {
+	public boolean isDoingLongJump(LevelReader world) {
 		if (isDoingLongJump != null) return isDoingLongJump;
 		if (this.previous != null) {
 			double distance = DistanceCalculator.getHorizontalEuclideanDistance(this.previous.getPos(world), this.getPos(world));
@@ -292,7 +292,7 @@ public class BlockNode {
 		return this.isDoingCornerJump;
 	}
 
-	public BlockState getBlockState(WorldView world) {
+	public BlockState getBlockState(LevelReader world) {
 		if (chachedBlockState != null) return chachedBlockState;
 		chachedBlockState = world.getBlockState(getBlockPos());
 		return chachedBlockState;
@@ -328,7 +328,7 @@ public class BlockNode {
 	 *  digit, twice -- which is what a code path that never runs looks like. Prove it runs. */
 	public static volatile int smSelected, smMoves;
 
-	public List<BlockNode> getChildren(WorldView world, Goal goal, boolean generateDeep) {
+	public List<BlockNode> getChildren(LevelReader world, Goal goal, boolean generateDeep) {
 
 		// EXPERIMENTAL (#1.6.1): tungsten-native smart move generation — a handful of
 		// pre-validated Traverse/Ascend/Descend/Parkour neighbours instead of the blind
@@ -396,11 +396,11 @@ public class BlockNode {
 
 	}
 
-	public static boolean wasCleared(WorldView world, BlockPos start, BlockPos end) {
+	public static boolean wasCleared(LevelReader world, BlockPos start, BlockPos end) {
 		return wasCleared(world, start, end, null, null);
 	}
 
-	public static boolean wasCleared(WorldView world, BlockPos start, BlockPos end, BlockNode startNode,
+	public static boolean wasCleared(LevelReader world, BlockPos start, BlockPos end, BlockNode startNode,
 			BlockNode endNode) {
 
 		boolean shouldRender = false;
@@ -420,7 +420,7 @@ public class BlockNode {
 		if (endNode == null) return false;
 		
 		// When running bot in normal environment instead of parkour you need to turn on Neo and Corner jump checks to avoid cases where it can get stuck
-		boolean shouldCheckNeo = !start.isWithinDistance(end, 1.2) && start.isWithinDistance(end, 4.2) && true;
+		boolean shouldCheckNeo = !start.closerThan(end, 1.2) && start.closerThan(end, 4.2) && true;
 		if (shouldCheckNeo) {
 			Direction neoDirection = NeoMovementHelper.getNeoDirection(world, start, end, shouldRender, shouldSlow);
 			if (neoDirection != null) {
@@ -498,20 +498,20 @@ public class BlockNode {
 	    return new ArrayList<>(nodes);
 	}
 
-	private boolean shouldRemoveNode(WorldView world, BlockNode child) {
+	private boolean shouldRemoveNode(LevelReader world, BlockNode child) {
 		if (TungstenModDataContainer.PATHFINDER.stop.get())
 			return true;
 
 		BlockState currentBlockState = world.getBlockState(getBlockPos());
-		BlockState currentBlockBelowState = world.getBlockState(getBlockPos().down());
-		BlockState childAboveState = world.getBlockState(child.getBlockPos().up());
+		BlockState currentBlockBelowState = world.getBlockState(getBlockPos().below());
+		BlockState childAboveState = world.getBlockState(child.getBlockPos().above());
 		BlockState childState = world.getBlockState(child.getBlockPos());
-		BlockState childBelowState = world.getBlockState(child.getBlockPos().down());
+		BlockState childBelowState = world.getBlockState(child.getBlockPos().below());
 		Block currentBlock = currentBlockState.getBlock();
 		Block childBlock = childState.getBlock();
 		Block childBelowBlock = childBelowState.getBlock();
-		boolean isAboveChildSolid = BlockShapeChecker.getShapeVolume(child.getBlockPos().up(), world) > 0;
-		boolean isAboveChildSolid2 = BlockShapeChecker.getShapeVolume(child.getBlockPos().up(2), world) > 0;
+		boolean isAboveChildSolid = BlockShapeChecker.getShapeVolume(child.getBlockPos().above(), world) > 0;
+		boolean isAboveChildSolid2 = BlockShapeChecker.getShapeVolume(child.getBlockPos().above(2), world) > 0;
 		
 
 
@@ -533,7 +533,7 @@ public class BlockNode {
 		}
 
 		// Specific block checks
-		if (childState.isOf(Blocks.LAVA))
+		if (childState.is(Blocks.LAVA))
 			return true;
 		if (childBelowBlock instanceof LilyPadBlock)
 			return true;
@@ -541,7 +541,7 @@ public class BlockNode {
 			return true;
 		if (childBelowBlock instanceof DaylightDetectorBlock)
 			return true;
-		if (childBlock instanceof StairsBlock)
+		if (childBlock instanceof StairBlock)
 			return true;
 		if (childBelowBlock instanceof SeaPickleBlock)
 			return true;
@@ -626,11 +626,11 @@ public class BlockNode {
 			}
 		}
 
-		if (BlockStateChecker.isDoubleSlab(world, getBlockPos()) || childBelowBlock instanceof SnowBlock)
+		if (BlockStateChecker.isDoubleSlab(world, getBlockPos()) || childBelowBlock instanceof SnowLayerBlock)
 			return true;
 
 //        if (BlockStateChecker.isConnected(child.getBlockPos())) {
-//    		TungstenMod.TEST.add(new Cuboid(new Vec3d(child.getBlockPos().getX(), child.getBlockPos().getY(), child.getBlockPos().getZ()), new Vec3d(1.0D, 1.0D, 1.0D), Color.WHITE));
+//    		TungstenMod.TEST.add(new Cuboid(new Vec3(child.getBlockPos().getX(), child.getBlockPos().getY(), child.getBlockPos().getZ()), new Vec3(1.0D, 1.0D, 1.0D), Color.WHITE));
 //    		try {
 //    			Thread.sleep(250);
 //    		} catch (InterruptedException ignored) {}
@@ -697,14 +697,14 @@ public class BlockNode {
 //				return true;
 //        if (isBottomSlab(childState) && !hasBiggerCollisionShapeThanAbove(world, child.getBlockPos())) return true;
 
-		boolean canStandOn = BlockShapeChecker.hasBiggerCollisionShapeThanAbove(world, child.getBlockPos().down());
+		boolean canStandOn = BlockShapeChecker.hasBiggerCollisionShapeThanAbove(world, child.getBlockPos().below());
 
 		// Collision shape and block exceptions
 		if (!BlockStateChecker.isBottomSlab(childState))
 		if (!canStandOn && (!(childBlock instanceof DaylightDetectorBlock) && !(childBlock instanceof CarpetBlock)
 				&& !(childBelowBlock instanceof SlabBlock) && !(childBelowBlock instanceof LanternBlock)
 				&& !(childBelowBlock == Blocks.SNOW))
-//                || (childBelowBlock instanceof StairsBlock)
+//                || (childBelowBlock instanceof StairBlock)
 //                && !(childBelowBlock instanceof LanternBlock)
 //                && !(childBelowBlock == Blocks.SNOW)
 //                && getShapeVolume(childState.getCollisionShape(world, child.getBlockPos())) >= 1
@@ -742,15 +742,15 @@ public class BlockNode {
 	 * what must be mined (top-down). Cost grows with vanilla mining ticks so
 	 * cheap detours still win over slow mining.
 	 */
-	private boolean tryPlanBreakThrough(WorldView world, BlockNode child) {
+	private boolean tryPlanBreakThrough(LevelReader world, BlockNode child) {
 		if (!TungstenConfig.get().allowBreak) return false;
 		int dx = child.x - this.x, dy = child.y - this.y, dz = child.z - this.z;
 		if (dy != 0 || Math.abs(dx) + Math.abs(dz) != 1) return false;
 		// needs solid footing on the other side of the wall
-		if (BlockShapeChecker.getShapeVolume(child.getBlockPos().down(), world) == 0) return false;
+		if (BlockShapeChecker.getShapeVolume(child.getBlockPos().below(), world) == 0) return false;
 
 		BlockPos feet = child.getBlockPos();
-		BlockPos head = feet.up();
+		BlockPos head = feet.above();
 		double ticks = 0;
 		java.util.List<BlockPos> plan = new java.util.ArrayList<>();
 		for (BlockPos pos : new BlockPos[]{head, feet}) { // top first — break order matters
@@ -764,14 +764,14 @@ public class BlockNode {
 
 		// gravity blocks above the passage will fall into it — pay their cost
 		// up front (the executor re-mines whatever lands in the passage cells)
-		BlockPos above = head.up();
+		BlockPos above = head.above();
 		for (int i = 0; i < 5; i++) {
 			BlockState state = world.getBlockState(above);
-			if (!(state.getBlock() instanceof net.minecraft.block.FallingBlock)) break;
+			if (!(state.getBlock() instanceof net.minecraft.world.level.block.FallingBlock)) break;
 			double t = breakTicks(world, above, state);
 			if (t < 0) return false;
 			ticks += t;
-			above = above.up();
+			above = above.above();
 		}
 
 		child.toBreak = plan;
@@ -797,7 +797,7 @@ public class BlockNode {
 	 * block == no place-move == no behaviour change). High cost so the search prefers
 	 * walking/parkour and only bridges when there is no cheaper route.
 	 */
-	private boolean tryPlanPlaceThrough(WorldView world, BlockNode child) {
+	private boolean tryPlanPlaceThrough(LevelReader world, BlockNode child) {
 		if (!TungstenConfig.get().planPlaceMoves || !TungstenConfig.get().allowPlace) return false;
 		// Only bridge TOWARD the goal. On open void every direction is a gap, so bridging
 		// everywhere explodes the search into node exhaustion — a place-move must make real
@@ -806,16 +806,16 @@ public class BlockNode {
 		int dx = child.x - this.x, dy = child.y - this.y, dz = child.z - this.z;
 		if (dy != 0 || Math.abs(dx) + Math.abs(dz) != 1) return false;   // adjacent same-Y (bridge)
 		BlockPos feet = child.getBlockPos();
-		BlockPos support = feet.down();
+		BlockPos support = feet.below();
 		if (BlockShapeChecker.getShapeVolume(feet, world) != 0) return false;        // cell blocked
-		if (BlockShapeChecker.getShapeVolume(feet.up(), world) != 0) return false;   // head blocked
+		if (BlockShapeChecker.getShapeVolume(feet.above(), world) != 0) return false;   // head blocked
 		if (BlockShapeChecker.getShapeVolume(support, world) != 0) return false;     // already floored -> normal move
 		// Must have a floor to place FROM (godbridge places against its side face). CHAINING:
 		// if THIS cell is itself a planned bridge cell, its floor (this.toPlace) will be paved,
 		// so the bot can stand on it and place the next — this lets ONE search plan a whole
 		// multi-cell bridge (without it the search explores endless 1-cell bridges and exhausts
 		// its node budget into a CPU spin on wide/open gaps).
-		BlockPos myFloor = this.getBlockPos().down();
+		BlockPos myFloor = this.getBlockPos().below();
 		boolean floorSolid = BlockShapeChecker.getShapeVolume(myFloor, world) != 0;
 		boolean floorPlanned = this.toPlace != null && this.toPlace.contains(myFloor);
 		if (!floorSolid && !floorPlanned) return false;
@@ -845,9 +845,9 @@ public class BlockNode {
 	/** Vanilla mining duration in ticks, or -1 if breaking is not allowed
 	 *  (BreakRules: unbreakable, fluids, block entities, deny lists/zones,
 	 *  altoclef protection hook). */
-	private double breakTicks(WorldView world, BlockPos pos, BlockState state) {
+	private double breakTicks(LevelReader world, BlockPos pos, BlockState state) {
 		if (!kaptainwutax.tungsten.path.BreakRules.canBreak(world, pos, state)) return -1;
-		float delta = state.calcBlockBreakingDelta(this.player, world, pos);
+		float delta = state.getDestroyProgress(this.player, world, pos);
 		if (delta <= 0) return -1;
 		if (delta >= 1) return 1;
 		return Math.ceil(1f / delta);
@@ -858,7 +858,7 @@ public class BlockNode {
 	 * where the anvil collision would block the player. Nodes directly above
 	 * the anvil (standing on top) are allowed.
 	 */
-	private static boolean adjacentToAnvil(WorldView world, BlockNode child) {
+	private static boolean adjacentToAnvil(LevelReader world, BlockNode child) {
 		int cx = child.x, cy = child.y, cz = child.z;
 		// Check anvil at player body levels: cy (feet) and cy-1 (anvil below extends up)
 		for (int dy = -1; dy <= 0; dy++) {
@@ -912,16 +912,16 @@ public class BlockNode {
 		return to - from;
 	}
 
-	private boolean isJumpImpossible(WorldView world, BlockNode child) {
+	private boolean isJumpImpossible(LevelReader world, BlockNode child) {
 		double heightDiff = getJumpHeight(this.getPos(true).y, child.getPos(true).y); // positive is going up and negative is going down
 		double distance = DistanceCalculator.getHorizontalEuclideanDistance(getPos(true, world), child.getPos(true, world));
 		
 		BlockState childBlockState = world.getBlockState(child.getBlockPos());
 		Block childBlock = childBlockState.getBlock();
-		BlockState belowChildBlockState = world.getBlockState(child.getBlockPos().down());
-		BlockState currentBlockState = world.getBlockState(getBlockPos().down());
+		BlockState belowChildBlockState = world.getBlockState(child.getBlockPos().below());
+		BlockState currentBlockState = world.getBlockState(getBlockPos().below());
 		Block belowChildBlock = belowChildBlockState.getBlock();
-        double closestBlockBelowHeight = BlockShapeChecker.getBlockHeight(child.getBlockPos().down(), world);
+        double closestBlockBelowHeight = BlockShapeChecker.getBlockHeight(child.getBlockPos().below(), world);
 		boolean isBlockBelowTall = closestBlockBelowHeight > 1.3;
 		// On slime the bounce reaches higher than a jump.
 		double slimeFall = getFallOntoSlimeHeight(this);
@@ -931,12 +931,12 @@ public class BlockNode {
 		if (slimeFall > 0 && heightDiff > 1.4 && distance > 4.0) return true;
 
 
-//    	if (world.getBlockState(child.getBlockPos().down()).getBlock() instanceof TrapdoorBlock) {
-//			System.out.println(!world.getBlockState(child.getBlockPos().down()).get(Properties.OPEN));
+//    	if (world.getBlockState(child.getBlockPos().below()).getBlock() instanceof TrapdoorBlock) {
+//			System.out.println(!world.getBlockState(child.getBlockPos().below()).get(BlockStateProperties.OPEN));
 //    	}
-		boolean isAboveChildSolid = BlockShapeChecker.getShapeVolume(child.getBlockPos().up(), world) > 0;
-		boolean isAboveChildSolid2 = BlockShapeChecker.getShapeVolume(child.getBlockPos().up(2), world) > 0;
-		boolean isAboveSolid2 = BlockShapeChecker.getShapeVolume(getBlockPos().up(2), world) > 0;
+		boolean isAboveChildSolid = BlockShapeChecker.getShapeVolume(child.getBlockPos().above(), world) > 0;
+		boolean isAboveChildSolid2 = BlockShapeChecker.getShapeVolume(child.getBlockPos().above(2), world) > 0;
+		boolean isAboveSolid2 = BlockShapeChecker.getShapeVolume(getBlockPos().above(2), world) > 0;
 		if (isAboveSolid2 && distance > 3) {
 			return true;
 		}
@@ -944,15 +944,15 @@ public class BlockNode {
 			return true;
 		}
 
-		VoxelShape blockShape = belowChildBlockState.getCollisionShape(world, child.getBlockPos().down());
-		VoxelShape currentBlockShape = currentBlockState.getCollisionShape(world, getBlockPos().down());
+		VoxelShape blockShape = belowChildBlockState.getCollisionShape(world, child.getBlockPos().below());
+		VoxelShape currentBlockShape = currentBlockState.getCollisionShape(world, getBlockPos().below());
 
 		double childBlockHeight = BlockShapeChecker.getBlockHeight(blockShape);
 		double currentBlockHeight = BlockShapeChecker.getBlockHeight(currentBlockShape);
 
 		double blockHeightDiff = currentBlockHeight - childBlockHeight; // Negative values means currentBlockHeight is
 																		// lower, and positive means currentBlockHeight
-		if (player.getHungerManager().getFoodLevel() < 6) {
+		if (player.getFoodData().getFoodLevel() < 6) {
 
 			if (distance >= 4) return true;
 		}
@@ -985,7 +985,7 @@ public class BlockNode {
 					|| (!wasOnLadder && belowChildBlock instanceof LadderBlock)) && distance >= 4.5) {
 				return true;
 			}
-			if (belowChildBlock instanceof SlabBlock && belowChildBlockState.get(Properties.SLAB_TYPE) == SlabType.TOP
+			if (belowChildBlock instanceof SlabBlock && belowChildBlockState.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.TOP
 					&& !world.getBlockState(child.getBlockPos()).isAir()) {
 				return true;
 			}
@@ -1004,7 +1004,7 @@ public class BlockNode {
 				
 				
 				if (Math.abs(blockHeightDiff) > 0.5 && Math.abs(blockHeightDiff) <= 1.0) {
-					if (heightDiff > 0 && (blockShape.getMin(Axis.Y) == 0.0 && currentBlockHeight <= 1.0))
+					if (heightDiff > 0 && (blockShape.min(Axis.Y) == 0.0 && currentBlockHeight <= 1.0))
 						return true;
 					if (heightDiff == 2 && distance <= 5.3)
 						return false;
@@ -1012,12 +1012,12 @@ public class BlockNode {
 						return false;
 				}
 				
-				if (Math.abs(blockHeightDiff) <= 0.5 && (blockShape.getMin(Axis.Y) == 0.0 && childBlockHeight == 1.0)) {
+				if (Math.abs(blockHeightDiff) <= 0.5 && (blockShape.min(Axis.Y) == 0.0 && childBlockHeight == 1.0)) {
 					if (heightDiff == 0 && distance <= 5.4)
 						return false;
 				}
 
-				if (Math.abs(blockHeightDiff) <= 0.5 && (blockShape.getMin(Axis.Y) == 0.0 || childBlockHeight > 1.0)) {
+				if (Math.abs(blockHeightDiff) <= 0.5 && (blockShape.min(Axis.Y) == 0.0 || childBlockHeight > 1.0)) {
 					if (blockHeightDiff == 0.5 && heightDiff <= -1)
 						return true;
 					if (heightDiff == 0 && distance >= 4.4)
@@ -1026,7 +1026,7 @@ public class BlockNode {
 						return false;
 				}
 
-				if (Math.abs(blockHeightDiff) >= 0.5 && (blockShape.getMin(Axis.Y) == 0.0 || childBlockHeight > 1.0))
+				if (Math.abs(blockHeightDiff) >= 0.5 && (blockShape.min(Axis.Y) == 0.0 || childBlockHeight > 1.0))
 					return true;
 				
 			}

@@ -1,14 +1,14 @@
 package kaptainwutax.tungsten.helpers;
 
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.StainedGlassBlock;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.StainedGlassBlock;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * PLACE THROUGH THE GAME, NOT AROUND IT.
@@ -38,12 +38,12 @@ public final class RealPlacement {
     /** Non-colliding outlines inside the centered body column can intercept a pillar ray.
      * Wall-mounted vines stay outside this column and remain available for climbing.
      */
-    public static boolean obstructsPillarRay(WorldView world, BlockPos pos) {
+    public static boolean obstructsPillarRay(LevelReader world, BlockPos pos) {
         BlockState state = world.getBlockState(pos);
         if (state.isAir() || !state.getCollisionShape(world, pos).isEmpty()) return false;
         double min = 0.5 - PlayerFit.WIDTH / 2;
         double max = 0.5 + PlayerFit.WIDTH / 2;
-        for (var box : state.getOutlineShape(world, pos).getBoundingBoxes()) {
+        for (var box : state.getShape(world, pos).toAabbs()) {
             if (box.maxX > min && box.minX < max && box.maxZ > min && box.minZ < max) return true;
         }
         return false;
@@ -55,7 +55,7 @@ public final class RealPlacement {
      * @return the real {@link BlockHitResult} to pass to {@code interactBlock}, or null when
      *         the camera is not yet looking somewhere that would produce the wanted block.
      */
-    public static BlockHitResult readyToPlace(MinecraftClient mc, BlockPos target) {
+    public static BlockHitResult readyToPlace(Minecraft mc, BlockPos target) {
         // A LIVE RAY TRACE, NOT mc.crosshairTarget. The cached crosshair is computed once per
         // RENDER frame, so at this stand's ~10 fps it is 1-2 ticks — 100-200 ms — out of date,
         // and the gate then judges a placement against where the camera USED to point. Upstream
@@ -75,14 +75,14 @@ public final class RealPlacement {
         // being clicked has to be one you can actually place against. Only the geometry was
         // ported, so any hit whose side happened to point at the target was promoted to a click
         // — including hits on the very blocks canPlaceAgainst exists to refuse.
-        if (hitPos.offset(hit.getSide()).equals(target)
-                && mc.world != null && canPlaceAgainst(mc.world, hitPos)) {
+        if (hitPos.relative(hit.getDirection()).equals(target)
+                && mc.level != null && canPlaceAgainst(mc.level, hitPos)) {
             return hit;
         }
         // Baritone also allows looking straight AT the target when the block already there is
         // replaceable (tall grass, snow layer, water) — the new block takes its place.
-        if (hitPos.equals(target) && mc.world != null
-                && mc.world.getBlockState(hitPos).isReplaceable()) {
+        if (hitPos.equals(target) && mc.level != null
+                && mc.level.getBlockState(hitPos).canBeReplaced()) {
             return hit;
         }
         return null;
@@ -113,7 +113,7 @@ public final class RealPlacement {
      * <p>So it now forwards to the real port. Two spellings of one upstream function is exactly
      * the duplication this project keeps paying for.
      */
-    public static boolean canPlaceAgainst(WorldView world, BlockPos pos) {
+    public static boolean canPlaceAgainst(LevelReader world, BlockPos pos) {
         return kaptainwutax.tungsten.path.movements.MovementHelperB.canPlaceAgainst(
                 world, pos.getX(), pos.getY(), pos.getZ(), world.getBlockState(pos));
     }

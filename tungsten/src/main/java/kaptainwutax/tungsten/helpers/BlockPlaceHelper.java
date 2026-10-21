@@ -1,18 +1,18 @@
 package kaptainwutax.tungsten.helpers;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -99,16 +99,16 @@ public final class BlockPlaceHelper {
      * @return true when the interaction was actually sent.
      */
     public static boolean tryPlace(BlockHitResult hit) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null || mc.interactionManager == null || hit == null) return false;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.gameMode == null || hit == null) return false;
         if (rightClickTimer > 0) {
             gatedByCooldown++;
             return false;
         }
         rightClickTimer = RIGHT_CLICK_SPEED - BASE_PLACE_DELAY;
-        for (Hand hand : Hand.values()) {
-            if (mc.interactionManager.interactBlock(mc.player, hand, hit) == ActionResult.SUCCESS) {
-                mc.player.swingHand(hand);
+        for (InteractionHand hand : InteractionHand.values()) {
+            if (mc.gameMode.useItemOn(mc.player, hand, hit) == InteractionResult.SUCCESS) {
+                mc.player.swing(hand);
                 gatedThrough++;
                 return true;
             }
@@ -117,8 +117,8 @@ public final class BlockPlaceHelper {
             // placement but a throw. Measured on a nether run: a pillar click with an ender pearl
             // in the main hand (the combat code had swapped it) threw it -- the body jumped 27 blocks
             // ("body MOVED ... not walked") and the pearl was gone.
-            if (mc.player.getStackInHand(hand).getItem() instanceof net.minecraft.item.BucketItem
-                    && mc.interactionManager.interactItem(mc.player, hand) == ActionResult.SUCCESS) {
+            if (mc.player.getItemInHand(hand).getItem() instanceof net.minecraft.world.item.BucketItem
+                    && mc.gameMode.useItem(mc.player, hand) == InteractionResult.SUCCESS) {
                 return true;
             }
         }
@@ -209,7 +209,7 @@ public final class BlockPlaceHelper {
      *  pathfind plus the walk, and the queue is not in a hurry. */
     private static final int WALK_TIMEOUT_TICKS = 600;
 
-    /** Hand a batch of cells to the tick drain. Order is the caller's — the callers sort
+    /** InteractionHand a batch of cells to the tick drain. Order is the caller's — the callers sort
      *  bottom-up so each cell has support by the time it is reached. */
     public static synchronized void enqueue(List<BlockPos> cells, String blockName) {
         for (BlockPos p : cells) QUEUE.add(new Cell(p, blockName));
@@ -288,16 +288,16 @@ public final class BlockPlaceHelper {
      */
     private static synchronized void drainQueue() {
         if (QUEUE.isEmpty()) return;
-        MinecraftClient mc = MinecraftClient.getInstance();
-        ClientPlayerEntity player = mc.player;
-        if (player == null || mc.world == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null || mc.level == null) return;
 
         // A pillar owns the body, the keys and the camera for its whole run, exactly as a
         // MovementQueue leg does. Hands off until it finishes; the cells it fills come back to
         // the scan as "already built" and drop out of the queue on their own.
         if (kaptainwutax.tungsten.task.PillarTask.isActive()) return;
 
-        Vec3d eye = kaptainwutax.tungsten.path.movements.RotationHelper.playerHead(player);
+        Vec3 eye = kaptainwutax.tungsten.path.movements.RotationHelper.playerHead(player);
         double reach = kaptainwutax.tungsten.path.movements.RotationHelper.blockReachDistance(player);
         kaptainwutax.tungsten.path.movements.Rotation current =
                 kaptainwutax.tungsten.path.movements.RotationHelper.playerRotations(player);
@@ -308,13 +308,13 @@ public final class BlockPlaceHelper {
             BlockPos target = cell.pos();
 
             // Someone else built it, or it was never air: nothing owed here.
-            if (!mc.world.getBlockState(target).isReplaceable()) {
+            if (!mc.level.getBlockState(target).canBeReplaced()) {
                 it.remove();
                 alreadyFilled++;
                 idleTicks = 0;
                 return;
             }
-            if (!kaptainwutax.tungsten.path.PlaceRules.canPlace(mc.world, target)) {
+            if (!kaptainwutax.tungsten.path.PlaceRules.canPlace(mc.level, target)) {
                 it.remove();
                 deferProtected++;
                 DEFERRED.add(target);
@@ -328,14 +328,14 @@ public final class BlockPlaceHelper {
             // WILL THE BLOCK SURVIVE THERE — BuilderProcess.possibleToPlace:506, dropped entirely.
             // A torch needs a wall, a door needs two cells, a sapling needs dirt: without this the
             // queue burns its whole budget aiming at cells the game will refuse on arrival.
-            if (!wanted.canPlaceAt(mc.world, target)) {
+            if (!wanted.canSurvive(mc.level, target)) {
                 it.remove();
                 DEFERRED.add(target);
                 deferNoSupport++;
                 idleTicks = 0;
                 return;
             }
-            if (!placementPlausible(mc.world, target, wanted)) {
+            if (!placementPlausible(mc.level, target, wanted)) {
                 blockedByOwnBody++;
                 continue;
             }
@@ -358,8 +358,8 @@ public final class BlockPlaceHelper {
             // A builder placing a ceiling has only the block above to click, and this loop could
             // not see it.
             for (Direction dir : Direction.values()) {
-                BlockPos against = target.offset(dir);
-                if (!RealPlacement.canPlaceAgainst(mc.world, against)) continue;
+                BlockPos against = target.relative(dir);
+                if (!RealPlacement.canPlaceAgainst(mc.level, against)) continue;
                 // The face point, MovementHelper.attemptToPlaceABlock:822-824 verbatim - including
                 // the asymmetric Y term, which is what puts the aim on the TOP face of a block
                 // below.
@@ -367,19 +367,19 @@ public final class BlockPlaceHelper {
                 double faceY = (target.getY() + against.getY() + 0.5D) * 0.5D;
                 double faceZ = (target.getZ() + against.getZ() + 1.0D) * 0.5D;
                 kaptainwutax.tungsten.path.movements.Rotation place = kaptainwutax.tungsten.path.movements
-                        .RotationHelper.calcRotationFromVec3d(eye, new Vec3d(faceX, faceY, faceZ), current);
+                        .RotationHelper.calcRotationFromVec3d(eye, new Vec3(faceX, faceY, faceZ), current);
                 HitResult res = kaptainwutax.tungsten.path.movements.RotationHelper
                         .rayTraceTowards(player, place, reach);
                 if (!(res instanceof BlockHitResult bhr) || res.getType() != HitResult.Type.BLOCK) continue;
                 if (!bhr.getBlockPos().equals(against)
-                        || !bhr.getBlockPos().offset(bhr.getSide()).equals(target)) {
+                        || !bhr.getBlockPos().relative(bhr.getDirection()).equals(target)) {
                     continue;   // that face is blocked from here - ask the next one
                 }
                 // This face works from where the player stands. Equip, turn the camera to it
                 // through the mouse pipeline, and place the moment the crosshair agrees.
                 if (!equipBlock(player, cell.blockName())) {
                     // Upstream's NO_OPTION: no material, so this is not a placement problem and
-                    // no amount of walking or aiming fixes it. Hand it back instead of spinning.
+                    // no amount of walking or aiming fixes it. InteractionHand it back instead of spinning.
                     it.remove();
                     DEFERRED.add(target);
                     deferNoMaterial++;
@@ -411,7 +411,7 @@ public final class BlockPlaceHelper {
                     // one cell with no walk and no timeout. Measured on portal_lava_lake: 3.5
                     // minutes, buildQ=1, the body bobbing in water from the last cast, the task
                     // above satisfied that it "moved". deferTimeout was declared for exactly this
-                    // and never incremented. Hand the cell back like every other defer.
+                    // and never incremented. InteractionHand the cell back like every other defer.
                     if (!target.equals(aimCell)) {
                         aimCell = target;
                         aimTicks = 0;
@@ -419,7 +419,7 @@ public final class BlockPlaceHelper {
                     if (++aimTicks > AIM_TIMEOUT_TICKS) {
                         if (walkDebug.length() < 700) {
                             walkDebug += "AIMTIMEOUT(" + target.toShortString() + ")@"
-                                    + player.getBlockPos().toShortString() + " ";
+                                    + player.blockPosition().toShortString() + " ";
                         }
                         it.remove();
                         DEFERRED.add(target);
@@ -432,7 +432,7 @@ public final class BlockPlaceHelper {
                 aimCell = null;
                 idleTicks = 0;
                 if (!tryPlace(hit)) return;      // rate gate closed this tick
-                // DO NOT TRUST ActionResult.SUCCESS — TRUST THE WORLD. The click succeeding is a
+                // DO NOT TRUST InteractionResult.SUCCESS — TRUST THE WORLD. The click succeeding is a
                 // CLIENT-side prediction, and the server can still refuse it; measured on
                 // //replace, where the queue reported placed=3, deferred=0, done and the three
                 // cells were still empty ten seconds later. Removing the cell on the click threw
@@ -481,9 +481,9 @@ public final class BlockPlaceHelper {
         // cell beside the support from which the exposed top face traces clear (placementStand now
         // finds it, see the DOWN-face change above) -- prefer walking there and placing from the
         // side. Only when there is NO side stand (a genuine open-air column) do we pillar.
-        BlockPos sideStand = placementStand(mc.world, head, wantedState(player, headCell.blockName()));
-        if (sideStand == null && standable(mc.world, head)) {
-            if (player.getBlockPos().equals(head)) {
+        BlockPos sideStand = placementStand(mc.level, head, wantedState(player, headCell.blockName()));
+        if (sideStand == null && standable(mc.level, head)) {
+            if (player.blockPosition().equals(head)) {
                 if (!equipBlock(player, headCell.blockName())) {
                     QUEUE.poll();
                     DEFERRED.add(head);
@@ -516,7 +516,7 @@ public final class BlockPlaceHelper {
                     if (walkAttempts >= MAX_WALK_ATTEMPTS) {
                         if (walkDebug.length() < 700) {
                             walkDebug += "PILLARUNREACHED(" + head.toShortString() + ")@"
-                                    + player.getBlockPos().toShortString() + " ";
+                                    + player.blockPosition().toShortString() + " ";
                         }
                         stopWalking();
                         QUEUE.poll();
@@ -537,7 +537,7 @@ public final class BlockPlaceHelper {
                 walkAttempts++;
                 if (walkDebug.length() < 600) {
                     walkDebug += "[" + walkStarted + " pillarbase=" + head.toShortString()
-                            + " from=" + player.getBlockPos().toShortString() + "] ";
+                            + " from=" + player.blockPosition().toShortString() + "] ";
                 }
                 // EXACT: the whole point is to be standing in this cell, and "within two blocks
                 // of it" is where the previous version stopped — from (4,-60,0) it was already
@@ -568,7 +568,7 @@ public final class BlockPlaceHelper {
             if (walkTicks > WALK_TIMEOUT_TICKS) {
                 if (walkDebug.length() < 700) {
                     walkDebug += "TIMEOUT(" + head.toShortString() + ")@"
-                            + player.getBlockPos().toShortString() + " ";
+                            + player.blockPosition().toShortString() + " ";
                 }
                 stopWalking();
                 QUEUE.poll();
@@ -585,7 +585,7 @@ public final class BlockPlaceHelper {
         if (sameCellAsLastAttempt && walkAttempts >= MAX_WALK_ATTEMPTS) {
             if (walkDebug.length() < 700) {
                 walkDebug += "EXHAUSTED(" + head.toShortString() + ")@"
-                        + player.getBlockPos().toShortString() + " ";
+                        + player.blockPosition().toShortString() + " ";
             }
             QUEUE.poll();
             DEFERRED.add(head);
@@ -596,7 +596,7 @@ public final class BlockPlaceHelper {
             return;
         }
         if (idleTicks <= WALK_AFTER_TICKS) return;   // the aim may still be arriving
-        BlockPos stand = placementStand(mc.world, head, wantedState(player, headCell.blockName()));
+        BlockPos stand = placementStand(mc.level, head, wantedState(player, headCell.blockName()));
         // A STAND ABOVE THE CELL IS THE LAST CHOICE, NOT THE FIRST (G108, 2026-09-30). baritone's
         // GoalAdjacent ranks lower stands first (heuristic y * 100, BuilderProcess.java:1109-1112)
         // and its pathfinder reaches one beside the cell by pillaring a block (MovementPillar).
@@ -612,7 +612,7 @@ public final class BlockPlaceHelper {
         boolean walkedInVain = sameCellAsLastAttempt && walkAttempts >= 1;
         boolean preferScaffold = stand != null
                 && (stand.getY() > head.getY() || walkedInVain || head.equals(scaffoldFor))
-                && scaffoldBase(mc.world, head) != null;
+                && scaffoldBase(mc.level, head) != null;
         // Once chosen for a cell, the scaffold stays chosen: the walk to its base changes
         // lastWalkCell, and without this the next tick would go back to the stand it gave up on.
         if (preferScaffold) scaffoldFor = head;
@@ -624,9 +624,9 @@ public final class BlockPlaceHelper {
             // for ten minutes while the bot stood on a frozen lake below. The stand the top face
             // needs is a neighbouring column at head.y-1: pillar up to it with a throwaway from the
             // ground, then this very scan finds it standable and places from there.
-            BlockPos base = scaffoldBase(mc.world, head);
+            BlockPos base = scaffoldBase(mc.level, head);
             if (base != null) {
-                if (player.getBlockPos().equals(base)) {
+                if (player.blockPosition().equals(base)) {
                     stopWalking();
                     if (walkDebug.length() < 700) walkDebug += "SCAFFOLD(" + base.toShortString() + ") ";
                     scaffoldsStarted++;
@@ -678,7 +678,7 @@ public final class BlockPlaceHelper {
         if (walkDebug.length() < 600) {
             walkDebug += "[" + walkStarted + " for=" + head.toShortString()
                     + " stand=" + stand.toShortString()
-                    + " from=" + player.getBlockPos().toShortString() + "] ";
+                    + " from=" + player.blockPosition().toShortString() + "] ";
         }
         // Exact too: a stand chosen because THAT cell can see the face is not interchangeable
         // with any cell within two blocks of it.
@@ -721,7 +721,7 @@ public final class BlockPlaceHelper {
         walkAttempts = 0;
     }
 
-    /** Hand the whole remaining queue back to the caller. */
+    /** InteractionHand the whole remaining queue back to the caller. */
     private static void deferRest() {
         stopWalking(false);
         for (Cell c : QUEUE) {
@@ -754,11 +754,11 @@ public final class BlockPlaceHelper {
      * block would have at that cell and test it against every entity. An empty shape (a torch,
      * a sapling) always passes.
      */
-    private static boolean placementPlausible(net.minecraft.world.World world, BlockPos pos, BlockState state) {
+    private static boolean placementPlausible(net.minecraft.world.level.Level world, BlockPos pos, BlockState state) {
         if (state == null) return false;
-        net.minecraft.util.shape.VoxelShape shape = state.getCollisionShape(world, pos);
+        net.minecraft.world.phys.shapes.VoxelShape shape = state.getCollisionShape(world, pos);
         return shape.isEmpty()
-                || world.doesNotIntersectEntities(null, shape.offset(pos.getX(), pos.getY(), pos.getZ()));
+                || world.isUnobstructed(null, shape.move(pos.getX(), pos.getY(), pos.getZ()));
     }
 
     /**
@@ -773,20 +773,20 @@ public final class BlockPlaceHelper {
      * the previous batch's torch still in hand a stone batch measured a shapeless torch and the
      * guard passed vacuously on the one tick it mattered.
      */
-    private static BlockState wantedState(ClientPlayerEntity player, String blockName) {
+    private static BlockState wantedState(LocalPlayer player, String blockName) {
         if (blockName != null && !blockName.isEmpty()) {
             String want = blockName.contains(":") ? blockName : "minecraft:" + blockName;
-            net.minecraft.util.Identifier id = net.minecraft.util.Identifier.tryParse(want);
-            if (id != null && Registries.BLOCK.containsId(id)) {
-                return Registries.BLOCK.get(id).getDefaultState();
+            net.minecraft.resources.Identifier id = net.minecraft.resources.Identifier.tryParse(want);
+            if (id != null && BuiltInRegistries.BLOCK.containsKey(id)) {
+                return BuiltInRegistries.BLOCK.getValue(id).defaultBlockState();
             }
         }
         // Unnamed batch: fall back to the hand, and to a full cube if even that says nothing —
         // the conservative assumption, since a full cube is the shape most likely to hit us.
-        if (player.getMainHandStack().getItem() instanceof BlockItem bi) {
-            return bi.getBlock().getDefaultState();
+        if (player.getMainHandItem().getItem() instanceof BlockItem bi) {
+            return bi.getBlock().defaultBlockState();
         }
-        return net.minecraft.block.Blocks.STONE.getDefaultState();
+        return net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
     }
 
     /**
@@ -801,21 +801,21 @@ public final class BlockPlaceHelper {
      * <ul>
      *   <li>A placeable neighbour exists -&gt; {@code GoalAdjacent(target, against, allowSameLevel)}:
      *       stand NEXT TO the cell, never in it and never in the block being placed against, never
-     *       below {@code target.y - 1}, and at the same level only when {@code target.up()} is
+     *       below {@code target.y - 1}, and at the same level only when {@code target.above()} is
      *       solid (:1092-1106). That last rule is why the builder does not try to place a block
      *       into the space its own head occupies.</li>
-     *   <li>Otherwise -&gt; {@code GoalPlace(target)} = {@code GoalBlock(target.up())} (:1147):
+     *   <li>Otherwise -&gt; {@code GoalPlace(target)} = {@code GoalBlock(target.above())} (:1147):
      *       stand ON TOP of where the block goes and place downwards. This is the case that
      *       reaches the top of a column, which nothing on the ground can see: you cannot look at
      *       the top face of a block whose top is above your eye.</li>
      * </ul>
      */
-    private static BlockPos placementStand(net.minecraft.world.WorldView world, BlockPos target,
+    private static BlockPos placementStand(net.minecraft.world.level.LevelReader world, BlockPos target,
                                            BlockState state) {
-        boolean allowSameLevel = !world.getBlockState(target.up()).isAir();
+        boolean allowSameLevel = !world.getBlockState(target.above()).isAir();
         for (Direction facing : kaptainwutax.tungsten.path.movements.Movement
                 .HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP) {
-            BlockPos against = target.offset(facing);
+            BlockPos against = target.relative(facing);
             if (!RealPlacement.canPlaceAgainst(world, against)) continue;
             // ⛔ DO NOT GATE STAND-FINDING ON THE BODY'S CURRENT POSITION (G108, 2026-09-19).
             // This used to also require placementPlausible(target) here -- upstream's
@@ -837,10 +837,10 @@ public final class BlockPlaceHelper {
             // (facing == DOWN -- e.g. a portal-frame column cell whose sole support is the block
             // under it), the stand is beside that support at the SUPPORT's level, i.e. feet at
             // target.y-1. adjacentStand offers dy=-1 only when allowSameLevel, which is false here
-            // because target.up() is air -- so the valid stand was never found and the cell fell
+            // because target.above() is air -- so the valid stand was never found and the cell fell
             // through to the pillar branch, which tried to climb the lone 1-wide support and never
             // converged. Allow dy=-1 for the DOWN face; the head is in the neighbour column (never
-            // the target), so the existing stand.up()==target / stand.y<target.y-1 guards still hold.
+            // the target), so the existing stand.above()==target / stand.y<target.y-1 guards still hold.
             BlockPos stand = adjacentStand(world, target, against, allowSameLevel || facing == Direction.DOWN);
             if (stand != null) return stand;
         }
@@ -858,7 +858,7 @@ public final class BlockPlaceHelper {
         // So: no reachable stand, no walk. Say so, and let the caller hand the cell back to the
         // agent, which can put a block under itself or come at it from a scaffold — decisions
         // that belong to whoever owns the build, not to the queue draining it.
-        BlockPos above = target.up();
+        BlockPos above = target.above();
         return standable(world, above) ? above : null;
     }
 
@@ -882,27 +882,27 @@ public final class BlockPlaceHelper {
      *       which GoalAdjacent always allows (only feet one level DOWN needs allowSameLevel).</li>
      * </ul>
      */
-    private static BlockPos scaffoldBase(net.minecraft.world.WorldView world, BlockPos target) {
-        boolean topFace = RealPlacement.canPlaceAgainst(world, target.down());
+    private static BlockPos scaffoldBase(net.minecraft.world.level.LevelReader world, BlockPos target) {
+        boolean topFace = RealPlacement.canPlaceAgainst(world, target.below());
         boolean sideFace = false;
-        for (Direction d : Direction.Type.HORIZONTAL) {
-            if (RealPlacement.canPlaceAgainst(world, target.offset(d))) sideFace = true;
+        for (Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+            if (RealPlacement.canPlaceAgainst(world, target.relative(d))) sideFace = true;
         }
         java.util.List<BlockPos> stands = new java.util.ArrayList<>();
-        for (Direction d : Direction.Type.HORIZONTAL) {
-            if (topFace) stands.add(target.offset(d).down());
+        for (Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+            if (topFace) stands.add(target.relative(d).below());
         }
-        for (Direction d : Direction.Type.HORIZONTAL) {
-            if (sideFace) stands.add(target.offset(d));
+        for (Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+            if (sideFace) stands.add(target.relative(d));
         }
         for (BlockPos stand : stands) {
-            if (!world.getBlockState(stand).isReplaceable() || !world.getBlockState(stand.up()).isReplaceable()) continue;
-            if (!world.getBlockState(stand.up(2)).getCollisionShape(world, stand.up(2)).isEmpty()) continue;
+            if (!world.getBlockState(stand).canBeReplaced() || !world.getBlockState(stand.above()).canBeReplaced()) continue;
+            if (!world.getBlockState(stand.above(2)).getCollisionShape(world, stand.above(2)).isEmpty()) continue;
             if (kaptainwutax.tungsten.path.RouteHazards.hazard(world, stand)) continue;
             for (int depth = 1; depth <= 6; depth++) {
-                BlockPos cell = stand.down(depth);
-                if (!world.getBlockState(cell).isReplaceable()) {
-                    BlockPos base = cell.up();
+                BlockPos cell = stand.below(depth);
+                if (!world.getBlockState(cell).canBeReplaced()) {
+                    BlockPos base = cell.above();
                     if (base.equals(stand)) break;
                     if (standable(world, base)) {
                         scaffoldStandY = stand.getY();
@@ -912,7 +912,7 @@ public final class BlockPlaceHelper {
                 }
                 // A source is a pool: no pillar from inside one. Flowing water is the run-off of the
                 // last cast at the frame's foot, a few pixels deep, and a pillar block replaces it.
-                if (!world.getFluidState(cell).isEmpty() && world.getFluidState(cell).isStill()) break;
+                if (!world.getFluidState(cell).isEmpty() && world.getFluidState(cell).isSource()) break;
             }
         }
         return null;
@@ -920,19 +920,19 @@ public final class BlockPlaceHelper {
 
     /** The {@code GoalAdjacent.isInGoal} predicate (BuilderProcess.java:1092-1106), evaluated
      *  over the cells around the target, lowest first. */
-    private static BlockPos adjacentStand(net.minecraft.world.WorldView world, BlockPos target,
+    private static BlockPos adjacentStand(net.minecraft.world.level.LevelReader world, BlockPos target,
                                           BlockPos against, boolean allowSameLevel) {
         int[] levels = allowSameLevel ? new int[]{-1, 0, 1} : new int[]{0, 1};
         for (int dy : levels) {
-            for (Direction d : Direction.Type.HORIZONTAL) {
-                BlockPos stand = target.offset(d).up(dy);
+            for (Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                BlockPos stand = target.relative(d).above(dy);
                 if (stand.equals(target) || stand.equals(against)) continue;
                 if (stand.getY() < target.getY() - 1) continue;
                 // A player is two blocks tall: standing with FEET or HEAD in the cell we are
                 // trying to fill is the very situation placementPlausible refuses. GoalAdjacent
                 // excludes the target cell itself (:1093-1095); the head is the same rule one
                 // level up, and skipping it is how the bot ends up shoving at its own eye level.
-                if (stand.up().equals(target)) continue;
+                if (stand.above().equals(target)) continue;
                 if (!standable(world, stand)) continue;
                 return stand;
             }
@@ -947,8 +947,8 @@ public final class BlockPlaceHelper {
      * block was out of reach. Measured on //replace: "Mining aborted: ticks=1 dist=5.12" over and
      * over, the bot four and a half blocks too far away and nobody walking it in.
      */
-    public static BlockPos workStand(net.minecraft.world.WorldView world, BlockPos target) {
-        boolean allowSameLevel = !world.getBlockState(target.up()).isAir();
+    public static BlockPos workStand(net.minecraft.world.level.LevelReader world, BlockPos target) {
+        boolean allowSameLevel = !world.getBlockState(target.above()).isAir();
         BlockPos adj = adjacentStand(world, target, target, allowSameLevel);
         if (adj != null) return adj;
         return standable(world, target) ? target : null;
@@ -956,10 +956,10 @@ public final class BlockPlaceHelper {
 
     /** Feet space, head space, and something to stand on — asked with the ported predicates so
      *  the builder and the pathfinder agree on what a standing position is. */
-    private static boolean standable(net.minecraft.world.WorldView world, BlockPos feet) {
+    private static boolean standable(net.minecraft.world.level.LevelReader world, BlockPos feet) {
         return kaptainwutax.tungsten.path.movements.MovementHelperB.canWalkThrough(world, feet)
-                && kaptainwutax.tungsten.path.movements.MovementHelperB.canWalkThrough(world, feet.up())
-                && kaptainwutax.tungsten.path.movements.MovementHelperB.canWalkOn(world, feet.down());
+                && kaptainwutax.tungsten.path.movements.MovementHelperB.canWalkThrough(world, feet.above())
+                && kaptainwutax.tungsten.path.movements.MovementHelperB.canWalkOn(world, feet.below());
     }
 
     /**
@@ -982,12 +982,12 @@ public final class BlockPlaceHelper {
      *
      * @return true if a block item is in hand when this returns.
      */
-    public static boolean equipThrowaway(ClientPlayerEntity player) {
+    public static boolean equipThrowaway(LocalPlayer player) {
         // The cheapest scaffold in the hotbar, not the first block: a player pillars with the
         // cobblestone, not the crafting table that happens to sit in slot 3.
         int best = -1, bestRank = Integer.MAX_VALUE;
         for (int i = 0; i < 9; i++) {
-            ItemStack st = player.getInventory().getStack(i);
+            ItemStack st = player.getInventory().getItem(i);
             if (!isScaffold(st)) continue;
             int r = scaffoldRank(st);
             if (r < bestRank) { bestRank = r; best = i; }
@@ -1000,7 +1000,7 @@ public final class BlockPlaceHelper {
         // it in the interior, where the gather then mined it back (place/mine loop, top row never
         // built). Pillaring/bridging is throwaway work; never let it consume the build material when
         // cobblestone (rank 0) is a slot away. Held wins ties so we don't re-select every tick.
-        ItemStack held = player.getMainHandStack();
+        ItemStack held = player.getMainHandItem();
         if (isScaffold(held) && scaffoldRank(held) <= bestRank) return true;
         if (best >= 0) {
             player.getInventory().setSelectedSlot(best);
@@ -1022,7 +1022,7 @@ public final class BlockPlaceHelper {
             } catch (Throwable ignored) {
                 // the brain failing to equip is a "no blocks" answer, not a crash
             }
-            if (isScaffold(player.getMainHandStack())) {
+            if (isScaffold(player.getMainHandItem())) {
                 throwawayRestocked++;
                 equipped = null;
                 return true;
@@ -1050,16 +1050,16 @@ public final class BlockPlaceHelper {
         // Sharing this gate keeps the planner budget, hotbar selection and restock consistent.
         var policy = kaptainwutax.tungsten.TungstenModDataContainer.canUseScaffoldHook;
         if (policy != null && !policy.test(st)) return false;
-        net.minecraft.block.Block b = bi.getBlock();
-        if (b instanceof net.minecraft.block.BlockEntityProvider
-                || b instanceof net.minecraft.block.FallingBlock
-                || b instanceof net.minecraft.block.CraftingTableBlock
-                || b instanceof net.minecraft.block.TntBlock
-                || b instanceof net.minecraft.block.LeavesBlock) {
+        net.minecraft.world.level.block.Block b = bi.getBlock();
+        if (b instanceof net.minecraft.world.level.block.EntityBlock
+                || b instanceof net.minecraft.world.level.block.FallingBlock
+                || b instanceof net.minecraft.world.level.block.CraftingTableBlock
+                || b instanceof net.minecraft.world.level.block.TntBlock
+                || b instanceof net.minecraft.world.level.block.LeavesBlock) {
             return false;
         }
         try {
-            return net.minecraft.block.Block.isShapeFullCube(b.getDefaultState().getCollisionShape(null, null));
+            return net.minecraft.world.level.block.Block.isShapeFullBlock(b.defaultBlockState().getCollisionShape(null, null));
         } catch (Exception e) {
             return false;   // a shape that needs the world is not a plain cube
         }
@@ -1071,7 +1071,7 @@ public final class BlockPlaceHelper {
      * blocks only when nothing else is left. The order a player would choose without thinking.
      */
     public static int scaffoldRank(ItemStack st) {
-        String id = Registries.ITEM.getId(st.getItem()).getPath();
+        String id = BuiltInRegistries.ITEM.getKey(st.getItem()).getPath();
         switch (id) {
             case "cobblestone", "cobbled_deepslate", "netherrack", "dirt", "coarse_dirt", "rooted_dirt",
                  "stone", "andesite", "diorite", "granite", "tuff", "deepslate", "end_stone",
@@ -1088,31 +1088,31 @@ public final class BlockPlaceHelper {
     /** Public gate to {@link #equipBlock} for PillarTask: a build-queue pillar placing a TARGET cell
      *  must tower with the STRUCTURE block, not a throwaway. Returns false when it is not in the
      *  hotbar (the pillar then stops rather than tower the frame out of the wrong block). */
-    public static boolean equipNamedBlock(ClientPlayerEntity player, String blockName) {
+    public static boolean equipNamedBlock(LocalPlayer player, String blockName) {
         return equipBlock(player, blockName);
     }
 
     /** Hold {@code blockName}. Returns false when it is not in the hotbar at all — the caller
      *  must then NOT place, because placing something else is worse than placing nothing.
      *  Skips the lookup when the wanted type is already equipped. */
-    private static boolean equipBlock(ClientPlayerEntity player, String blockName) {
+    private static boolean equipBlock(LocalPlayer player, String blockName) {
         if (blockName != null && blockName.equals(equipped)
-                && player.getMainHandStack().getItem() instanceof BlockItem) {
+                && player.getMainHandItem().getItem() instanceof BlockItem) {
             return true;
         }
         if (blockName != null && !blockName.isEmpty()) {
             String want = blockName.contains(":") ? blockName : "minecraft:" + blockName;
             for (int i = 0; i < 9; i++) {
-                ItemStack st = player.getInventory().getStack(i);
+                ItemStack st = player.getInventory().getItem(i);
                 if (st.isEmpty()) continue;
-                if (Registries.ITEM.getId(st.getItem()).toString().equals(want)) {
+                if (BuiltInRegistries.ITEM.getKey(st.getItem()).toString().equals(want)) {
                     player.getInventory().setSelectedSlot(i);
                     equipped = blockName;
                     return true;
                 }
             }
         }
-        if (player.getMainHandStack().getItem() instanceof BlockItem) return true;
+        if (player.getMainHandItem().getItem() instanceof BlockItem) return true;
         // NO "ANY BLOCK WILL DO" FALLBACK. It used to grab the first BlockItem in the hotbar when
         // the named one was absent, so a //set cobblestone with no cobblestone quietly built the
         // wall out of whatever was lying in slot 1 — and a schematic came out the wrong colour

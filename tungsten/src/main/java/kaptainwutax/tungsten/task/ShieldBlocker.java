@@ -1,7 +1,7 @@
 package kaptainwutax.tungsten.task;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 
 /**
  * Shield-block execution primitive: hold use for N ticks (shield must already
@@ -28,7 +28,7 @@ public class ShieldBlocker {
 
     public static synchronized void release() {
         holdTicks = 0;
-        MinecraftClient.getInstance().options.useKey.setPressed(false);
+        Minecraft.getInstance().options.keyUse.setDown(false);
     }
 
     public static boolean isBlocking() {
@@ -36,13 +36,13 @@ public class ShieldBlocker {
     }
 
     /** Called every game tick from MixinClientPlayerEntity. */
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         if (holdTicks <= 0) return;
         if (BowShooter.isActive()) return; // the bow owns the use key right now
         holdTicks--;
-        MinecraftClient.getInstance().options.useKey.setPressed(true);
+        Minecraft.getInstance().options.keyUse.setDown(true);
         if (holdTicks == 0) {
-            MinecraftClient.getInstance().options.useKey.setPressed(false);
+            Minecraft.getInstance().options.keyUse.setDown(false);
         }
     }
 }

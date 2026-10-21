@@ -16,13 +16,18 @@ import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
 import kaptainwutax.tungsten.path.movements.Rotation;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.*;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.FlowerBlock;
 import adris.altoclef.multiversion.versionedfields.Blocks;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.PillagerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.illager.Pillager;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.core.BlockPos;
 
 import java.util.Optional;
 
@@ -34,7 +39,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     /** Ticks, and each way this task gives up on its block; read over py4j in placeStats(). */
     /** Ticks the body has not moved; the odometer that replaces "Nav says it is pathing". */
     private int _ticksSinceMoved = 0;
-    private net.minecraft.util.math.Vec3d _lastMoveTickPos = null;
+    private net.minecraft.world.phys.Vec3 _lastMoveTickPos = null;
 
     /** How long the body may be still before a pathing claim stops counting as progress. */
     private static final int STALL_MOVE_GRACE = 40;
@@ -81,7 +86,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             BlockState state = mod.getWorld().getBlockState(block);
             Optional<Slot> best = StorageHelper.getBestToolSlot(mod, state);
             if (best.isEmpty()) return;
-            net.minecraft.item.Item bestItem = StorageHelper.getItemStackInSlot(best.get()).getItem();
+            net.minecraft.world.item.Item bestItem = StorageHelper.getItemStackInSlot(best.get()).getItem();
             if (StorageHelper.getItemStackInSlot(adris.altoclef.util.slots.PlayerSlot.getEquipSlot()).getItem() == bestItem) return;
             if (mod.getSlotHandler().forceEquipItem(bestItem)) dbToolEquipped++;
         } catch (Throwable ignored) {
@@ -157,7 +162,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     public static volatile int dbTargetsSeen, dbTargetsReached;
 
     /** The target this task is currently accounting for, so each is counted exactly once. */
-    private net.minecraft.util.math.BlockPos _accountedTarget = null;
+    private net.minecraft.core.BlockPos _accountedTarget = null;
     private boolean _accountedReached = false;
 
     /** Times the approach was issued as a REACH goal instead of an occupy-the-cell goal. */
@@ -260,9 +265,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
      * @return The BlockPos of the stuck block, or null if none found.
      */
     private BlockPos stuckInBlock(AltoClef mod) {
-        BlockPos playerPos = mod.getPlayer().getBlockPos();
+        BlockPos playerPos = mod.getPlayer().blockPosition();
         BlockPos[] toCheck = generateSides(playerPos);
-        BlockPos[] toCheckHigh = generateSides(playerPos.up());
+        BlockPos[] toCheckHigh = generateSides(playerPos.above());
 
         // Check if player position is annoying
         if (isAnnoying(mod, playerPos)) {
@@ -271,9 +276,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
 
         // Check if player position (up) is annoying
-        if (isAnnoying(mod, playerPos.up())) {
-            Debug.logInternal("Player position (up) is annoying: " + playerPos.up());
-            return playerPos.up();
+        if (isAnnoying(mod, playerPos.above())) {
+            Debug.logInternal("Player position (up) is annoying: " + playerPos.above());
+            return playerPos.above();
         }
 
         // Check each side block position
@@ -355,13 +360,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
             // If there is a slot where the item can fit, click on that slot to move the item.
             moveTo.ifPresent(slot -> {
-                mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP);
                 Debug.logInternal("Clicked slot: " + slot);
             });
 
             // If the item can be thrown away, click on an undefined slot to drop the item.
             if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 Debug.logInternal("Clicked undefined slot");
             }
 
@@ -370,12 +375,12 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             Debug.logInternal("Garbage slot: " + garbage);
 
             garbage.ifPresent(slot -> {
-                mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP);
                 Debug.logInternal("Clicked slot: " + slot);
             });
 
             // Click on an undefined slot to drop the item.
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             Debug.logInternal("Clicked undefined slot");
         } else {
             // If the cursor stack is empty, close the screen.
@@ -394,16 +399,16 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
     /** In the own column below the feet, and the landing after breaking it is not a safe one. */
     private static boolean unsafeToMineUnderfoot(AltoClef mod, BlockPos target) {
-        BlockPos feet = mod.getPlayer().getBlockPos();
-        // ⛔ THE FLOOR IS THE BLOCK THE BODY STANDS ON, NOT feet.down() (2026-09-24). On a block lower
+        BlockPos feet = mod.getPlayer().blockPosition();
+        // ⛔ THE FLOOR IS THE BLOCK THE BODY STANDS ON, NOT feet.below() (2026-09-24). On a block lower
         // than a full cube -- soul sand is 0.875, the nether is full of it -- the body stands at y+0.875
         // and getBlockPos() is the SOUL SAND ITSELF, so "below the feet" skipped the one block that was
         // holding the body up. Measured: two nether deaths falling straight down from standing at
         // heights 32.9 and 58.9 (soul sand tops), no movement driver, 30 blocks into lava, and this rule
         // reading underfoot=0 in every stint. The support is floor(y - 0.2), vanilla's own stepping-pos
         // offset: the soul sand at 58.875, the stone under a body standing at 59.0.
-        net.minecraft.util.math.Vec3d bp = mod.getPlayer().getPos();
-        int supportY = net.minecraft.util.math.MathHelper.floor(bp.y - 0.2);
+        net.minecraft.world.phys.Vec3 bp = mod.getPlayer().position();
+        int supportY = net.minecraft.util.Mth.floor(bp.y - 0.2);
         if (target.getX() != feet.getX() || target.getZ() != feet.getZ() || target.getY() > supportY) {
             return false;
         }
@@ -424,17 +429,17 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private static BlockPos sideStandReaching(AltoClef mod, BlockPos target) {
         // stand level = one above the support block (see unsafeToMineUnderfoot: not getBlockPos(),
         // which on soul sand is the soul sand itself)
-        BlockPos raw = mod.getPlayer().getBlockPos();
+        BlockPos raw = mod.getPlayer().blockPosition();
         BlockPos feet = new BlockPos(raw.getX(),
-                net.minecraft.util.math.MathHelper.floor(mod.getPlayer().getPos().y - 0.2) + 1, raw.getZ());
+                net.minecraft.util.Mth.floor(mod.getPlayer().position().y - 0.2) + 1, raw.getZ());
         var w = mod.getWorld();
-        for (net.minecraft.util.math.Direction d : net.minecraft.util.math.Direction.Type.HORIZONTAL) {
-            BlockPos n = feet.offset(d);
+        for (net.minecraft.core.Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+            BlockPos n = feet.relative(d);
             if (!kaptainwutax.tungsten.combat.CombatPathfinder.isWalkable(n, w)) continue;
             if (kaptainwutax.tungsten.path.RouteHazards.lethalColumn(w, n.getX(), n.getY(), n.getZ(),
-                    new BlockPos.Mutable())) continue;
-            if (net.minecraft.util.math.Vec3d.ofCenter(n).add(0, 0.62, 0)
-                    .squaredDistanceTo(net.minecraft.util.math.Vec3d.ofCenter(target)) > 4.5 * 4.5) continue;
+                    new net.minecraft.core.BlockPos.MutableBlockPos())) continue;
+            if (net.minecraft.world.phys.Vec3.atCenterOf(n).add(0, 0.62, 0)
+                    .distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(target)) > 4.5 * 4.5) continue;
             return n;
         }
         return null;
@@ -458,12 +463,12 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // Whatever keeps the reach ray from landing, a ghost target is not it.
 
         // Check if there is white wool at the specified position
-        if (mod.getWorld().getBlockState(pos).getBlock() == Blocks.WHITE_WOOL) {
+        if (mod.getWorld().getBlockState(pos).getBlock() == Blocks.WOOL.white()) {
             // Iterate over all entities in the world
-            Iterable<Entity> entities = mod.getWorld().getEntities();
+            Iterable<Entity> entities = mod.getWorld().entitiesForRendering();
             for (Entity entity : entities) {
-                // Check if the entity is a PillagerEntity and is within a distance of 144 blocks from the position
-                if (entity instanceof PillagerEntity && pos.isWithinDistance(entity.getPos(), 144)) {
+                // Check if the entity is a Pillager and is within a distance of 144 blocks from the position
+                if (entity instanceof Pillager && pos.closerThan(BlockPos.containing(entity.position()), 144)) {
                     Debug.logMessage("Blacklisting pillager wool.");
                     dbUnreachPillager++;
                     // Request the block at the position to be marked as unreachable
@@ -478,12 +483,12 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // dbUnreachMove=0 and every other branch at zero is what it looks like from outside.
         if (mod.getPlayer() != null) {
             if (_lastMoveTickPos != null
-                    && mod.getPlayer().getPos().squaredDistanceTo(_lastMoveTickPos) > 0.0004) {
+                    && mod.getPlayer().position().distanceToSqr(_lastMoveTickPos) > 0.0004) {
                 _ticksSinceMoved = 0;
-                _lastMoveTickPos = mod.getPlayer().getPos();
+                _lastMoveTickPos = mod.getPlayer().position();
             } else {
                 _ticksSinceMoved++;
-                if (_lastMoveTickPos == null) _lastMoveTickPos = mod.getPlayer().getPos();
+                if (_lastMoveTickPos == null) _lastMoveTickPos = mod.getPlayer().position();
             }
         }
         // BUILDING IS PROGRESS (G32, 2026-09-11). A bot digging its way DOWN to this block stands
@@ -606,7 +611,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // spent on a permanent judgement about the block.
         // Progress is progress TOWARDS THIS BLOCK, so that is what is measured, and the checker
         // only gets to condemn a block the bot has genuinely stopped closing on.
-        double distSqNow = mod.getPlayer().getPos().squaredDistanceTo(
+        double distSqNow = mod.getPlayer().position().distanceToSqr(
                 pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
         long nowMs = System.currentTimeMillis();
         if (_lastApproachMs == 0) {
@@ -683,7 +688,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
         // Check if the block above the position is not solid, the player is above the position,
         // and the player is within a distance of 0.89 blocks from the position
-        if (!WorldHelper.isSolidBlock(pos.up()) && mod.getPlayer().getPos().y > pos.getY() && pos.isWithinDistance(mod.getPlayer().isOnGround() ? mod.getPlayer().getPos() : mod.getPlayer().getPos().add(0, -1, 0), 0.89)) {
+        if (!WorldHelper.isSolidBlock(pos.above()) && mod.getPlayer().position().y > pos.getY() && pos.closerThan(net.minecraft.core.BlockPos.containing(mod.getPlayer().onGround() ? mod.getPlayer().position() : mod.getPlayer().position().add(0, -1, 0)), 0.89)) {
             if (WorldHelper.dangerousToBreakIfRightAbove(pos)) {
                 setDebugState("It's dangerous to break as we're right above it, moving away and trying again.");
                 return new RunAwayFromPositionTask(3, pos.getY(), pos);
@@ -698,7 +703,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         if (distSqNow <= 16.0) {
             dbNearTick++;
             if (!reach.isPresent()) dbNearNoReach++;
-            else if (!(mod.getPlayer().isTouchingWater() || mod.getPlayer().isOnGround())) dbNearAirborne++;
+            else if (!(mod.getPlayer().isInWater() || mod.getPlayer().onGround())) dbNearAirborne++;
             else if (mod.getFoodChain().needsToEat()) dbNearHungry++;
             else if (!Nav.isSafeToCancel()) dbNearUnsafe++;
         }
@@ -715,7 +720,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // dbTick=1525 and nothing broken. So clear whatever is genuinely in the way, subject to
         // the three things that make clearing wrong rather than slow.
         if (!reach.isPresent() && distSqNow <= 16.0) {
-            net.minecraft.util.math.BlockPos blocking =
+            net.minecraft.core.BlockPos blocking =
                     kaptainwutax.tungsten.path.movements.RotationHelper.blockedPos;
             // ⛔ WHY THE CLEAR NEVER FIRES -- SPLIT IT, DO NOT GUESS. A stall capture reads
             // rayOther=3091 with blockedBy=minecraft:grass_block and leafCleared=0: the ray to the
@@ -727,7 +732,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             //   unclearable canClear said no for another reason (bedrock, fluid, air).
             //   noReach     it is clearable but we cannot even look at IT.
             if (blocking != null && !blocking.equals(pos)) {
-                if (blocking.equals(mod.getPlayer().getBlockPos().down())) {
+                if (blocking.equals(mod.getPlayer().blockPosition().below())) {
                     dbBlockedSelfFloor++;
                 } else if (!canClear(mod, blocking)) {
                     dbBlockedUnclearable++;
@@ -745,10 +750,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             // is behind the eyes. Baritone's GoalGetToBlock says the same thing from the planner's
             // side: the cell you want to stand in is the one over the block. So take the lid off,
             // when there is one and it can be taken.
-            if (blocking != null && blocking.equals(mod.getPlayer().getBlockPos().down())
+            if (blocking != null && blocking.equals(mod.getPlayer().blockPosition().below())
                     && kaptainwutax.tungsten.TungstenConfig.get().digTheLidOffTheTarget) {
-                net.minecraft.util.math.BlockPos lid = pos.up();
-                if (!lid.equals(mod.getPlayer().getBlockPos()) && WorldHelper.isSolidBlock(lid)
+                net.minecraft.core.BlockPos lid = pos.above();
+                if (!lid.equals(mod.getPlayer().blockPosition()) && WorldHelper.isSolidBlock(lid)
                         && canClear(mod, lid)) {
                     Optional<Rotation> lidReach = LookHelper.getReach(lid);
                     if (lidReach.isPresent()) {
@@ -788,7 +793,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 }
             }
         }
-        if (reach.isPresent() && (mod.getPlayer().isTouchingWater() || mod.getPlayer().isOnGround()) && !mod.getFoodChain().needsToEat() && !WorldHelper.isInNetherPortal() && Nav.isSafeToCancel()) {
+        if (reach.isPresent() && (mod.getPlayer().isInWater() || mod.getPlayer().onGround()) && !mod.getFoodChain().needsToEat() && !WorldHelper.isInNetherPortal() && Nav.isSafeToCancel()) {
             // ⛔ NEVER DIG THE FLOOR OUT FROM UNDER YOURSELF OVER A DROP (G108 nether, 2026-09-24).
             // Baritone's MineProcess, digging in the player's own column, only ever breaks blocks at
             // or ABOVE the feet (`pos.getY() >= ctx.playerFeet().getY()`, MineProcess.java:126);
@@ -860,7 +865,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             }
         } else {
             setDebugState("Getting to block...");
-            if (isMining && mod.getPlayer().isTouchingWater()) {
+            if (isMining && mod.getPlayer().isInWater()) {
                 setDebugState("We are in water... holding break button");
                 isMining = false;
                 dbUnreachWater++;
@@ -886,10 +891,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             // takes over the moment the ray lands.
             boolean floorIsInTheWay =
                     kaptainwutax.tungsten.TungstenConfig.get().noRetreatWhenOwnFloorBlocks
-                    && pos.getY() < mod.getPlayer().getBlockPos().getY()
+                    && pos.getY() < mod.getPlayer().blockPosition().getY()
                     && kaptainwutax.tungsten.path.movements.RotationHelper.blockedPos != null
                     && kaptainwutax.tungsten.path.movements.RotationHelper.blockedPos
-                            .equals(mod.getPlayer().getBlockPos().down());
+                            .equals(mod.getPlayer().blockPosition().below());
             if (floorIsInTheWay) {
                 dbNoRetreat++;
                 // ⛔ AND "DO NOT RETREAT" IS ONLY HALF OF IT -- THE NOTE SAYS *MOVE*.
@@ -906,14 +911,14 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 // above takes over the instant the ray lands.
                 if (kaptainwutax.tungsten.TungstenConfig.get().stepOverWhenOwnFloorBlocks) {
                     dbStepOver++;
-                    LookHelper.lookAt(mod, net.minecraft.util.math.Vec3d.ofCenter(pos));
+                    LookHelper.lookAt(mod, net.minecraft.world.phys.Vec3.atCenterOf(pos));
                     mod.getInputControls().hold(Input.MOVE_FORWARD);
                 }
                 mod.getInputControls().release(Input.MOVE_BACK);
             }
-            boolean isCloseToMoveBack = pos.isWithinDistance(mod.getPlayer().getPos(), 2);
+            boolean isCloseToMoveBack = pos.closerThan(BlockPos.containing(mod.getPlayer().position()), 2);
             if (isCloseToMoveBack) {
-                if (!Nav.isPathing() && !mod.getPlayer().isTouchingWater() &&
+                if (!Nav.isPathing() && !mod.getPlayer().isInWater() &&
                         !mod.getFoodChain().needsToEat()) {
                     // BACKING OFF IS A CLAIM ON THE BODY TOO. The walker pushes MOVE_FORWARD at
                     // its waypoint in the same tick this pushes MOVE_BACK, and the bot shuffles on
@@ -1091,12 +1096,12 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     /** Ticks the task stepped TOWARD a below-target so its own floor left the sight line. */
     public static volatile int dbStepOver;
 
-    private boolean canClear(AltoClef mod, net.minecraft.util.math.BlockPos blocking) {
-        net.minecraft.block.BlockState st = mod.getWorld().getBlockState(blocking);
+    private boolean canClear(AltoClef mod, net.minecraft.core.BlockPos blocking) {
+        net.minecraft.world.level.block.state.BlockState st = mod.getWorld().getBlockState(blocking);
         if (st.isAir() || !st.getFluidState().isEmpty()) {
             return false;
         }
-        if (st.getHardness(mod.getWorld(), blocking) < 0) {
+        if (st.getDestroySpeed(mod.getWorld(), blocking) < 0) {
             return false;
         }
         // ⛔ AN OBSTRUCTION CLEAR MUST HONOR BREAK PROTECTION, NOT JUST THE INTENDED TARGET
@@ -1114,7 +1119,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         if (mod.getExtraBaritoneSettings().shouldAvoidBreaking(blocking)) {
             return false;
         }
-        return !blocking.equals(mod.getPlayer().getBlockPos().down());
+        return !blocking.equals(mod.getPlayer().blockPosition().below());
     }
 
 }

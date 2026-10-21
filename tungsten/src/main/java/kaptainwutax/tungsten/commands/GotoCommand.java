@@ -10,8 +10,8 @@ import kaptainwutax.tungsten.commands.arguments.GotoTargetArgumentType;
 import kaptainwutax.tungsten.commandsystem.Command;
 import kaptainwutax.tungsten.commandsystem.CommandException;
 import kaptainwutax.tungsten.path.targets.BlockTarget;
-import net.minecraft.command.CommandSource;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.world.phys.Vec3;
 
 public class GotoCommand extends Command {
 
@@ -23,7 +23,7 @@ public class GotoCommand extends Command {
     }
 
 	@Override
-	public void build(LiteralArgumentBuilder<CommandSource> builder) {
+	public void build(LiteralArgumentBuilder<SharedSuggestionProvider> builder) {
 
 		builder.then(argument("gotoTarget", GotoTargetArgumentType.create()).executes(context -> {
 	        try {
@@ -37,8 +37,8 @@ public class GotoCommand extends Command {
 	        		TungstenModDataContainer.EXECUTOR.stop = false;
 	        		// Snap a non-standable target (air / tall grass / flowers) to the
 	        		// reachable ground — otherwise the search re-roots near it forever.
-	        		Vec3d targetVec = kaptainwutax.tungsten.path.GoalSnap.snap(
-	        				target.getVec3d().add(0.5, 0, 0.5), TungstenMod.mc.world);
+	        		Vec3 targetVec = kaptainwutax.tungsten.path.GoalSnap.snap(
+	        				target.getVec3d().add(0.5, 0, 0.5), TungstenMod.mc.level);
 	        		TungstenMod.TARGET = targetVec;
 	        		TungstenMod.markGotoTarget();
 	        		startWithRetry(targetVec, 0);
@@ -59,11 +59,11 @@ public class GotoCommand extends Command {
 	 * Runs on its own thread: the plan is time-sliced (fastPlanBudgetMs) but the
 	 * chat/command thread must never block on it.
 	 */
-	private static void startFastLeg(Vec3d target) {
+	private static void startFastLeg(Vec3 target) {
 		kaptainwutax.tungsten.task.FastNavigator.start(target);
 	}
 
-	private static void startWithRetry(Vec3d target, int attempt) {
+	private static void startWithRetry(Vec3 target, int attempt) {
 		if (attempt >= MAX_RETRIES) {
 			Debug.logWarning("Gave up after " + MAX_RETRIES + " attempts.");
 			return;
@@ -108,14 +108,14 @@ public class GotoCommand extends Command {
 		// also skipped the retry callback below — which is what actually broke nav_gaps,
 		// because nothing continued the goto once an executor segment finished.
 		if (!navigatorDrives) {
-			TungstenModDataContainer.PATHFINDER.find(TungstenMod.mc.world, target, TungstenMod.mc.player);
+			TungstenModDataContainer.PATHFINDER.find(TungstenMod.mc.level, target, TungstenMod.mc.player);
 		}
 
 		// Set callback: when pathfinder+executor finish, retry if not at target
 		TungstenModDataContainer.EXECUTOR.cb = () -> {
 			if (TungstenModDataContainer.PATHFINDER.stop.get()) return;
 			if (TungstenMod.mc.player == null) return;
-			double distSq = TungstenMod.mc.player.getEntityPos().squaredDistanceTo(target);
+			double distSq = TungstenMod.mc.player.position().distanceToSqr(target);
 			if (distSq <= ARRIVAL_DIST_SQ) {
 				// Arrived. Stop any lingering search thread so it doesn't keep
 				// re-rooting near the goal and report "busy" long after we got there.

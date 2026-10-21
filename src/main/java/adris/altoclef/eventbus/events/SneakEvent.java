@@ -1,12 +1,12 @@
 package adris.altoclef.eventbus.events;
 
-import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.world.entity.player.Player;
 
 public class SneakEvent {
-    public PlayerEntity entity;
+    public Player entity;
     public boolean sneak;
 
-    public SneakEvent(PlayerEntity entity, boolean sneaking) {
+    public SneakEvent(Player entity, boolean sneaking) {
         this.entity = entity;
         this.sneak = sneaking;
     }

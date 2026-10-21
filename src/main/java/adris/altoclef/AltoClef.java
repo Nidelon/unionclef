@@ -36,14 +36,14 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import adris.altoclef.mixins.MinecraftClientSessionMixin;
 import adris.altoclef.util.helpers.ConfigHelper;
-import net.minecraft.block.Block;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.session.Session;
-import net.minecraft.client.network.ClientPlayerInteractionManager;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.User;
+import net.minecraft.client.multiplayer.MultiPlayerGameMode;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
 import py4j.GatewayServer;
 import py4j.Py4JNetworkException;
@@ -63,7 +63,7 @@ public class AltoClef implements ModInitializer {
     // Kept fully qualified because this file also imports baritone types; the rotation itself is
     // tungsten's now — same (yaw, pitch) value type, it never crossed into the pathfinder.
     public static kaptainwutax.tungsten.path.movements.Rotation _cameraRotationModifer = null;
-    public static net.minecraft.util.math.Vec3d _cameraPositionModifer = null;
+    public static net.minecraft.world.phys.Vec3 _cameraPositionModifer = null;
 
     public static kaptainwutax.tungsten.path.movements.Rotation getCameraRotationModifer() {
         return _cameraRotationModifer;
@@ -74,10 +74,10 @@ public class AltoClef implements ModInitializer {
     public static void resetCameraRotationModifer() {
         _cameraRotationModifer = null;
     }
-    public static net.minecraft.util.math.Vec3d getCameraPositionModifer() {
+    public static net.minecraft.world.phys.Vec3 getCameraPositionModifer() {
         return _cameraPositionModifer;
     }
-    public static void setCameraPositionModifer(net.minecraft.util.math.Vec3d pos) {
+    public static void setCameraPositionModifer(net.minecraft.world.phys.Vec3 pos) {
         _cameraPositionModifer = pos;
     }
     public static void resetCameraPositionModifer() {
@@ -244,9 +244,9 @@ public class AltoClef implements ModInitializer {
     }
 
     public static String getSelfName() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) return "";
-        if (client.getSession() != null) return client.getSession().getUsername();
+        if (client.getUser() != null) return client.getUser().getName();
         if (client.player != null) return client.player.getName().getString();
         return "";
     }
@@ -260,16 +260,16 @@ public class AltoClef implements ModInitializer {
             Debug.logWarning("Cannot change username: empty");
             return false;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.getSession() == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.getUser() == null) {
             Debug.logWarning("Cannot change username: no session");
             return false;
         }
         try {
-            Session cur = client.getSession();
+            User cur = client.getUser();
             //#if MC >= 12111
-            //$$ // TODO [1.21.11] Session.getAccountType() removed — constructor changed
-            //$$ Session next = new Session(
+            //$$ // TODO [1.21.11] User.getAccountType() removed — constructor changed
+            //$$ User next = new User(
             //$$         newUsername,
             //$$         cur.getUuidOrNull(),
             //$$         cur.getAccessToken(),
@@ -277,13 +277,12 @@ public class AltoClef implements ModInitializer {
             //$$         cur.getClientId()
             //$$ );
             //#else
-            Session next = new Session(
+            User next = new User(
                     newUsername,
-                    cur.getUuidOrNull(),
+                    cur.getProfileId(),
                     cur.getAccessToken(),
                     cur.getXuid(),
-                    cur.getClientId(),
-                    cur.getAccountType()
+                    cur.getClientId()
             );
             //#endif
             ((MinecraftClientSessionMixin) client).setSession(next);
@@ -322,7 +321,7 @@ public class AltoClef implements ModInitializer {
 
     // Are we in game (playing in a server/world)
     public static boolean inGame() {
-        return MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().getNetworkHandler() != null;
+        return Minecraft.getInstance().player != null && Minecraft.getInstance().getConnection() != null;
     }
 
     /**
@@ -381,7 +380,7 @@ public class AltoClef implements ModInitializer {
 
         // Renderers
         commandStatusOverlay = new CommandStatusOverlay();
-        altoClefTickChart = new AltoClefTickChart(MinecraftClient.getInstance().textRenderer);
+        altoClefTickChart = new AltoClefTickChart(Minecraft.getInstance().font);
 
         // Misc managers
         messageSender = new MessageSender();
@@ -485,15 +484,15 @@ public class AltoClef implements ModInitializer {
             if (line.startsWith("@@")) {
                 evt.cancel();
                 final String weCmd = line.substring(2).strip();
-                net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
                 int[] pb = null, cb = null;
                 if (mc.player != null) {
-                    net.minecraft.util.math.BlockPos p = mc.player.getBlockPos();
+                    net.minecraft.core.BlockPos p = mc.player.blockPosition();
                     pb = new int[]{p.getX(), p.getY(), p.getZ()};
                 }
-                if (mc.crosshairTarget instanceof net.minecraft.util.hit.BlockHitResult bhr
-                        && mc.crosshairTarget.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK) {
-                    net.minecraft.util.math.BlockPos p = bhr.getBlockPos();
+                if (mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult bhr
+                        && mc.hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                    net.minecraft.core.BlockPos p = bhr.getBlockPos();
                     cb = new int[]{p.getX(), p.getY(), p.getZ()};
                 }
                 final int[] fpb = pb, fcb = cb;
@@ -536,8 +535,8 @@ public class AltoClef implements ModInitializer {
         // A headless bot would sit on it / get kicked. When that ConfirmScreen opens, click YES automatically.
         EventBus.subscribe(adris.altoclef.eventbus.events.ScreenOpenEvent.class, evt -> {
             if (evt.preOpen) return;
-            net.minecraft.client.gui.screen.Screen s = evt.screen;
-            if (!(s instanceof net.minecraft.client.gui.screen.ConfirmScreen)) return;
+            net.minecraft.client.gui.screens.Screen s = evt.screen;
+            if (!(s instanceof net.minecraft.client.gui.screens.ConfirmScreen)) return;
             String t = s.getTitle().getString().toLowerCase();
             if (t.contains("resource pack") || t.contains("texture")
                     // ru client title text: "ресурс" / "набор ресурс" = "resource" / "resource pack".
@@ -574,7 +573,7 @@ public class AltoClef implements ModInitializer {
                         adris.altoclef.util.helpers.StorageHelper.getBestToolSlot(this, state);
                 if (best.isEmpty()) return;
                 adris.altoclef.util.slots.Slot current = adris.altoclef.util.slots.PlayerSlot.getEquipSlot();
-                net.minecraft.item.Item bestItem =
+                net.minecraft.world.item.Item bestItem =
                         adris.altoclef.util.helpers.StorageHelper.getItemStackInSlot(best.get()).getItem();
                 if (adris.altoclef.util.helpers.StorageHelper.getItemStackInSlot(current).getItem() == bestItem) return;
                 getSlotHandler().forceEquipItem(bestItem);
@@ -592,7 +591,7 @@ public class AltoClef implements ModInitializer {
         kaptainwutax.tungsten.TungstenModDataContainer.equipBlockHook = () -> {
             try {
                 if (getPlayer() == null) return;
-                if (kaptainwutax.tungsten.helpers.BlockPlaceHelper.isScaffold(getPlayer().getMainHandStack())) return;
+                if (kaptainwutax.tungsten.helpers.BlockPlaceHelper.isScaffold(getPlayer().getMainHandItem())) return;
                 // ⛔ EIGHT NAMED BLOCKS WERE THE WHOLE RESTOCK (G62, 2026-09-12). Cobblestone, dirt,
                 // stone, netherrack, cobbled deepslate, OAK planks, deepslate, andesite -- so a bot in
                 // a spruce forest with a stack of spruce planks and logs in the pack was told "out
@@ -601,9 +600,9 @@ public class AltoClef implements ModInitializer {
                 // recording. The restock now takes the cheapest scaffold anywhere in the pack by
                 // the same predicate and rank the tungsten side uses (BlockPlaceHelper.isScaffold /
                 // scaffoldRank): rubble first, then planks, then logs, then the rest.
-                net.minecraft.item.Item best = null;
+                net.minecraft.world.item.Item best = null;
                 int bestRank = Integer.MAX_VALUE;
-                for (net.minecraft.item.ItemStack st : getItemStorage().getItemStacksPlayerInventory(false)) {
+                for (net.minecraft.world.item.ItemStack st : getItemStorage().getItemStacksPlayerInventory(false)) {
                     if (!kaptainwutax.tungsten.helpers.BlockPlaceHelper.isScaffold(st)) continue;
                     int r = kaptainwutax.tungsten.helpers.BlockPlaceHelper.scaffoldRank(st);
                     if (r < bestRank) { bestRank = r; best = st.getItem(); }
@@ -647,7 +646,7 @@ public class AltoClef implements ModInitializer {
             try {
                 var bestSlot = adris.altoclef.util.helpers.StorageHelper.getBestToolSlot(this, state);
                 if (bestSlot.isEmpty()) return -1;
-                net.minecraft.item.ItemStack stack =
+                net.minecraft.world.item.ItemStack stack =
                         adris.altoclef.util.helpers.StorageHelper.getItemStackInSlot(bestSlot.get());
                 return adris.altoclef.util.helpers.ItemHelper.miningSpeedVsBlock(stack, state);
             } catch (Throwable t) {
@@ -1019,26 +1018,26 @@ public class AltoClef implements ModInitializer {
         return throwawayItems;
     }
 
-    public ClientPlayerEntity getPlayer() {
-        return MinecraftClient.getInstance().player;
+    public LocalPlayer getPlayer() {
+        return Minecraft.getInstance().player;
     }
 
     /**
      * Minecraft world access (could just be static honestly)
      */
-    public ClientWorld getWorld() {
-        return MinecraftClient.getInstance().world;
+    public ClientLevel getWorld() {
+        return Minecraft.getInstance().level;
     }
 
     /**
      * Minecraft client interaction controller access (could just be static honestly)
      */
-    public ClientPlayerInteractionManager getController() {
-        return MinecraftClient.getInstance().interactionManager;
+    public MultiPlayerGameMode getController() {
+        return Minecraft.getInstance().gameMode;
     }
 
     /**
-     * Extra controls not present in ClientPlayerInteractionManager. This REALLY should be made static or combined with something else.
+     * Extra controls not present in MultiPlayerGameMode. This REALLY should be made static or combined with something else.
      */
     public PlayerExtraController getControllerExtras() {
         return extraController;

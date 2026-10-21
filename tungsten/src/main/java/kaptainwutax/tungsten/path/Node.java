@@ -34,16 +34,16 @@ import kaptainwutax.tungsten.path.specialMoves.SwimmingMove;
 import kaptainwutax.tungsten.path.specialMoves.WalkToNode;
 import kaptainwutax.tungsten.path.specialMoves.neo.NeoJump;
 import kaptainwutax.tungsten.render.Color;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.IceBlock;
-import net.minecraft.block.LadderBlock;
-import net.minecraft.block.SlimeBlock;
-import net.minecraft.state.property.Properties;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.IceBlock;
+import net.minecraft.world.level.block.LadderBlock;
+import net.minecraft.world.level.block.SlimeBlock;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.level.LevelReader;
 
 public class Node {
 	/** Moves discarded because the completed fall simulation landed harder than the guard allows. */
@@ -72,7 +72,7 @@ public class Node {
 		this.heapPosition = -1;
 	}
 
-	public Node(Node parent, WorldView world, PathInput input, Color color, double pathCost) {
+	public Node(Node parent, LevelReader world, PathInput input, Color color, double pathCost) {
 		this.parent = parent;
 		this.agent = Agent.of(parent.agent, input).tick(world);
 		this.input = input;
@@ -131,7 +131,7 @@ public class Node {
 
 	public static volatile int rejJumpSneak, rejAtWaypoint, rejSneakAir, rejSneakJump;
 
-	public List<Node> getChildren(WorldView world, Vec3d target, BlockNode nextBlockNode) {
+	public List<Node> getChildren(LevelReader world, Vec3 target, BlockNode nextBlockNode) {
 		if (shouldSkipNodeGeneration(nextBlockNode)) {
 	        return Collections.emptyList();
 	    }
@@ -163,7 +163,7 @@ public class Node {
 		    }
 	    }
 	    // Slime bounce: when on slime, generate a bounce trajectory toward target
-	    if (agent.onGround && world.getBlockState(agent.getBlockPos().down()).getBlock() instanceof SlimeBlock) {
+	    if (agent.onGround && world.getBlockState(agent.getBlockPos().below()).getBlock() instanceof SlimeBlock) {
 	    	nodes.add(SlimeBounceMove.generateMove(this, nextBlockNode));
 	    }
 	    if (!agent.touchingWater && BlockStateChecker.isAnyWater(nextBlockNode.getBlockState(world))) {
@@ -174,7 +174,7 @@ public class Node {
 	    }
 
         if (agent.touchingWater) {
-            if (BlockShapeChecker.getShapeVolume(nextBlockNode.getBlockPos().up(), world) == 0) nodes.add(SwimmingMove.generateMove(this, nextBlockNode));
+            if (BlockShapeChecker.getShapeVolume(nextBlockNode.getBlockPos().above(), world) == 0) nodes.add(SwimmingMove.generateMove(this, nextBlockNode));
             else  nodes.add(DivingMove.generateMove(this, nextBlockNode));
             return nodes;
         }
@@ -213,7 +213,7 @@ public class Node {
             }
 	    
 	    if (agent.onGround) {
-	    	if (!world.getBlockState(agent.getBlockPos().up(2)).isAir() && nextBlockNode.getPos(true).distanceTo(agent.getPos()) < 3) {
+	    	if (!world.getBlockState(agent.getBlockPos().above(2)).isAir() && nextBlockNode.getPos(true).distanceTo(agent.getPos()) < 3) {
 	    		// ⛔ REMOVED 2026-09-05: TurnACornerMove.java deleted -- this call was already
 	    		// commented out, superseded by CornerJump.generateMove() below (live). The deleted
 	    		// file also had an unconditional Thread.sleep(200) x up to 16 and an ungated
@@ -239,7 +239,7 @@ public class Node {
 	    if (!agent.touchingWater && this.agent.canSprint() && nextBlockNode.getPos(true).distanceTo(agent.getPos()) < 4) {
 	    	nodes.add(RunToNode.generateMove(this, nextBlockNode));
 	    }
-    	if (!agent.isClimbing(world) && world.getBlockState(agent.getBlockPos().down()).getBlock() instanceof LadderBlock) {	
+    	if (!agent.isClimbing(world) && world.getBlockState(agent.getBlockPos().below()).getBlock() instanceof LadderBlock) {	
 	    	nodes.add(LongJump.generateMove(this, nextBlockNode));    		
 //    		nodes.add(CornerJump.generateMove(this, nextBlockNode));
     	}
@@ -265,7 +265,7 @@ public class Node {
 	private record ChildGenParams(boolean forward, boolean right, boolean left, boolean sneak,
 	                               boolean sprint, boolean jump, float yaw) {}
 
-	private void generateGroundOrWaterNodes(WorldView world, Vec3d target, BlockNode nextBlockNode, List<Node> nodes) {
+	private void generateGroundOrWaterNodes(LevelReader world, Vec3 target, BlockNode nextBlockNode, List<Node> nodes) {
 	    boolean isDoingLongJump = nextBlockNode.isDoingLongJump(world) || nextBlockNode.isDoingNeo();
 	    boolean isCloseToBlockNode = DistanceCalculator.getHorizontalEuclideanDistance(agent.getPos(), nextBlockNode.getPos(true)) < 1;
 //	    boolean needToJump = agent.blockY < nextBlockNode.y;
@@ -275,8 +275,8 @@ public class Node {
 	    		&& state.getBlock() instanceof LadderBlock
 	    		&& nextBlockNode.getBlockPos().getX() == agent.blockX
 	    		&& nextBlockNode.getBlockPos().getZ() == agent.blockZ) {
-	    	Direction dir = state.get(Properties.HORIZONTAL_FACING);
-	    	double desiredYaw = DirectionHelper.calcYawFromVec3d(agent.getPos(), nextBlockNode.getPos(true).offset(dir.getOpposite(), 1)) /*+ MathHelper.roundToPrecision(Math.random(), 2) / 1000000*/;
+	    	Direction dir = state.getValue(BlockStateProperties.HORIZONTAL_FACING);
+	    	double desiredYaw = DirectionHelper.calcYawFromVec3d(agent.getPos(), nextBlockNode.getPos(true).relative(dir.getOpposite(), 1)) /*+ MathHelper.roundToPrecision(Math.random(), 2) / 1000000*/;
 	    	if (nextBlockNode.getBlockPos().getY() > agent.blockY) {
 		    	{ Node n = createNode(world, nextBlockNode, true, false, false, false, false, true, (float) desiredYaw, isDoingLongJump, isCloseToBlockNode); if (n != null) nodes.add(n); }
 		    	return;
@@ -328,7 +328,7 @@ public class Node {
 	    nodes.addAll(created);
 	}
 
-	private Node createNode(WorldView world, BlockNode nextBlockNode,
+	private Node createNode(LevelReader world, BlockNode nextBlockNode,
 	                        boolean forward, boolean right, boolean left, boolean sneak, boolean sprint, boolean jump,
 	                        float yaw, boolean isDoingLongJump, boolean isCloseToBlockNode) {
 		createCalls++;   // how many candidates the simulation is asked to build
@@ -338,7 +338,7 @@ public class Node {
 	        Node newNode = new Node(this, world, new PathInput(forward, false, right, left, jump, sneak, sprint, agent.pitch, yaw),
 	                new Color(sneak ? 220 : 0, 255, sneak ? 50 : 0), this.cost);
 	        double addNodeCost = calculateNodeCost(forward, sprint, jump, sneak, newNode.agent);
-	        if (newNode.agent.getPos().isWithinRangeOf(nextBlockNode.getPos(true), 0.1, 0.4)) { rejAtWaypoint++; return null; }
+	        if (newNode.agent.getPos().closerThan(nextBlockNode.getPos(true), 0.1, 0.4)) { rejAtWaypoint++; return null; }
 
 	        boolean isMoving = (forward || right || left);
 	        if (newNode.agent.isClimbing(world)) jump = this.agent.getBlockPos().getY() < nextBlockNode.getBlockPos().getY();
@@ -353,7 +353,7 @@ public class Node {
 	            if (!sneak) {
 		            for (int j = 0; j < ((!jump) && !newNode.agent.isClimbing(world) ? 1 : 10); j++) {
 		                if (!isMoving) break;
-		                Box adjustedBox = newNode.agent.box.offset(0, -0.5, 0).expand(-0.001, 0, -0.001);
+		                AABB adjustedBox = newNode.agent.box.move(0, -0.5, 0).inflate(-0.001, 0, -0.001);
 		                // ⛔ FIXED 2026-09-05: queried collisions via the STALE `agent` (= this.agent,
 		                // the PARENT node's pre-move state, unqualified field access) instead of
 		                // `newNode.agent` (the current simulated tick) -- the same bug class found and
@@ -412,7 +412,7 @@ public class Node {
         return addNodeCost; //+ Math.abs(agent.yaw- this.agent.yaw) * 5;
 	}
 
-	private void generateAirborneNodes(WorldView world, BlockNode nextBlockNode, List<Node> nodes) {
+	private void generateAirborneNodes(LevelReader world, BlockNode nextBlockNode, List<Node> nodes) {
 	    try {
 	        float targetYaw = (float) DirectionHelper.calcYawFromVec3d(agent.getPos(), nextBlockNode.getPos(true));
 	        for (float yaw : new float[]{agent.yaw, targetYaw, targetYaw - 30f}) {
@@ -422,19 +422,19 @@ public class Node {
 	    }
 	}
 
-	private void createAirborneNodes(WorldView world, BlockNode nextBlockNode, List<Node> nodes, boolean forward, boolean right, float yaw) {
+	private void createAirborneNodes(LevelReader world, BlockNode nextBlockNode, List<Node> nodes, boolean forward, boolean right, float yaw) {
 	    Node newNode = new Node(this, world, new PathInput(forward, false, right, false, false, false, true, agent.pitch, yaw),
 	            new Color(0, 255, 255), this.cost + 1);
 
 
-        if (newNode.agent.getPos().isWithinRangeOf(nextBlockNode.getPos(true), 0.9, 0.4)) return;
+        if (newNode.agent.getPos().closerThan(nextBlockNode.getPos(true), 0.9, 0.4)) return;
         double newNodeDistanceToBlockNode = Math.ceil(newNode.agent.getPos().distanceTo(nextBlockNode.getPos(true)) * 1e4);
         double parentNodeDistanceToBlockNode = Math.ceil(newNode.parent.agent.getPos().distanceTo(nextBlockNode.getPos(true)) * 1e4);
 
         if (newNodeDistanceToBlockNode >= parentNodeDistanceToBlockNode) return;
 	    int i = 0;
-	    boolean isBelowClosedTrapDoor = BlockStateChecker.isClosedBottomTrapdoor(world.getBlockState(nextBlockNode.getBlockPos().down()));
-	    boolean shouldAllowWalkingOnLowerBlock = !world.getBlockState(agent.getBlockPos().up(2)).isAir() && nextBlockNode.getPos(true).distanceTo(agent.getPos()) < 3;
+	    boolean isBelowClosedTrapDoor = BlockStateChecker.isClosedBottomTrapdoor(world.getBlockState(nextBlockNode.getBlockPos().below()));
+	    boolean shouldAllowWalkingOnLowerBlock = !world.getBlockState(agent.getBlockPos().above(2)).isAir() && nextBlockNode.getPos(true).distanceTo(agent.getPos()) < 3;
 	    boolean slimeBelow = MovementHelper.isSlimeColumnBelow(world, newNode.agent.getBlockPos(), 32);
 	    double minY = isBelowClosedTrapDoor ? nextBlockNode.getPos(true).y - 1 : nextBlockNode.getBlockPos().getY() - (shouldAllowWalkingOnLowerBlock ? 1.4 : 0.4);
 	    // ⛔ A FALL GUARD MUST REJECT THE MOVE, NOT TRUNCATE THE SIMULATION.

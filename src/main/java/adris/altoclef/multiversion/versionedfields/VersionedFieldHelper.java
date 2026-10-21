@@ -1,10 +1,10 @@
 package adris.altoclef.multiversion.versionedfields;
 
-import net.minecraft.block.Block;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.item.Item;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.Level;
 import sun.misc.Unsafe;
 
 import java.lang.reflect.Field;
@@ -42,7 +42,7 @@ public class VersionedFieldHelper {
 
 
     protected static class UnsupportedBlock extends Block {
-        public UnsupportedBlock(Settings settings) {
+        public UnsupportedBlock(Properties settings) {
             super(settings);
             throw new IllegalStateException("Unsupported!");
         }
@@ -59,7 +59,7 @@ public class VersionedFieldHelper {
     }
 
     protected static class UnsupportedItem extends Item {
-        public UnsupportedItem(Settings settings) {
+        public UnsupportedItem(Properties settings) {
             super(settings);
             throw new IllegalStateException("Unsupported!");
         }
@@ -71,7 +71,7 @@ public class VersionedFieldHelper {
     }
 
     protected static abstract class UnsupportedEntity extends Entity {
-        public UnsupportedEntity(EntityType<?> type, World world) {
+        public UnsupportedEntity(EntityType<?> type, Level world) {
             super(type, world);
             throw new IllegalStateException("Unsupported!");
         }

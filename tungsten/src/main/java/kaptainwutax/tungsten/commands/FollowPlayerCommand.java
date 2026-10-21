@@ -11,9 +11,9 @@ import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.commandsystem.Command;
 import kaptainwutax.tungsten.commandsystem.CommandException;
 import kaptainwutax.tungsten.task.FollowPlayerTask;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.command.CommandSource;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.commands.SharedSuggestionProvider;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -24,13 +24,13 @@ public class FollowPlayerCommand extends Command {
     }
 
     @Override
-    public void build(LiteralArgumentBuilder<CommandSource> builder) {
+    public void build(LiteralArgumentBuilder<SharedSuggestionProvider> builder) {
         // ;followPlayer <name>  — Tab shows online players from the server tab list
-        SuggestionProvider<CommandSource> playerSuggestions = (ctx, sb) -> {
-            MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc.getNetworkHandler() != null) {
+        SuggestionProvider<SharedSuggestionProvider> playerSuggestions = (ctx, sb) -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.getConnection() != null) {
                 String input = sb.getRemaining().toLowerCase();
-                for (PlayerListEntry entry : mc.getNetworkHandler().getPlayerList()) {
+                for (PlayerInfo entry : mc.getConnection().getOnlinePlayers()) {
                     //#if MC < 12111
                     //$$ String name = entry.getProfile().getName();
                     //#else

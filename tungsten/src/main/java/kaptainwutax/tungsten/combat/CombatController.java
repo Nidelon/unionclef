@@ -2,10 +2,10 @@ package kaptainwutax.tungsten.combat;
 
 import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.util.WindMouseRotation;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * PvP combat controller.
@@ -280,7 +280,7 @@ public class CombatController {
         hopWind = 0; hopAir = 0; hopEdge = 0; hopInterval = 0; hopUnsafe = 0; hopFired = 0; hopDodge = 0; hopFar = 0;
     }
 
-    public boolean tick(ClientPlayerEntity player, Entity target, WorldView world) {
+    public boolean tick(LocalPlayer player, Entity target, LevelReader world) {
         if (target == null || target.isRemoved() || !target.isAlive()) return false;
 
         // ⛔ THE DENOMINATOR THE CONTACT LEAD NEEDS. TriggerBot counts ticks spent INSIDE melee
@@ -444,11 +444,11 @@ public class CombatController {
         // attacking are mutually exclusive in vanilla, which decides the policy for us —
         // raise it while the attack cooldown is recharging, when we could not swing anyway,
         // and drop it just before the swing lands. Free mitigation, no lost damage.
-        var offHand = player.getOffHandStack();
+        var offHand = player.getOffhandItem();
         if (cfg.combatShieldEnabled
-                && offHand.getItem() instanceof net.minecraft.item.ShieldItem) {
-            double d2 = player.squaredDistanceTo(target);
-            float cd = player.getAttackCooldownProgress(0.5f);
+                && offHand.getItem() instanceof net.minecraft.world.item.ShieldItem) {
+            double d2 = player.distanceToSqr(target);
+            float cd = player.getAttackStrengthScale(0.5f);
             boolean threatClose = d2 < (TriggerBot.REACH + 2.0) * (TriggerBot.REACH + 2.0);
             if (threatClose && cd < 0.55f) {
                 kaptainwutax.tungsten.task.ShieldBlocker.hold(3);
@@ -535,8 +535,8 @@ public class CombatController {
             }
 
             if (cfg.combatSaverEnabled) {
-                VoidGuard.apply(resolved, player, player.getEntityPos(),
-                        player.getVelocity(), world);
+                VoidGuard.apply(resolved, player, player.position(),
+                        player.getDeltaMovement(), world);
             }
             // Did the request to close survive arbitration? The safety intent can win, and
             // the void guard can veto after that — this counts what actually reaches the keys.
@@ -547,7 +547,7 @@ public class CombatController {
             // legs and should be named rather than guessed at. The dodge was the obvious guess and
             // accounted for only a sixth of them.
             lastForwardPressed = resolved.forward;
-            resolved.writeKeys(MinecraftClient.getInstance());
+            resolved.writeKeys(Minecraft.getInstance());
         }
 
         return true;
@@ -559,18 +559,18 @@ public class CombatController {
      * <p>"Close enough" is generous on purpose -- a zombie six blocks away will be on us within
      * the time one exchange takes, so it counts toward the decision to kite rather than duel.
      */
-    private static int countThreats(ClientPlayerEntity player, Entity target) {
-        net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
-        if (mc.world == null) {
+    private static int countThreats(LocalPlayer player, Entity target) {
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.level == null) {
             return 0;
         }
         int n = 0;
-        for (Entity e : mc.world.getEntities()) {
+        for (Entity e : mc.level.entitiesForRendering()) {
             if (e == player || e == target || !e.isAlive()
-                    || !(e instanceof net.minecraft.entity.mob.HostileEntity)) {
+                    || !(e instanceof net.minecraft.world.entity.monster.Monster)) {
                 continue;
             }
-            if (e.squaredDistanceTo(player) <= CROWD_RADIUS * CROWD_RADIUS) {
+            if (e.distanceToSqr(player) <= CROWD_RADIUS * CROWD_RADIUS) {
                 n++;
             }
         }
@@ -597,7 +597,7 @@ public class CombatController {
      * nothing — if a strafe side is unsafe it takes the other side, and if both are unsafe it
      * still micro-adjusts range instead of freezing.
      */
-    private void closeQuarters(ClientPlayerEntity player, Entity target, WorldView world,
+    private void closeQuarters(LocalPlayer player, Entity target, LevelReader world,
                                CombatMoveIntent out) {
         // No line of sight: the target is occluded (a wall, or another entity in the way).
         // Don't just spin and click — walk toward the route so we flank around it. The aim
@@ -705,7 +705,7 @@ public class CombatController {
         // PREDICTED BEFORE THE RUN: mob_trio's exact dmgTaken should fall. Its spread on one build
         // is 3 to 18, so this is judged at n=6, not at the n=2 that made my last two attempts
         // unreadable. mob_melee and mob_weapon_swap must not move.
-        boolean vsPlayer = target instanceof net.minecraft.entity.player.PlayerEntity;
+        boolean vsPlayer = target instanceof net.minecraft.world.entity.player.Player;
         // ⛔ THE MOB BAND EXISTS TO STAY OUTSIDE AN ARM. A SHOOTER HAS NO ARM.
         //
         // MOB_STRIKE_DISTANCE is 2.9 for one stated reason, written above: a zombie's arm is
@@ -730,7 +730,7 @@ public class CombatController {
         double strikeAt = vsPlayer ? STRIKE_DISTANCE : MOB_STRIKE_DISTANCE;
         double backOffAt = vsPlayer ? TOO_CLOSE_DISTANCE : MOB_BACK_OFF_DISTANCE;
         if (kaptainwutax.tungsten.TungstenConfig.get().combatReachControl) {
-            float cd = player.getAttackCooldownProgress(0f);
+            float cd = player.getAttackStrengthScale(0f);
             // START CLOSING BEFORE THE SWING IS READY, BY EXACTLY THE TRAVEL TIME.
             // Standing off until `armed` and only THEN walking back in spends the first ticks of
             // every ready swing on the road: the stand-off sits a full block outside
@@ -744,7 +744,7 @@ public class CombatController {
             // full period from the attack-speed attribute, and the distance to cover at the
             // walk speed this controller actually produces.
             double cdTicks = 20.0 / Math.max(0.1,
-                    player.getAttributeValue(net.minecraft.entity.attribute.EntityAttributes.ATTACK_SPEED));
+                    player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_SPEED));
             double ticksToReady = Math.max(0.0, (TriggerBot.COOLDOWN_CRIT - cd) * cdTicks);
             double ticksToClose = Math.max(0.0, (dist - STRIKE_DISTANCE) / CLOSE_SPEED_PER_TICK);
             boolean armed = cd >= TriggerBot.COOLDOWN_CRIT || ticksToClose >= ticksToReady;
@@ -926,7 +926,7 @@ public class CombatController {
                 // THE REAL LESSON, and it is the fourth time in this work: on this course n=13 and
                 // n=26 BOTH misled. Nothing here is believable under n=40, and preferably against a
                 // baseline measured in the same session.
-                if (!(target instanceof net.minecraft.entity.ai.RangedAttackMob)) {
+                if (!(target instanceof net.minecraft.world.entity.monster.RangedAttackMob)) {
                     strikeAt = TriggerBot.REACH + 0.4;
                     backOffAt = TriggerBot.REACH + 0.2;
                 }
@@ -1042,9 +1042,9 @@ public class CombatController {
         // allowed to keep pace with a target that retreats at walking speed. Judged on
         // TriggerBot.ready=far/near, the counter for the mechanism, not on arrows landed.
         if (kaptainwutax.tungsten.TungstenConfig.get().combatHoldContactOnShooter
-                && target instanceof net.minecraft.entity.ai.RangedAttackMob) {
+                && target instanceof net.minecraft.world.entity.monster.RangedAttackMob) {
             boolean swingImminent = dist <= TriggerBot.REACH
-                    && player.getAttackCooldownProgress(0f) >= 0.85f;
+                    && player.getAttackStrengthScale(0f) >= 0.85f;
             out.sprint = out.forward && !swingImminent;
         }
         // TRIED AND REFUTED, 2026-08-12: holding sprint against a RETREATING SHOOTER until the
@@ -1125,14 +1125,14 @@ public class CombatController {
         // So choose the ORBIT DIRECTION by where it leaves us: step each candidate out by a stride,
         // and ask whether the rim would then lie behind us on the knockback line. Circling the
         // target rotates that line, so one side genuinely fixes what the other does not.
-        net.minecraft.util.math.Vec3d selfPos = player.getEntityPos();
-        net.minecraft.util.math.Vec3d toTgt = target.getEntityPos().subtract(selfPos);
-        if (toTgt.horizontalLengthSquared() > 1e-6) {
-            net.minecraft.util.math.Vec3d fwdN = new net.minecraft.util.math.Vec3d(
+        net.minecraft.world.phys.Vec3 selfPos = player.position();
+        net.minecraft.world.phys.Vec3 toTgt = target.position().subtract(selfPos);
+        if (toTgt.horizontalDistanceSqr() > 1e-6) {
+            net.minecraft.world.phys.Vec3 fwdN = new net.minecraft.world.phys.Vec3(
                     toTgt.x, 0, toTgt.z).normalize();
             // MC convention: sideways +1 is LEFT, which is (-fwd.z, +fwd.x) rotated
-            net.minecraft.util.math.Vec3d leftN =
-                    new net.minecraft.util.math.Vec3d(-fwdN.z, 0, fwdN.x);
+            net.minecraft.world.phys.Vec3 leftN =
+                    new net.minecraft.world.phys.Vec3(-fwdN.z, 0, fwdN.x);
             // A SPRINTING ATTACKER IS A DIFFERENT THREAT, and the impulse says so plainly:
             // mean 0.439 blocks/tick carries ~1.1 blocks, but the max seen is 0.854 -- roughly
             // 2.1 blocks, past this platform's radius. That gap is the sprint hit. An ordinary
@@ -1142,17 +1142,17 @@ public class CombatController {
             // someone runs at me", which is a far narrower condition and one the bot can see.
             // Guarding the wide case all the time is what the 3.0 constant did, and it cost
             // exposure without buying safety.
-            double reach = (target instanceof net.minecraft.entity.LivingEntity le && le.isSprinting())
+            double reach = (target instanceof net.minecraft.world.entity.LivingEntity le && le.isSprinting())
                     ? KNOCKBACK_REACH_SPRINT : KNOCKBACK_REACH;
             boolean rimBehindNow = VoidDetector.edgeAhead(
                     selfPos, -fwdN.x, -fwdN.z, world, 3, reach);
             if (rimBehindNow) {
                 rimAtBackTicks++;
                 for (int cand : new int[]{strafeDir, -strafeDir}) {
-                    net.minecraft.util.math.Vec3d step = leftN.multiply(cand * STRAFE_PROBE);
-                    net.minecraft.util.math.Vec3d after = selfPos.add(step);
-                    net.minecraft.util.math.Vec3d awayAfter = after.subtract(target.getEntityPos());
-                    if (awayAfter.horizontalLengthSquared() < 1e-6) continue;
+                    net.minecraft.world.phys.Vec3 step = leftN.scale(cand * STRAFE_PROBE);
+                    net.minecraft.world.phys.Vec3 after = selfPos.add(step);
+                    net.minecraft.world.phys.Vec3 awayAfter = after.subtract(target.position());
+                    if (awayAfter.horizontalDistanceSqr() < 1e-6) continue;
                     boolean stillRim = VoidDetector.edgeAhead(
                             after, awayAfter.x, awayAfter.z, world, 3, KNOCKBACK_REACH);
                     if (!stillRim && strafeSideSafe(player, world, cand)) {
@@ -1184,7 +1184,7 @@ public class CombatController {
         boolean readySwingOutOfReach =
                 kaptainwutax.tungsten.TungstenConfig.get().combatCloseOverOrbit
                 && dist > TriggerBot.REACH
-                && player.getAttackCooldownProgress(0f) >= TriggerBot.COOLDOWN_CRIT;
+                && player.getAttackStrengthScale(0f) >= TriggerBot.COOLDOWN_CRIT;
         // THE PHASE DISTINCTION THE COUNTERS ARGUE FOR: an approach is not a duel. Orbiting is a
         // defence against someone already swinging at you; while the target is out of reach it buys
         // nothing and costs ~30% of closing speed to the 45-degree line. Wider than
@@ -1248,7 +1248,7 @@ public class CombatController {
         // the normal case. The random interval survives as a floor so the bot still juks
         // when it is not about to swing.
         var jcfg = kaptainwutax.tungsten.TungstenConfig.get();
-        float cd = player.getAttackCooldownProgress(0.5f);
+        float cd = player.getAttackStrengthScale(0.5f);
         // THE TAKE-OFF HAS TO BE EARLIER THAN THIS, OR THE SWING LANDS ON THE WAY UP.
         // A crit counts only while FALLING. A jump climbs for about six ticks, and the attack
         // cooldown at the default attack speed runs 12.5 ticks end to end -- so leaving the ground
@@ -1287,7 +1287,7 @@ public class CombatController {
         // suppressed entirely. The same edge score the safety machine already computes is the
         // right gate: hop on open ground, keep both feet down on a bridge.
         double edgeScore = kaptainwutax.tungsten.combat.VoidDetector
-                .edgeScoreWithFallThreshold(player.getEntityPos(), world, 5);
+                .edgeScoreWithFallThreshold(player.position(), world, 5);
         // WHICH OF THE FOUR GATES EATS THE CRIT TAKE-OFF? Counted only over the windingUp window,
         // because that is the only window in which a hop can produce a crit -- a count over all
         // ticks would be a statistic about juking, not about crits (checklist rule 4c).
@@ -1341,11 +1341,11 @@ public class CombatController {
         // Whatever the hop costs in reach, it buys more back -- crits, and an unpredictable
         // profile that a mob's aim cannot lead (see the strafe-flip refutation above, same lesson).
         // Do not reduce the hop. If reach refusals are to be attacked, attack them somewhere else.
-        boolean gAir = !player.isOnGround();
+        boolean gAir = !player.onGround();
         boolean gEdge = edgeScore >= 0.4;
         boolean gInterval = now - lastJump <= interval;
         boolean gLand = !SafetySystem.isJumpLandingSafe(
-                player.getEntityPos(), player.getVelocity(), world);
+                player.position(), player.getDeltaMovement(), world);
         if (windingUp) {
             hopWind++;
             if (gAir) hopAir++;
@@ -1363,7 +1363,7 @@ public class CombatController {
     }
 
     /** Is stepping sideways in {@code dir} (+1 left / -1 right) clear of a drop? */
-    private boolean strafeSideSafe(ClientPlayerEntity player, WorldView world, int dir) {
+    private boolean strafeSideSafe(LocalPlayer player, LevelReader world, int dir) {
         return dirSafe(player, world, 0, dir);
     }
 
@@ -1381,17 +1381,17 @@ public class CombatController {
     public static volatile int inReachTicks = 0, nearReachTicks = 0;
     public static volatile double lastDist = -1;
 
-    private boolean dirSafe(ClientPlayerEntity player, WorldView world, int fwd, int strafe) {
+    private boolean dirSafe(LocalPlayer player, LevelReader world, int fwd, int strafe) {
         if (fwd == 0 && strafe == 0) return true;
-        double yawRad = Math.toRadians(player.getYaw());
+        double yawRad = Math.toRadians(player.getYRot(1.0f));
         double sin = Math.sin(yawRad), cos = Math.cos(yawRad);
         double dx = strafe * cos - fwd * sin;
         double dz = fwd * cos + strafe * sin;
         // Lookahead scales with speed: a sprinting bot must see the rim with room to stop.
-        double speed = Math.sqrt(player.getVelocity().x * player.getVelocity().x
-                + player.getVelocity().z * player.getVelocity().z);
+        double speed = Math.sqrt(player.getDeltaMovement().x * player.getDeltaMovement().x
+                + player.getDeltaMovement().z * player.getDeltaMovement().z);
         double look = Math.max(1.5, speed * 8.0);
-        boolean safe = !VoidDetector.edgeAhead(player.getEntityPos(), dx, dz, world, 3, look);
+        boolean safe = !VoidDetector.edgeAhead(player.position(), dx, dz, world, 3, look);
         if (fwd > 0) { dirAsked++; if (!safe) dirBlockedFwd++; }
         return safe;
     }
@@ -1401,8 +1401,8 @@ public class CombatController {
      * system owns those — just a straight-line disengage with the same per-direction edge test
      * every other movement here uses, so backing off can never walk off a ledge.
      */
-    private void kite(CombatMoveIntent out, ClientPlayerEntity player,
-                      net.minecraft.world.WorldView world, double dist) {
+    private void kite(CombatMoveIntent out, LocalPlayer player,
+                      net.minecraft.world.level.LevelReader world, double dist) {
         out.active = true;
         out.forward = false;
         // A WALL AT YOUR BACK IS NOT A RETREAT. dirSafe answers "is there floor that way", which
@@ -1430,17 +1430,17 @@ public class CombatController {
     }
 
     public void releaseKeys() {
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         resolved.clear();
         safety.getIntent().clear();
-        mc.options.forwardKey.setPressed(false);
-        mc.options.sprintKey.setPressed(false);
-        mc.options.jumpKey.setPressed(false);
-        mc.options.backKey.setPressed(false);
-        mc.options.leftKey.setPressed(false);
-        mc.options.rightKey.setPressed(false);
-        mc.options.sneakKey.setPressed(false);
-        mc.options.attackKey.setPressed(false);
+        mc.options.keyUp.setDown(false);
+        mc.options.keySprint.setDown(false);
+        mc.options.keyJump.setDown(false);
+        mc.options.keyDown.setDown(false);
+        mc.options.keyLeft.setDown(false);
+        mc.options.keyRight.setDown(false);
+        mc.options.keyShift.setDown(false);
+        mc.options.keyAttack.setDown(false);
         triggerBot.reset();
         safety.reset();
         WindMouseRotation.INSTANCE.clearTarget();

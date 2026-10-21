@@ -6,7 +6,7 @@ import adris.altoclef.commandsystem.Command;
 import adris.altoclef.commandsystem.args.PlayerArg;
 import adris.altoclef.commandsystem.exception.CommandException;
 import adris.altoclef.commandsystem.exception.RuntimeCommandException;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Optional;
 
@@ -28,14 +28,14 @@ public class CheckPlayerCommand extends Command {
                 return;
             }
         }
-        Optional<Vec3d> lastPos = mod.getEntityTracker().getPlayerMostRecentPosition(username);
+        Optional<Vec3> lastPos = mod.getEntityTracker().getPlayerMostRecentPosition(username);
         if (lastPos.isEmpty()) {
             throw new RuntimeCommandException("checking player failed: Player " + username + " not found.");
         }
-        Vec3d pos = lastPos.get();
+        Vec3 pos = lastPos.get();
         mod.log("Player " + username + " is found at x="
-                + Math.round(pos.getX()) + ", y=" + Math.round(pos.getY())
-                + ", z=" + Math.round(pos.getZ()) + ".");
+                + Math.round(pos.x()) + ", y=" + Math.round(pos.y())
+                + ", z=" + Math.round(pos.z()) + ".");
         finish();
     }
 }

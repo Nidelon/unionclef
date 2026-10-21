@@ -1,10 +1,10 @@
 package kaptainwutax.tungsten.combat;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Checks terrain safety: void, edges, fall height.
@@ -16,7 +16,7 @@ public final class VoidDetector {
     private VoidDetector() {}
 
     /** True if there is at least one solid block below pos within scan depth. */
-    public static boolean isSafe(Vec3d pos, WorldView world) {
+    public static boolean isSafe(Vec3 pos, LevelReader world) {
         return fallHeight(pos, world) < MAX_SCAN_DEPTH;
     }
 
@@ -24,11 +24,11 @@ public final class VoidDetector {
      * How many blocks would you fall from this position before hitting ground?
      * Returns MAX_SCAN_DEPTH if void (no ground found).
      */
-    public static int fallHeight(Vec3d pos, WorldView world) {
-        int x = MathHelper.floor(pos.x);
-        int z = MathHelper.floor(pos.z);
-        int startY = MathHelper.floor(pos.y);
-        int bottomY = world.getBottomY();
+    public static int fallHeight(Vec3 pos, LevelReader world) {
+        int x = Mth.floor(pos.x);
+        int z = Mth.floor(pos.z);
+        int startY = Mth.floor(pos.y);
+        int bottomY = world.getMinY();
 
         for (int dy = 0; dy < MAX_SCAN_DEPTH; dy++) {
             int y = startY - dy;
@@ -47,7 +47,7 @@ public final class VoidDetector {
             // repositioning, and "toward-island input kept under knockback". Making lava count as the
             // drop gives lava edges all of it, unchanged. The planner does not consult this class, so
             // pathfinder-driven work beside lava (the obsidian flood placing water) is unaffected.
-            if (state.getFluidState().isIn(net.minecraft.registry.tag.FluidTags.LAVA)) return MAX_SCAN_DEPTH;
+            if (state.getFluidState().is(net.minecraft.tags.FluidTags.LAVA)) return MAX_SCAN_DEPTH;
             if (!state.getCollisionShape(world, bp).isEmpty()) return dy;
         }
         return MAX_SCAN_DEPTH;
@@ -57,11 +57,11 @@ public final class VoidDetector {
      * Returns a 0-1 edge proximity score. 0 = safe (solid all around), 1 = surrounded by void.
      * Checks 8 neighbors at feet level.
      */
-    public static double edgeScore(Vec3d pos, WorldView world) {
-        int x = MathHelper.floor(pos.x);
-        int y = MathHelper.floor(pos.y) - 1;
-        int z = MathHelper.floor(pos.z);
-        int bottomY = world.getBottomY();
+    public static double edgeScore(Vec3 pos, LevelReader world) {
+        int x = Mth.floor(pos.x);
+        int y = Mth.floor(pos.y) - 1;
+        int z = Mth.floor(pos.z);
+        int bottomY = world.getMinY();
 
         if (y < bottomY) return 1.0;
 
@@ -87,17 +87,17 @@ public final class VoidDetector {
      *
      * @return true if a step ahead lands over a serious drop (caller should not advance)
      */
-    public static boolean edgeAhead(Vec3d pos, double dx, double dz, WorldView world, int maxSafeFall) {
+    public static boolean edgeAhead(Vec3 pos, double dx, double dz, LevelReader world, int maxSafeFall) {
         return edgeAhead(pos, dx, dz, world, maxSafeFall, 1.35);
     }
 
     /**
-     * Like {@link #edgeAhead(Vec3d, double, double, WorldView, int)} but samples out
+     * Like {@link #edgeAhead(Vec3, double, double, LevelReader, int)} but samples out
      * to {@code maxDist} blocks — pass a speed-scaled distance so a sprinting bot
      * sees the rim while it still has room to stop (fixed 1.35 was overshot by
      * sprint momentum ~0.28/tick).
      */
-    public static boolean edgeAhead(Vec3d pos, double dx, double dz, WorldView world,
+    public static boolean edgeAhead(Vec3 pos, double dx, double dz, LevelReader world,
                                     int maxSafeFall, double maxDist) {
         double len = Math.sqrt(dx * dx + dz * dz);
         if (len < 1e-4) return false;
@@ -107,7 +107,7 @@ public final class VoidDetector {
         int steps = Math.max(2, (int) Math.ceil(maxDist / 0.45));
         for (int i = 1; i <= steps; i++) {
             double d = maxDist * i / steps;
-            Vec3d ahead = new Vec3d(pos.x + dx * d, pos.y, pos.z + dz * d);
+            Vec3 ahead = new Vec3(pos.x + dx * d, pos.y, pos.z + dz * d);
             if (fallHeight(ahead, world) > maxSafeFall) return true;
         }
         return false;
@@ -116,13 +116,13 @@ public final class VoidDetector {
     /** True if any cell within Chebyshev {@code radius} of pos (feet level) drops
      *  more than {@code maxSafeFall} — a wider "am I near a ledge" test used to
      *  cut sprint/jump before momentum builds toward the rim. */
-    public static boolean voidWithin(Vec3d pos, WorldView world, int radius, int maxSafeFall) {
-        int cx = MathHelper.floor(pos.x), cz = MathHelper.floor(pos.z);
-        int y = MathHelper.floor(pos.y);
+    public static boolean voidWithin(Vec3 pos, LevelReader world, int radius, int maxSafeFall) {
+        int cx = Mth.floor(pos.x), cz = Mth.floor(pos.z);
+        int y = Mth.floor(pos.y);
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
                 if (dx == 0 && dz == 0) continue;
-                if (fallHeight(new Vec3d(cx + dx + 0.5, y, cz + dz + 0.5), world) > maxSafeFall) {
+                if (fallHeight(new Vec3(cx + dx + 0.5, y, cz + dz + 0.5), world) > maxSafeFall) {
                     return true;
                 }
             }
@@ -130,7 +130,7 @@ public final class VoidDetector {
         return false;
     }
 
-    private static boolean hasGroundAt(int x, int startY, int z, WorldView world, int bottomY) {
+    private static boolean hasGroundAt(int x, int startY, int z, LevelReader world, int bottomY) {
         for (int dy = 0; dy <= 2; dy++) {
             int y = startY - dy;
             if (y < bottomY) return false;
@@ -144,15 +144,15 @@ public final class VoidDetector {
      * Like edgeScore but counts neighbor as unsafe if fall > maxSafeFall blocks.
      * Used for NARROW_BATTLE detection where 5+ block drops are dangerous, not just void.
      */
-    public static double edgeScoreWithFallThreshold(Vec3d pos, WorldView world, int maxSafeFall) {
-        int x = MathHelper.floor(pos.x);
-        int y = MathHelper.floor(pos.y);
-        int z = MathHelper.floor(pos.z);
+    public static double edgeScoreWithFallThreshold(Vec3 pos, LevelReader world, int maxSafeFall) {
+        int x = Mth.floor(pos.x);
+        int y = Mth.floor(pos.y);
+        int z = Mth.floor(pos.z);
 
         int unsafeCount = 0;
         int[][] offsets = {{1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}};
         for (int[] off : offsets) {
-            int fall = fallHeight(new Vec3d(x + off[0] + 0.5, y, z + off[1] + 0.5), world);
+            int fall = fallHeight(new Vec3(x + off[0] + 0.5, y, z + off[1] + 0.5), world);
             if (fall > maxSafeFall) {
                 unsafeCount++;
             }

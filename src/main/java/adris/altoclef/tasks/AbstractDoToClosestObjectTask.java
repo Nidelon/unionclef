@@ -5,7 +5,7 @@ import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.HashMap;
 import java.util.Optional;
@@ -42,11 +42,11 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     private boolean wasWandering;
     private Task goalTask = null;
 
-    protected abstract Vec3d getPos(AltoClef mod, T obj);
+    protected abstract Vec3 getPos(AltoClef mod, T obj);
 
-    protected abstract Optional<T> getClosestTo(AltoClef mod, Vec3d pos);
+    protected abstract Optional<T> getClosestTo(AltoClef mod, Vec3 pos);
 
-    protected abstract Vec3d getOriginPos(AltoClef mod);
+    protected abstract Vec3 getOriginPos(AltoClef mod);
 
     protected abstract Task getGoalTask(T obj);
 
@@ -95,7 +95,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
             return Double.POSITIVE_INFINITY;
         }
         return BaritoneHelper.calculateGenericHeuristic(
-                mod.getPlayer().getPos(), getPos(mod, currentlyPursuing));
+                mod.getPlayer().position(), getPos(mod, currentlyPursuing));
     }
 
     @Override
@@ -148,9 +148,9 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         // toward its target or a bot standing next to it. Split them by the only honest
         // signal: did the BODY move since the previous tick.
         {
-            net.minecraft.util.math.Vec3d me = mod.getPlayer().getPos();
+            net.minecraft.world.phys.Vec3 me = mod.getPlayer().position();
             if (dcLastPos != null) {
-                if (me.squaredDistanceTo(dcLastPos) > 0.0025D) {
+                if (me.distanceToSqr(dcLastPos) > 0.0025D) {
                     dcMoving++;
                 } else {
                     // STILL -- BUT AT THE TARGET OR AWAY FROM IT? idle0 with 98.5% still is
@@ -159,7 +159,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                     // the still ticks by distance instead of inferring.
                     dcStill++;
                     if (currentlyPursuing != null
-                            && getPos(mod, currentlyPursuing).squaredDistanceTo(me) <= REACH_SQ) {
+                            && getPos(mod, currentlyPursuing).distanceToSqr(me) <= REACH_SQ) {
                         dcStillNear++;
                     } else {
                         dcStillFar++;
@@ -176,7 +176,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         // while the bot stood here). Same principle as there: the clock belongs to the TARGET.
         if (kaptainwutax.tungsten.TungstenConfig.get().closestPursuitHasBudget
                 && currentlyPursuing != null) {
-            double dSq = getPos(mod, currentlyPursuing).squaredDistanceTo(mod.getPlayer().getPos());
+            double dSq = getPos(mod, currentlyPursuing).distanceToSqr(mod.getPlayer().position());
             // HOW FAR THE THING BEING CHASED ACTUALLY IS, not how far it was when chosen.
             // The picker's own maximum reads 54 blocks on the same run where a sampled task
             // chain showed the bot walking to a block at (300, 88, 653) from around
@@ -192,9 +192,9 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
             // one target and not a single give-up. The pickup budget had exactly this bug
             // and was fixed the same way. Judge by WHERE the target is, not which object
             // it is.
-            net.minecraft.util.math.Vec3d hereNow = getPos(mod, currentlyPursuing);
+            net.minecraft.world.phys.Vec3 hereNow = getPos(mod, currentlyPursuing);
             boolean samePursuit = budgetTargetPos != null
-                    && hereNow.squaredDistanceTo(budgetTargetPos) <= SAME_PURSUIT_SQ;
+                    && hereNow.distanceToSqr(budgetTargetPos) <= SAME_PURSUIT_SQ;
             if (!samePursuit) {
                 // WHY DOES THE CLOCK KEEP RESTARTING? gave reads 3 in one sweep and 0 in
                 // the next while same~10000 in both, so the ceiling is being reset rather
@@ -203,7 +203,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                 if (budgetTargetPos != null) {
                     dcClockReset++;
                     dcResetJumpCm = (int) Math.min(Math.sqrt(
-                            hereNow.squaredDistanceTo(budgetTargetPos)) * 100.0, 2_000_000_000.0);
+                            hereNow.distanceToSqr(budgetTargetPos)) * 100.0, 2_000_000_000.0);
                 }
                 budgetTargetPos = hereNow;
                 budgetStartMs = now;
@@ -290,7 +290,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                 if (goalTask != null /*isMovingToClosestPos(mod)*/) {
                     setDebugState("Moving towards closest...");
                     double currentHeuristic = getCurrentCalculatedHeuristic(mod);
-                    double closestDistanceSqr = getPos(mod, currentlyPursuing).squaredDistanceTo(mod.getPlayer().getPos());
+                    double closestDistanceSqr = getPos(mod, currentlyPursuing).distanceToSqr(mod.getPlayer().position());
                     int lastTick = WorldHelper.getTicks();
 
                     if (!heuristicMap.containsKey(currentlyPursuing)) {
@@ -303,7 +303,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                     if (heuristicMap.containsKey(newClosest)) {
                         // Our new object has a past potential heuristic calculated, if it's better try it out.
                         CachedHeuristic maybeReAttempt = heuristicMap.get(newClosest);
-                        double maybeClosestDistance = getPos(mod, newClosest).squaredDistanceTo(mod.getPlayer().getPos());
+                        double maybeClosestDistance = getPos(mod, newClosest).distanceToSqr(mod.getPlayer().position());
                         // Get considerably closer (divide distance by 2)
                         if (maybeReAttempt.getHeuristicValue() < h.getHeuristicValue() || maybeClosestDistance < maybeReAttempt.getClosestDistanceSqr() / 4) {
                             setDebugState("Retrying old heuristic!");
@@ -399,7 +399,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     // ticks on one target and not one give-up. PickupDroppedItemTask had exactly this bug
     // (its clock now lives on the target and fixed the opening, 44.2 s -> 21.8 s median),
     // and so did the pursuit identity below. Static, keyed by WHERE the target is.
-    private static net.minecraft.util.math.Vec3d budgetTargetPos = null;
+    private static net.minecraft.world.phys.Vec3 budgetTargetPos = null;
     private static long budgetStartMs = 0L;
     /** Set only when the TARGET changes -- progress cannot push this one back. */
     private static long budgetHardStartMs = 0L;
@@ -459,7 +459,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     public static volatile int dcStillNear, dcStillFar;
     /** Farthest the pursued object got during its pursuit, in blocks. */
     public static volatile int dcPursuitFarthest;
-    private static net.minecraft.util.math.Vec3d dcLastPos = null;
+    private static net.minecraft.world.phys.Vec3 dcLastPos = null;
 
     /**
      * Remember that this target consumed a whole pursuit budget without being reached.
@@ -472,14 +472,14 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
      */
     protected void markUnreachable(AltoClef mod, T obj) {
         if (obj == null) return;
-        net.minecraft.util.math.Vec3d p = getPos(mod, obj);
+        net.minecraft.world.phys.Vec3 p = getPos(mod, obj);
         if (p == null) return;
         bannedUntilMs.entrySet().removeIf(e -> e.getValue() < System.currentTimeMillis());
         bannedUntilMs.put(p, System.currentTimeMillis() + GIVEN_UP_BAN_MS);
     }
 
     /** Positions that already cost a full pursuit budget, and when they may be offered again. */
-    private static final java.util.Map<net.minecraft.util.math.Vec3d, Long> bannedUntilMs =
+    private static final java.util.Map<net.minecraft.world.phys.Vec3, Long> bannedUntilMs =
             new java.util.concurrent.ConcurrentHashMap<>();
     private static final long GIVEN_UP_BAN_MS = 90_000L;
     private static final double BAN_RADIUS_SQ = 2.0D * 2.0D;
@@ -488,17 +488,17 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     public static volatile int dcBanLifted;
 
     /** Forget this spot's ban — see the note at the call site (G63). */
-    private static void liftBan(net.minecraft.util.math.Vec3d p) {
+    private static void liftBan(net.minecraft.world.phys.Vec3 p) {
         if (p == null) return;
-        bannedUntilMs.entrySet().removeIf(e -> e.getKey().squaredDistanceTo(p) <= BAN_RADIUS_SQ);
+        bannedUntilMs.entrySet().removeIf(e -> e.getKey().distanceToSqr(p) <= BAN_RADIUS_SQ);
     }
 
     /** True when this spot was given up on recently. Measured before it was ever acted on. */
-    private static boolean isBanned(net.minecraft.util.math.Vec3d p) {
+    private static boolean isBanned(net.minecraft.world.phys.Vec3 p) {
         if (p == null || bannedUntilMs.isEmpty()) return false;
         long now = System.currentTimeMillis();
-        for (java.util.Map.Entry<net.minecraft.util.math.Vec3d, Long> e : bannedUntilMs.entrySet()) {
-            if (e.getValue() >= now && e.getKey().squaredDistanceTo(p) <= BAN_RADIUS_SQ) return true;
+        for (java.util.Map.Entry<net.minecraft.world.phys.Vec3, Long> e : bannedUntilMs.entrySet()) {
+            if (e.getValue() >= now && e.getKey().distanceToSqr(p) <= BAN_RADIUS_SQ) return true;
         }
         return false;
     }

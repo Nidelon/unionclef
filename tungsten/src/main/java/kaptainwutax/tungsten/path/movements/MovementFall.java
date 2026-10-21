@@ -4,21 +4,21 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.LadderBlock;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.fluid.WaterFluid;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.Vec3i;
-import net.minecraft.world.World;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LadderBlock;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.level.material.WaterFluid;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.core.Vec3i;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Port of {@code baritone/pathing/movement/movements/MovementFall.java} — a MULTI-block drop:
@@ -178,8 +178,8 @@ public class MovementFall extends Movement {
      * how this package acquired a severe bug once already.
      */
     private boolean willPlaceBucket() {
-        WorldView world = ctx.world();
-        BlockPos.Mutable scratch = new BlockPos.Mutable();
+        LevelReader world = ctx.world();
+        net.minecraft.core.BlockPos.MutableBlockPos scratch = new net.minecraft.core.BlockPos.MutableBlockPos();
         final int y = src.y;
         final int destX = dest.x;
         final int destZ = dest.z;
@@ -242,7 +242,7 @@ public class MovementFall extends Movement {
                 return false; // falling onto a half slab is really glitchy, and can cause more fall damage than we'd expect
             }
             if (reachedMinimum && unprotectedFallHeight <= MAX_FALL_HEIGHT_NO_WATER + 1) {
-                // fallHeight = 4 means onto.up() is 3 blocks down, which is the max
+                // fallHeight = 4 means onto.above() is 3 blocks down, which is the max
                 return false;
             }
             if (reachedMinimum && hasWaterBucket() && unprotectedFallHeight <= MAX_FALL_HEIGHT_BUCKET + 1) {
@@ -259,10 +259,10 @@ public class MovementFall extends Movement {
      * a fall priced on nothing.
      */
     private boolean hasWaterBucket() {
-        ClientPlayerEntity player = ctx.player();
+        LocalPlayer player = ctx.player();
         return ALLOW_WATER_BUCKET_FALL
-                && PlayerInventory.isValidHotbarIndex(player.getInventory().getSlotWithStack(STACK_BUCKET_WATER))
-                && ctx.world().getRegistryKey() != World.NETHER;
+                && Inventory.isHotbarSlot(player.getInventory().findSlotMatchingItem(STACK_BUCKET_WATER))
+                && ctx.world().dimension() != Level.NETHER;
     }
 
     /**
@@ -286,7 +286,7 @@ public class MovementFall extends Movement {
             return state;
         }
 
-        ClientPlayerEntity player = ctx.player();
+        LocalPlayer player = ctx.player();
         BlockPos playerFeet = ctx.playerFeet();
         Rotation toDest = RotationHelper.calcRotationFromVec3d(ctx.playerHead(),
                 RotationHelper.getBlockPosCenter(dest), ctx.playerRotations());
@@ -294,7 +294,7 @@ public class MovementFall extends Movement {
         BlockState destState = ctx.world().getBlockState(dest);
         @SuppressWarnings("unused")
         Block destBlock = destState.getBlock(); // MovementFall.java:97 — unused upstream too; kept
-        boolean isWater = destState.getFluidState().getFluid() instanceof WaterFluid;
+        boolean isWater = destState.getFluidState().getType() instanceof WaterFluid;
         // ADAPTER — MovementFall.java:99 is a FOUR-part condition and the fourth is
         // `!AltoClefSettings.getInstance().shouldNotPlaceBucketButStillFall()` (AltoClefSettings.java:143-147,
         // reading the `_dontPlaceBucketButStillFall` flag). Tungsten has no AltoClefSettings and no
@@ -307,13 +307,13 @@ public class MovementFall extends Movement {
         // sets that flag to prevent. Restored under a name tungsten has.
         if (!isWater && willPlaceBucket() && !playerFeet.equals(dest)
                 && kaptainwutax.tungsten.TungstenConfig.get().allowBucketMlg) {
-            if (!PlayerInventory.isValidHotbarIndex(player.getInventory().getSlotWithStack(STACK_BUCKET_WATER))
-                    || ctx.world().getRegistryKey() == World.NETHER) {
+            if (!Inventory.isHotbarSlot(player.getInventory().findSlotMatchingItem(STACK_BUCKET_WATER))
+                    || ctx.world().dimension() == Level.NETHER) {
                 return state.setStatus(MovementStatus.UNREACHABLE);
             }
 
-            if (player.getEntityPos().y - dest.getY() < ctx.blockReachDistance() && !player.isOnGround()) {
-                player.getInventory().setSelectedSlot(player.getInventory().getSlotWithStack(STACK_BUCKET_WATER));
+            if (player.position().y - dest.getY() < ctx.blockReachDistance() && !player.onGround()) {
+                player.getInventory().setSelectedSlot(player.getInventory().findSlotMatchingItem(STACK_BUCKET_WATER));
 
                 targetRotation = new Rotation(toDest.getYaw(), 90.0F);
 
@@ -327,17 +327,17 @@ public class MovementFall extends Movement {
         } else {
             state.setTarget(new MovementState.MovementTarget(toDest, false));
         }
-        if (playerFeet.equals(dest) && (player.getEntityPos().y - playerFeet.getY() < 0.094 || isWater)) { // 0.094 because lilypads
+        if (playerFeet.equals(dest) && (player.position().y - playerFeet.getY() < 0.094 || isWater)) { // 0.094 because lilypads
             if (isWater) { // only match water, not flowing water (which we cannot pick up with a bucket)
-                if (PlayerInventory.isValidHotbarIndex(player.getInventory().getSlotWithStack(STACK_BUCKET_EMPTY))) {
-                    player.getInventory().setSelectedSlot(player.getInventory().getSlotWithStack(STACK_BUCKET_EMPTY));
-                    if (player.getVelocity().y >= 0) {
+                if (Inventory.isHotbarSlot(player.getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY))) {
+                    player.getInventory().setSelectedSlot(player.getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY));
+                    if (player.getDeltaMovement().y >= 0) {
                         return state.setInput(Input.CLICK_RIGHT, true);
                     } else {
                         return state;
                     }
                 } else {
-                    if (player.getVelocity().y >= 0) {
+                    if (player.getDeltaMovement().y >= 0) {
                         return state.setStatus(MovementStatus.SUCCESS);
                     } // don't else return state; we need to stay centered because this water might be flowing under the surface
                 }
@@ -345,30 +345,30 @@ public class MovementFall extends Movement {
                 return state.setStatus(MovementStatus.SUCCESS);
             }
         }
-        Vec3d destCenter = RotationHelper.getBlockPosCenter(dest); // we are moving to the 0.5 center not the edge (like if we were falling on a ladder)
-        if (Math.abs(player.getEntityPos().x + player.getVelocity().x - destCenter.x) > 0.1
-                || Math.abs(player.getEntityPos().z + player.getVelocity().z - destCenter.z) > 0.1) {
-            if (!player.isOnGround() && Math.abs(player.getVelocity().y) > 0.4) {
+        Vec3 destCenter = RotationHelper.getBlockPosCenter(dest); // we are moving to the 0.5 center not the edge (like if we were falling on a ladder)
+        if (Math.abs(player.position().x + player.getDeltaMovement().x - destCenter.x) > 0.1
+                || Math.abs(player.position().z + player.getDeltaMovement().z - destCenter.z) > 0.1) {
+            if (!player.onGround() && Math.abs(player.getDeltaMovement().y) > 0.4) {
                 state.setInput(Input.SNEAK, true);
             }
             state.setInput(Input.MOVE_FORWARD, true);
         }
-        Vec3i avoid = Optional.ofNullable(avoid()).map(Direction::getVector).orElse(null);
+        Vec3i avoid = Optional.ofNullable(avoid()).map(Direction::getUnitVec3i).orElse(null);
         if (avoid == null) {
             avoid = src.subtract(dest);
         } else {
-            double dist = Math.abs(avoid.getX() * (destCenter.x - avoid.getX() / 2.0 - player.getEntityPos().x))
-                    + Math.abs(avoid.getZ() * (destCenter.z - avoid.getZ() / 2.0 - player.getEntityPos().z));
+            double dist = Math.abs(avoid.getX() * (destCenter.x - avoid.getX() / 2.0 - player.position().x))
+                    + Math.abs(avoid.getZ() * (destCenter.z - avoid.getZ() / 2.0 - player.position().z));
             if (dist < 0.6) {
                 state.setInput(Input.MOVE_FORWARD, true);
-            } else if (!player.isOnGround()) {
+            } else if (!player.onGround()) {
                 // Revokes the SNEAK the steer above may have set — MovementState.setInput overwrites,
                 // and branch order is the arbiter (MovementState.java:24-27). Not a no-op.
                 state.setInput(Input.SNEAK, false);
             }
         }
         if (targetRotation == null) {
-            Vec3d destCenterOffset = new Vec3d(destCenter.x + 0.125 * avoid.getX(), destCenter.y,
+            Vec3 destCenterOffset = new Vec3(destCenter.x + 0.125 * avoid.getX(), destCenter.y,
                     destCenter.z + 0.125 * avoid.getZ());
             state.setTarget(new MovementState.MovementTarget(
                     RotationHelper.calcRotationFromVec3d(ctx.playerHead(), destCenterOffset, ctx.playerRotations()),
@@ -386,7 +386,7 @@ public class MovementFall extends Movement {
         for (int i = 0; i < 15; i++) {
             BlockState state = ctx.world().getBlockState(ctx.playerFeet().below(i));
             if (state.getBlock() == Blocks.LADDER) {
-                return state.get(LadderBlock.FACING);
+                return state.getValue(LadderBlock.FACING);
             }
         }
         return null;
@@ -450,7 +450,7 @@ public class MovementFall extends Movement {
      * {@code context.get(x, y, z)}. Caller-owned scratch position, reused within one call; only
      * BlockStates escape, never the position — same convention as {@code MovementPillar.stateAt}.
      */
-    private static BlockState stateAt(WorldView world, BlockPos.Mutable scratch, int x, int y, int z) {
+    private static BlockState stateAt(LevelReader world, net.minecraft.core.BlockPos.MutableBlockPos scratch, int x, int y, int z) {
         return world.getBlockState(scratch.set(x, y, z));
     }
 }

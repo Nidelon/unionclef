@@ -1,14 +1,14 @@
 package kaptainwutax.tungsten.combat;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.ClipContext;
 
 /**
  * Trigger bot — swings when the target is genuinely hittable.
@@ -66,13 +66,13 @@ public class TriggerBot {
 
     /** Distance from the player's eyes to the nearest point of the target hitbox —
      *  the metric vanilla actually uses to decide whether an attack lands. */
-    public static double eyeToHitbox(ClientPlayerEntity player, Entity target) {
-        Vec3d eye = player.getEyePos();
-        Box box = target.getBoundingBox();
-        Vec3d closest = new Vec3d(
-                MathHelper.clamp(eye.x, box.minX, box.maxX),
-                MathHelper.clamp(eye.y, box.minY, box.maxY),
-                MathHelper.clamp(eye.z, box.minZ, box.maxZ));
+    public static double eyeToHitbox(LocalPlayer player, Entity target) {
+        Vec3 eye = player.getEyePosition();
+        AABB box = target.getBoundingBox();
+        Vec3 closest = new Vec3(
+                Mth.clamp(eye.x, box.minX, box.maxX),
+                Mth.clamp(eye.y, box.minY, box.maxY),
+                Mth.clamp(eye.z, box.minZ, box.maxZ));
         return eye.distanceTo(closest);
     }
 
@@ -169,42 +169,42 @@ public class TriggerBot {
 
     private int traceCooldown = 0;
 
-    public void tick(ClientPlayerEntity player, Entity target) {
-        MinecraftClient mc = MinecraftClient.getInstance();
+    public void tick(LocalPlayer player, Entity target) {
+        Minecraft mc = Minecraft.getInstance();
 
-        float cooldown = player.getAttackCooldownProgress(0f);
+        float cooldown = player.getAttackStrengthScale(0f);
         if (cooldown < 0.3f) {
             clickedThisCycle = false;
         }
 
         ticksSinceLastHit++;
 
-        boolean critWindow = !player.isOnGround() && player.fallDistance > 0.1f
-                && player.getVelocity().y < 0;
+        boolean critWindow = !player.onGround() && player.fallDistance > 0.1f
+                && player.getDeltaMovement().y < 0;
         float threshold = critWindow ? COOLDOWN_CRIT : COOLDOWN_FULL;
 
-        Vec3d eye = player.getEyePos();
-        Box box = target.getBoundingBox();
+        Vec3 eye = player.getEyePosition();
+        AABB box = target.getBoundingBox();
 
         // vanilla reach model: eye to the closest point of the hitbox
-        Vec3d closest = new Vec3d(
-                MathHelper.clamp(eye.x, box.minX, box.maxX),
-                MathHelper.clamp(eye.y, box.minY, box.maxY),
-                MathHelper.clamp(eye.z, box.minZ, box.maxZ));
-        double distSq = eye.squaredDistanceTo(closest);
+        Vec3 closest = new Vec3(
+                Mth.clamp(eye.x, box.minX, box.maxX),
+                Mth.clamp(eye.y, box.minY, box.maxY),
+                Mth.clamp(eye.z, box.minZ, box.maxZ));
+        double distSq = eye.distanceToSqr(closest);
 
         // rough look-angle sanity: the aimer keeps us close anyway, this only
         // rejects wild misalignment — no exact crosshair-on-hitbox pick needed
-        Vec3d toTarget = box.getCenter().subtract(eye).normalize();
-        Vec3d look = player.getRotationVec(1.0f);
+        Vec3 toTarget = box.getCenter().subtract(eye).normalize();
+        Vec3 look = player.getViewVector(1.0f);
         double angle = Math.toDegrees(Math.acos(
-                MathHelper.clamp(look.dotProduct(toTarget), -1.0, 1.0)));
+                Mth.clamp(look.dot(toTarget), -1.0, 1.0)));
 
         // line of sight through COLLIDERS only — tall grass has no collision
         // shape and must not block the swing
-        HitResult hit = player.getEntityWorld().raycast(new RaycastContext(
-                eye, box.getCenter(), RaycastContext.ShapeType.COLLIDER,
-                RaycastContext.FluidHandling.NONE, player));
+        HitResult hit = player.level().clip(new ClipContext(
+                eye, box.getCenter(), net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                net.minecraft.world.level.ClipContext.Fluid.NONE, player));
 
         boolean gateClick = clickedThisCycle;
         boolean gateCooldown = cooldown < threshold;
@@ -245,9 +245,9 @@ public class TriggerBot {
         // eliminated by counters and a fifth guess is not wanted.
         try {
             if (distSq <= 16.0) {
-                net.minecraft.item.ItemStack held =
-                        net.minecraft.client.MinecraftClient.getInstance().player.getMainHandStack();
-                if (held.getItem() instanceof net.minecraft.item.BowItem) gMeleeWithBow++;
+                net.minecraft.world.item.ItemStack held =
+                        net.minecraft.client.Minecraft.getInstance().player.getMainHandItem();
+                if (held.getItem() instanceof net.minecraft.world.item.BowItem) gMeleeWithBow++;
                 else gMeleeArmed++;
             }
         } catch (Exception ignored) {
@@ -330,15 +330,15 @@ public class TriggerBot {
                 // already invalidated four dodge experiments here by wiping presses before the
                 // game read them. Asked-vs-held is the whole question now, so read the option.
                 try {
-                    net.minecraft.client.MinecraftClient mc0 = MinecraftClient.getInstance();
+                    net.minecraft.client.Minecraft mc0 = Minecraft.getInstance();
                     if (mc0 != null && mc0.options != null) {
-                        if (mc0.options.sprintKey.isPressed()) gReadyFarSprintHeld++;
-                        if (mc0.options.forwardKey.isPressed()) gReadyFarFwdHeld++;
+                        if (mc0.options.keySprint.isDown()) gReadyFarSprintHeld++;
+                        if (mc0.options.keyUp.isDown()) gReadyFarFwdHeld++;
                         // Sideways travel is the candidate now: forward held while moving
                         // TANGENTIALLY keeps the gap constant forever, which is what the
                         // circle-strafe does by design. If these are held through the wasted
                         // ticks the orbit is the answer; if they are quiet it is something else.
-                        if (mc0.options.leftKey.isPressed() || mc0.options.rightKey.isPressed())
+                        if (mc0.options.keyLeft.isDown() || mc0.options.keyRight.isDown())
                             gReadyFarStrafeHeld++;
                         // ⛔ CONFIRMED, 2026-08-12. far/near/dodge/asked  held=fwd/sprint/STRAFE
                         //   35/3/14/32 28/29/21   32/3/7/32 25/27/15   18/15/0/17 17/17/14
@@ -427,20 +427,20 @@ public class TriggerBot {
             try {
                 if (player.isSprinting()
                         && player.fallDistance > 0.0
-                        && !player.isOnGround()
-                        && !player.isClimbing()
-                        && !player.isTouchingWater()
-                        && !player.hasVehicle()
-                        && !player.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.BLINDNESS)) {
-                    if (player.networkHandler != null) {
-                        player.networkHandler.sendPacket(
-                                new net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket(
+                        && !player.onGround()
+                        && !player.onClimbable()
+                        && !player.isInWater()
+                        && !player.isPassenger()
+                        && !player.hasEffect(net.minecraft.world.effect.MobEffects.BLINDNESS)) {
+                    if (player.connection != null) {
+                        player.connection.send(
+                                new net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket(
                                         player,
-                                        net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket
-                                                .Mode.STOP_SPRINTING));
+                                        net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
+                                                .Action.STOP_SPRINTING));
                     }
                     player.setSprinting(false);
-                    MinecraftClient.getInstance().options.sprintKey.setPressed(false);
+                    Minecraft.getInstance().options.keySprint.setDown(false);
                     gCritSprintReleased++;
                 }
             } catch (Exception ignored) {
@@ -468,8 +468,8 @@ public class TriggerBot {
         // not bounded by anything and answers "did this swing land" directly.
         lastSwingMs = System.currentTimeMillis();
         try {
-            lastSwingHand = net.minecraft.registry.Registries.ITEM
-                    .getId(player.getMainHandStack().getItem()).getPath();
+            lastSwingHand = net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(player.getMainHandItem().getItem()).getPath();
             lastSwingTargetId = target == null ? -1 : target.getId();
         } catch (Exception ignored) {
             lastSwingHand = "?";
@@ -516,13 +516,13 @@ public class TriggerBot {
         // so check the damage gap against THAT before spending another pass on its cause.
         // So count it rather than believe it: the mean weapon score across swings, and how many
         // swings went out with nothing that deserves the name.
-        double ws = kaptainwutax.tungsten.combat.WeaponSelector.meleeScore(player.getMainHandStack());
+        double ws = kaptainwutax.tungsten.combat.WeaponSelector.meleeScore(player.getMainHandItem());
         gSwingWeaponSum += ws;
         if (ws <= 1.0) gSwingNoWeapon++;
         if (kaptainwutax.tungsten.combat.AttackTiming.isCrit(player)) { critHits++; lifetimeCrits++; }
         lifetimeHits++;
-        mc.interactionManager.attackEntity(player, target);
-        player.swingHand(Hand.MAIN_HAND);
+        mc.gameMode.attack(player, target);
+        player.swing(InteractionHand.MAIN_HAND);
         clickedThisCycle = true;
         totalHits++;
         ticksSinceLastHit = 0;

@@ -1,13 +1,13 @@
 package kaptainwutax.tungsten.combat;
 
-import net.minecraft.component.type.ItemEnchantmentsComponent;
-import net.minecraft.enchantment.Enchantment;
-import net.minecraft.enchantment.Enchantments;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.Enchantments;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.Holder;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Estimates knockback strength based on enemy state.
@@ -43,21 +43,21 @@ public class KnockbackEstimator {
     /**
      * Update KB estimate based on enemy state. Call every tick.
      */
-    public void tick(Entity enemy, Vec3d enemyVelocity) {
+    public void tick(Entity enemy, Vec3 enemyVelocity) {
         double horizSpeed = Math.sqrt(enemyVelocity.x * enemyVelocity.x
                 + enemyVelocity.z * enemyVelocity.z);
 
         // detect KB enchant on enemy's held item. 1.21 moved enchantments to a data component
-        // (ItemEnchantmentsComponent) rather than a plain enum lookup -- pattern verified against
+        // (ItemEnchantments) rather than a plain enum lookup -- pattern verified against
         // MovementHelperB.frostWalkerLevel(), which already reads an enchantment level this same
         // way and compiles in this exact codebase.
         int kbLevel = 0;
-        if (enemy instanceof PlayerEntity pe) {
-            ItemStack held = pe.getMainHandStack();
+        if (enemy instanceof Player pe) {
+            ItemStack held = pe.getMainHandItem();
             if (!held.isEmpty()) {
-                ItemEnchantmentsComponent itemEnchantments = held.getEnchantments();
-                for (RegistryEntry<Enchantment> enchant : itemEnchantments.getEnchantments()) {
-                    if (enchant.matchesKey(Enchantments.KNOCKBACK)) {
+                ItemEnchantments itemEnchantments = held.getEnchantments();
+                for (Holder<Enchantment> enchant : itemEnchantments.keySet()) {
+                    if (enchant.is(Enchantments.KNOCKBACK)) {
                         kbLevel = itemEnchantments.getLevel(enchant);
                     }
                 }
@@ -70,7 +70,7 @@ public class KnockbackEstimator {
 
         // sprint detection: isSprinting() flag OR high speed
         boolean sprinting = false;
-        if (enemy instanceof PlayerEntity pe) {
+        if (enemy instanceof Player pe) {
             sprinting = pe.isSprinting();
         }
         if (!sprinting && horizSpeed > 0.15) {

@@ -9,7 +9,7 @@ import adris.altoclef.commandsystem.exception.CommandException;
 import adris.altoclef.tasks.multiplayer.minigames.*;
 import adris.altoclef.tasks.speedrun.beatgame.BeatMinecraftTask;
 import adris.altoclef.util.agent.Pipeline;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 
 public class GameCommand extends Command {
     public GameCommand() {
@@ -60,11 +60,11 @@ public class GameCommand extends Command {
                 break;
             case "kpvp", "kitpvp", "kit":
                 Debug.logMessage("Pipeline set to KitPVP");
-                mod.runUserTask(new KitPVPTask(mod.getPlayer().getBlockPos(), 900, false), this::finish);
+                mod.runUserTask(new KitPVPTask(mod.getPlayer().blockPosition(), 900, false), this::finish);
                 break;
             case "thepit", "pit":
                 Debug.logMessage("Pipeline set to ThePit");
-                mod.runUserTask(new SkyWarsTask(mod.getPlayer().getBlockPos(), true, false), this::finish);
+                mod.runUserTask(new SkyWarsTask(mod.getPlayer().blockPosition(), true, false), this::finish);
                 break;
             case "skypvp", "sky_pvp":
                 Debug.logMessage("Pipeline set to SkyPvP (MineLegacy)");

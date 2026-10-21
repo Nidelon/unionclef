@@ -1,8 +1,8 @@
 package adris.altoclef.eventbus.events;
 
-import net.minecraft.util.Hand;
+import net.minecraft.world.InteractionHand;
 
 public class ClientHandSwingEvent {
-    public ClientHandSwingEvent(Hand hand) {
+    public ClientHandSwingEvent(InteractionHand hand) {
     }
 }

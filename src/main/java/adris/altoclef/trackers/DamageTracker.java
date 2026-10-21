@@ -11,26 +11,26 @@ import adris.altoclef.trackers.threats.PlayerThreat;
 import adris.altoclef.trackers.threats.ThreatTable;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.time.TimerReal;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.*;
 
 public class DamageTracker extends Tracker {
-    private final HashMap<String, PlayerEntity> _playerMap = new HashMap<>();
+    private final HashMap<String, Player> _playerMap = new HashMap<>();
     private final HashMap<String, Float> _prevPlayerHealth = new HashMap<>();
     private final TimerReal _recentDamageTimer = new TimerReal(0.05);
     private final TimerReal _deathEventSpamTimer = new TimerReal(0.5);
-    private List<AbstractClientPlayerEntity> _prevPlayerList = new ArrayList<>();
+    private List<AbstractClientPlayer> _prevPlayerList = new ArrayList<>();
     public String _lastAttackingPlayerName = "undefined";
     public String _lastKilled = "";
     private double _lastAttackingPlayerIsLookingProbability;
     private double _lastAttackingPlayerMyLookingProbability;
     public final TimerReal _attackCheckTimer = new TimerReal(0.7);
-    private PlayerEntity _attackerCheck;
+    private Player _attackerCheck;
     private boolean _attackerCheckHit = false;
     private final HashMap<String, TimerReal> _playerDamageTimers = new HashMap<>();
     private final float DEATH_HEALTH_THRESHOLD = 10.0f;
@@ -49,7 +49,7 @@ public class DamageTracker extends Tracker {
     }
 
     public void onClientHandSwing() {
-        LivingEntity attacking = mod.getPlayer().getAttacking();
+        LivingEntity attacking = mod.getPlayer().getLastHurtMob();
         if (attacking != null) {
             recordOnSwing(mod.getPlayer());
         }
@@ -57,7 +57,7 @@ public class DamageTracker extends Tracker {
 
     public void recordOnSwing(Entity entity) {
         if (mod.getBehaviour().getDamageTrackerStrategy().equals(DamageTrackerStrategy.MurderMystery)) {
-            if (entity instanceof PlayerEntity player && MurderMysteryTask.hasKillerWeapon(player)) {
+            if (entity instanceof Player player && MurderMysteryTask.hasKillerWeapon(player)) {
                 threatTable.recordAttackAnimation(entity.getId());
             }
             return;
@@ -143,7 +143,7 @@ public class DamageTracker extends Tracker {
     }
 
     public void onClientMeleeAttack(Entity target) {
-        if (target instanceof PlayerEntity player) {
+        if (target instanceof Player player) {
             _attackerCheck = player;
             _attackCheckTimer.reset();
             _attackerCheckHit = true;
@@ -179,7 +179,7 @@ public class DamageTracker extends Tracker {
         onDeath(name, determineKiller(name));
     }
 
-    public void onPlayerRemove(AbstractClientPlayerEntity player) {
+    public void onPlayerRemove(AbstractClientPlayer player) {
         if (player == null) return;
         String playerName = player.getName().getString();
         float lastHealth = _prevPlayerHealth.getOrDefault(playerName, FULL_HEALTH);
@@ -214,16 +214,16 @@ public class DamageTracker extends Tracker {
     }
 
     public void tick() {
-        if (!AltoClef.inGame() || MinecraftClient.getInstance().world == null) return;
-        List<AbstractClientPlayerEntity> currentPlayers = MinecraftClient.getInstance().world.getPlayers();
+        if (!AltoClef.inGame() || Minecraft.getInstance().level == null) return;
+        List<AbstractClientPlayer> currentPlayers = Minecraft.getInstance().level.players();
         if (!_prevPlayerList.equals(currentPlayers)) {
-            Set<AbstractClientPlayerEntity> removedPlayers = new HashSet<>(_prevPlayerList);
+            Set<AbstractClientPlayer> removedPlayers = new HashSet<>(_prevPlayerList);
             removedPlayers.removeAll(currentPlayers);
-            for (AbstractClientPlayerEntity p : removedPlayers) onPlayerRemove(p);
+            for (AbstractClientPlayer p : removedPlayers) onPlayerRemove(p);
             _prevPlayerList = new ArrayList<>(currentPlayers);
             updatePlayerStates(currentPlayers);
         }
-        for (AbstractClientPlayerEntity player : currentPlayers) {
+        for (AbstractClientPlayer player : currentPlayers) {
             if (player != null && player.getName() != null) {
                 String name = player.getName().getString();
                 threatTable.updatePlayerData(name, player);
@@ -238,8 +238,8 @@ public class DamageTracker extends Tracker {
         updateAttackingPlayerInfo();
     }
 
-    private void updatePlayerStates(List<AbstractClientPlayerEntity> currentPlayers) {
-        for (AbstractClientPlayerEntity player : currentPlayers) {
+    private void updatePlayerStates(List<AbstractClientPlayer> currentPlayers) {
+        for (AbstractClientPlayer player : currentPlayers) {
             if (player != null && player.getName() != null) {
                 String name = player.getName().getString();
                 _playerMap.put(name, player);
@@ -249,8 +249,8 @@ public class DamageTracker extends Tracker {
     }
 
     private void updateAttackingPlayerInfo() {
-        LivingEntity attacking = mod.getPlayer().getAttacking();
-        if (attacking instanceof PlayerEntity player) {
+        LivingEntity attacking = mod.getPlayer().getLastHurtMob();
+        if (attacking instanceof Player player) {
             _lastAttackingPlayerName = attacking.getName().getString();
             _lastAttackingPlayerIsLookingProbability = LookHelper.getLookingProbability(player, mod.getPlayer());
             _lastAttackingPlayerMyLookingProbability = LookHelper.getLookingProbability(mod.getPlayer(), player);
@@ -268,7 +268,7 @@ public class DamageTracker extends Tracker {
         _playerMap.clear();
     }
 
-    public List<AbstractClientPlayerEntity> getPlayerList() {
+    public List<AbstractClientPlayer> getPlayerList() {
         return _prevPlayerList;
     }
 }

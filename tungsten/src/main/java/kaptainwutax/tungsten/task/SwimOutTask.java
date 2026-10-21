@@ -2,10 +2,10 @@ package kaptainwutax.tungsten.task;
 
 import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.util.WindMouseRotation;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Climb OUT of water onto a raised bank — the water counterpart to {@link PillarTask}.
@@ -31,7 +31,7 @@ public class SwimOutTask {
     private static double bestDistSq;
 
     public static synchronized boolean startTo(BlockPos target) {
-        ClientPlayerEntity p = MinecraftClient.getInstance().player;
+        LocalPlayer p = Minecraft.getInstance().player;
         if (p == null || target == null) return false;
         ledge = target;
         stuckTicks = 0;
@@ -45,47 +45,47 @@ public class SwimOutTask {
 
     public static void stop() {
         active = false;
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc.options != null) {
-            mc.options.jumpKey.setPressed(false);
-            mc.options.forwardKey.setPressed(false);
-            mc.options.sprintKey.setPressed(false);
-            mc.options.sneakKey.setPressed(false);
+            mc.options.keyJump.setDown(false);
+            mc.options.keyUp.setDown(false);
+            mc.options.keySprint.setDown(false);
+            mc.options.keyShift.setDown(false);
         }
         WindMouseRotation.INSTANCE.clearTarget();
     }
 
     /** Called every game tick from MixinClientPlayerEntity. */
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         if (!active) return;
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc.options == null || ledge == null) { stop(); return; }
         var opts = mc.options;
 
         // Done: standing on solid ground at/above the ledge and no longer in the water.
-        if (player.isOnGround() && player.getY() >= ledge.getY() - 0.05 && !player.isTouchingWater()) {
+        if (player.onGround() && player.getY() >= ledge.getY() - 0.05 && !player.isInWater()) {
             Debug.logMessage("Swam out onto the bank at y=" + String.format("%.1f", player.getY()));
             stop();
             return;
         }
         // Left the water without reaching the ledge (drifted onto a lower shore): hand back and let
         // navigation re-plan from solid ground rather than swim-driving on land.
-        if (!player.isTouchingWater() && player.isOnGround()) {
+        if (!player.isInWater() && player.onGround()) {
             stop();
             return;
         }
 
         // Aim at the ledge centre (up-and-forward) — in water the body swims where it looks, so
         // this points the swim up onto the bank — and hold JUMP (rise) + FORWARD (toward it).
-        Vec3d c = Vec3d.ofCenter(ledge);
-        Vec3d dv = c.subtract(player.getEyePos());
+        Vec3 c = net.minecraft.world.phys.Vec3.atCenterOf(ledge);
+        Vec3 dv = c.subtract(player.getEyePosition());
         float wantYaw = (float) Math.toDegrees(-Math.atan2(dv.x, dv.z));
         float wantPitch = (float) Math.toDegrees(-Math.atan2(dv.y, Math.sqrt(dv.x * dv.x + dv.z * dv.z)));
         WindMouseRotation.INSTANCE.setTarget(wantYaw, wantPitch);
-        opts.forwardKey.setPressed(true);
-        opts.jumpKey.setPressed(true);      // JUMP in liquid = swim up
-        opts.sprintKey.setPressed(false);
-        opts.sneakKey.setPressed(false);
+        opts.keyUp.setDown(true);
+        opts.keyJump.setDown(true);      // JUMP in liquid = swim up
+        opts.keySprint.setDown(false);
+        opts.keyShift.setDown(false);
 
         // Progress on distance to the ledge; best-distance is monotonic so surface bobbing does not
         // trip it. ~3s of no approach and we hand back.

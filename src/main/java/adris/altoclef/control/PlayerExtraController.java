@@ -6,9 +6,9 @@ import adris.altoclef.eventbus.events.BlockBreakingCancelEvent;
 import adris.altoclef.eventbus.events.BlockBreakingEvent;
 import adris.altoclef.util.helpers.LookHelper;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.core.BlockPos;
 
 public class PlayerExtraController {
 
@@ -70,8 +70,8 @@ public class PlayerExtraController {
         _succesfulHit = false;
         LookHelper.smoothLook(mod, entity);
         boolean attackable;
-        if (MinecraftClient.getInstance().targetedEntity != null) {
-            attackable = MinecraftClient.getInstance().targetedEntity.isAttackable();
+        if (Minecraft.getInstance().crosshairPickEntity != null) {
+            attackable = Minecraft.getInstance().crosshairPickEntity.isAttackable();
         } else {
             attackable = false;
         }

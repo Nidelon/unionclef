@@ -13,21 +13,21 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.EndPortalFrameBlock;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.EndPortalFrameBlock;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.LinkedList;
 import java.util.Optional;
 
 public class UnstuckChain extends SingleTaskChain {
 
-    private final LinkedList<Vec3d> posHistory = new LinkedList<>();
+    private final LinkedList<Vec3> posHistory = new LinkedList<>();
 
     /** Times the chain acted on a bot that had a goal, no path and had not moved. */
     public static volatile int strandedRescues;
@@ -77,7 +77,7 @@ public class UnstuckChain extends SingleTaskChain {
      * was rescued afresh at 30s forever. That is the shuttling the user reported as worse
      * than the freeze: "walks to a block, goes off, comes back, endlessly".
      */
-    private Vec3d lastRescuePos = null;
+    private Vec3 lastRescuePos = null;
     private boolean nearCounted = false;
     public static volatile int rescueNearPrevious;
     public static volatile int rescueMovedOn;
@@ -93,29 +93,29 @@ public class UnstuckChain extends SingleTaskChain {
     private void checkStuckInWater() {
         if (posHistory.size() < 100) return;
 
-        ClientWorld world = AltoClef.getInstance().getWorld();
-        ClientPlayerEntity player = AltoClef.getInstance().getPlayer();
+        ClientLevel world = AltoClef.getInstance().getWorld();
+        LocalPlayer player = AltoClef.getInstance().getPlayer();
 
         // is not in water
-        if (!world.getBlockState(player.getSteppingPos()).getBlock().equals(Blocks.WATER)
-                && !world.getBlockState(player.getSteppingPos().down()).getBlock().equals(Blocks.WATER))
+        if (!world.getBlockState(player.getOnPos()).getBlock().equals(Blocks.WATER)
+                && !world.getBlockState(player.getOnPos().below()).getBlock().equals(Blocks.WATER))
             return;
 
         // everything should be fine
-        if (player.isOnGround()) {
+        if (player.onGround()) {
             posHistory.clear();
             return;
         }
 
         // do NOT do anything if underwater
-        if (player.getAir() < player.getMaxAir()) {
+        if (player.getAirSupply() < player.getMaxAirSupply()) {
             return;
         }
 
-        Vec3d pos1 = posHistory.get(0);
+        Vec3 pos1 = posHistory.get(0);
         for (int i = 1; i < 100; i++) {
-            Vec3d pos2 = posHistory.get(i);
-            if (Math.abs(pos1.getX() - pos2.getX()) > 0.75 || Math.abs(pos1.getZ() - pos2.getZ()) > 0.75) {
+            Vec3 pos2 = posHistory.get(i);
+            if (Math.abs(pos1.x() - pos2.x()) > 0.75 || Math.abs(pos1.z() - pos2.z()) > 0.75) {
                 return;
             }
         }
@@ -127,8 +127,8 @@ public class UnstuckChain extends SingleTaskChain {
     private void checkStuckInPowderedSnow() {
         AltoClef mod = AltoClef.getInstance();
 
-        PlayerEntity player = mod.getPlayer();
-        ClientWorld world = mod.getWorld();
+        Player player = mod.getPlayer();
+        ClientLevel world = mod.getWorld();
 
         if (PlayerVer.inPowderedSnow(player)) {
             isProbablyStuck = true;
@@ -141,17 +141,17 @@ public class UnstuckChain extends SingleTaskChain {
             // The blocks that freeze you are exactly the ones your box overlaps; break those, the
             // one at eye height first so the head is clear, and there is never anything to walk to.
             BlockPos destroyPos = null;
-            net.minecraft.util.math.Box box = player.getBoundingBox();
-            BlockPos eye = WorldHelper.toBlockPos(player.getEyePos());
+            net.minecraft.world.phys.AABB box = player.getBoundingBox();
+            BlockPos eye = WorldHelper.toBlockPos(player.getEyePosition());
             double bestSq = Double.POSITIVE_INFINITY;
-            for (BlockPos p : BlockPos.iterate(
-                    BlockPos.ofFloored(box.minX, box.minY, box.minZ),
-                    BlockPos.ofFloored(box.maxX - 1.0E-4, box.maxY - 1.0E-4, box.maxZ - 1.0E-4))) {
+            for (BlockPos p : BlockPos.betweenClosed(
+                    BlockPos.containing(box.minX, box.minY, box.minZ),
+                    BlockPos.containing(box.maxX - 1.0E-4, box.maxY - 1.0E-4, box.maxZ - 1.0E-4))) {
                 if (world.getBlockState(p).getBlock() != Blocks.POWDER_SNOW) continue;
-                double sq = p.getSquaredDistance(eye);
+                double sq = p.distSqr(eye);
                 if (sq < bestSq) {
                     bestSq = sq;
-                    destroyPos = p.toImmutable();
+                    destroyPos = p.immutable();
                 }
             }
 
@@ -168,15 +168,15 @@ public class UnstuckChain extends SingleTaskChain {
      * "Trying" = a movement key is held (by us or by a mod driving the client).
      */
     private boolean isTryingToMove() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        return mc.options.forwardKey.isPressed() || mc.options.backKey.isPressed()
-                || mc.options.leftKey.isPressed() || mc.options.rightKey.isPressed()
-                || mc.options.jumpKey.isPressed();
+        Minecraft mc = Minecraft.getInstance();
+        return mc.options.keyUp.isDown() || mc.options.keyDown.isDown()
+                || mc.options.keyLeft.isDown() || mc.options.keyRight.isDown()
+                || mc.options.keyJump.isDown();
     }
 
     /** In a fight the bot legitimately holds a small area (strafe/kite around a target). */
     private boolean isInCombat(AltoClef mod) {
-        PlayerEntity player = mod.getPlayer();
+        Player player = mod.getPlayer();
         if (player == null) return false;
         if (player.hurtTime > 0) return true;                       // being hit right now
         return adris.altoclef.util.helpers.TungstenHelper.isCombatActive();
@@ -193,10 +193,10 @@ public class UnstuckChain extends SingleTaskChain {
         boolean strandedWithGoal = false;
         if (kaptainwutax.tungsten.TungstenConfig.get().unstuckWhenGoalButNoPath
                 && !isTryingToMove() && posHistory.size() >= 200) {
-            Vec3d first = posHistory.getFirst();
+            Vec3 first = posHistory.getFirst();
             boolean frozen = true;
-            for (Vec3d v : posHistory) {
-                if (v.squaredDistanceTo(first) > 0.25) { frozen = false; break; }
+            for (Vec3 v : posHistory) {
+                if (v.distanceToSqr(first) > 0.25) { frozen = false; break; }
             }
             AltoClef ac = AltoClef.getInstance();
             boolean hasGoal = ac != null && ac.getUserTaskChain() != null
@@ -266,10 +266,10 @@ public class UnstuckChain extends SingleTaskChain {
             // climbing, so the thrashing decays on its own instead of running out the clock.
             if (consecutiveStuckDetections > 0
                     && kaptainwutax.tungsten.TungstenConfig.get().rescueEscalationSurvivesItsOwnShimmy) {
-                net.minecraft.client.MinecraftClient mc0 = MinecraftClient.getInstance();
-                Vec3d here = mc0 != null && mc0.player != null ? mc0.player.getPos() : null;
+                net.minecraft.client.Minecraft mc0 = Minecraft.getInstance();
+                Vec3 here = mc0 != null && mc0.player != null ? mc0.player.position() : null;
                 if (lastRescuePos == null || here == null
-                        || here.squaredDistanceTo(lastRescuePos) > LEFT_THE_SPOT_SQ) {
+                        || here.distanceToSqr(lastRescuePos) > LEFT_THE_SPOT_SQ) {
                     rescueMovedOn++;
                     nearCounted = false;
                     consecutiveStuckDetections = 0;
@@ -374,7 +374,7 @@ public class UnstuckChain extends SingleTaskChain {
         }
 
         // Don't trigger when any GUI/container is open (bot is interacting with inventory, chest, etc.)
-        if (MinecraftClient.getInstance().currentScreen != null) {
+        if (Minecraft.getInstance().gui.screen() != null) {
             posHistory.clear();
             return;
         }
@@ -408,12 +408,12 @@ public class UnstuckChain extends SingleTaskChain {
             return;
         }
 
-        Vec3d current = posHistory.getFirst();
-        Vec3d old = posHistory.get(199);
+        Vec3 current = posHistory.getFirst();
+        Vec3 old = posHistory.get(199);
 
-        double dx = Math.abs(current.getX() - old.getX());
-        double dz = Math.abs(current.getZ() - old.getZ());
-        double dy = Math.abs(current.getY() - old.getY());
+        double dx = Math.abs(current.x() - old.x());
+        double dz = Math.abs(current.z() - old.z());
+        double dy = Math.abs(current.y() - old.y());
 
         if (dx < 1.5 && dz < 1.5 && dy < 1.5) {
             // Cooldown check: don't re-trigger shimmy too frequently (issue #13)
@@ -459,10 +459,10 @@ public class UnstuckChain extends SingleTaskChain {
     }
 
     private void checkStuckOnEndPortalFrame(AltoClef mod) {
-        BlockState state = mod.getWorld().getBlockState(mod.getPlayer().getSteppingPos());
+        BlockState state = mod.getWorld().getBlockState(mod.getPlayer().getOnPos());
 
         // if we are standing on an end portal frame that is NOT filled, get off otherwise we will get stuck
-        if (state.getBlock() == Blocks.END_PORTAL_FRAME && !state.get(EndPortalFrameBlock.EYE)) {
+        if (state.getBlock() == Blocks.END_PORTAL_FRAME && !state.getValue(EndPortalFrameBlock.HAS_EYE)) {
             if (!mod.getFoodChain().isTryingToEat()) {
                 isProbablyStuck = true;
 
@@ -508,7 +508,7 @@ public class UnstuckChain extends SingleTaskChain {
         AltoClef mod = AltoClef.getInstance();
 
         if (!AltoClef.inGame()) { gpNotInGame++; return Float.NEGATIVE_INFINITY; }
-        if (MinecraftClient.getInstance().isPaused()) { gpPaused++; return Float.NEGATIVE_INFINITY; }
+        if (Minecraft.getInstance().isPaused()) { gpPaused++; return Float.NEGATIVE_INFINITY; }
         if (!mod.getUserTaskChain().isActive()) { gpNoUserTask++; return Float.NEGATIVE_INFINITY; }
 
         if (StorageHelper.isBlastFurnaceOpen() || StorageHelper.isSmokerOpen() || StorageHelper.isChestOpen() || StorageHelper.isBigCraftingOpen()) {
@@ -516,9 +516,9 @@ public class UnstuckChain extends SingleTaskChain {
             return Float.NEGATIVE_INFINITY;
         }
 
-        PlayerEntity player = mod.getPlayer();
+        Player player = mod.getPlayer();
         gpAppended++;
-        posHistory.addFirst(player.getPos());
+        posHistory.addFirst(player.position());
         if (posHistory.size() > 500) {
             posHistory.removeLast();
         }

@@ -10,10 +10,13 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.item.*;
-import net.minecraft.screen.PlayerScreenHandler;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.ShieldItem;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.inventory.ContainerInput;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.Arrays;
@@ -59,113 +62,113 @@ public class EquipArmorTask extends Task {
                     Debug.logWarning("Item " + targetArmor + " is not armor! Will not equip.");
                 } else {
                     if (!StorageHelper.isArmorEquipped(shield)) {
-                        if (!(mod.getPlayer().currentScreenHandler instanceof PlayerScreenHandler)) {
+                        if (!(mod.getPlayer().containerMenu instanceof InventoryMenu)) {
                             ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
                             if (!cursorStack.isEmpty()) {
                                 Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
                                 if (moveTo.isPresent()) {
-                                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, SlotActionType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                                     return null;
                                 }
                                 if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                                     return null;
                                 }
                                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
                                 // Try throwing away cursor slot if it's garbage
                                 if (garbage.isPresent()) {
-                                    mod.getSlotHandler().clickSlot(garbage.get(), 0, SlotActionType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                                     return null;
                                 }
-                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                             } else {
                                 StorageHelper.closeScreen();
                             }
                         }
                         Slot toMove = PlayerSlot.getEquipSlot(EquipmentSlot.OFFHAND);
                         if (toMove == null) {
-                            Debug.logWarning("Invalid armor equip slot for item " + shield.getTranslationKey());
+                            Debug.logWarning("Invalid armor equip slot for item " + shield.getDescriptionId());
                         }
                         return new MoveItemToSlotFromInventoryTask(targetArmor, toMove);
                     }
                 }
             } else {
                 //#if MC < 12111
-                ArmorItem item = (ArmorItem) Objects.requireNonNull(targetArmor.getMatches())[0];
+                //$$ ArmorItem item = (ArmorItem) Objects.requireNonNull(targetArmor.getMatches())[0];
+                //$$ if (item == null) {
+                    //$$ Debug.logWarning("Item " + targetArmor + " is not armor! Will not equip.");
+                //$$ } else {
+                    //$$ if (!StorageHelper.isArmorEquipped(item)) {
+                        //$$ if (!(mod.getPlayer().currentScreenHandler instanceof InventoryMenu)) {
+                            //$$ ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
+                            //$$ if (!cursorStack.isEmpty()) {
+                                //$$ Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
+                                //$$ if (moveTo.isPresent()) {
+                                    //$$ mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
+                                    //$$ return null;
+                                //$$ }
+                                //$$ if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+                                    //$$ mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                                    //$$ return null;
+                                //$$ }
+                                //$$ Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
+                                //$$ // Try throwing away cursor slot if it's garbage
+                                //$$ if (garbage.isPresent()) {
+                                    //$$ mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
+                                    //$$ return null;
+                                //$$ }
+                                //$$ mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                            //$$ } else {
+                                //$$ StorageHelper.closeScreen();
+                            //$$ }
+                        //$$ }
+                        //$$ Slot toMove = PlayerSlot.getEquipSlot(item.getSlotType());
+                        //$$ if (toMove == null) {
+                            //$$ Debug.logWarning("Invalid armor equip slot for item " + item.getTranslationKey() + ": " + item.getSlotType());
+                        //$$ }
+                        //$$ return new MoveItemToSlotFromInventoryTask(targetArmor, toMove);
+                    //$$ }
+                //$$ }
+                //#else
+                Item item = Objects.requireNonNull(targetArmor.getMatches())[0];
                 if (item == null) {
                     Debug.logWarning("Item " + targetArmor + " is not armor! Will not equip.");
                 } else {
                     if (!StorageHelper.isArmorEquipped(item)) {
-                        if (!(mod.getPlayer().currentScreenHandler instanceof PlayerScreenHandler)) {
+                        if (!(mod.getPlayer().containerMenu instanceof InventoryMenu)) {
                             ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
                             if (!cursorStack.isEmpty()) {
                                 Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
                                 if (moveTo.isPresent()) {
-                                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, SlotActionType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                                     return null;
                                 }
                                 if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                                     return null;
                                 }
                                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
-                                // Try throwing away cursor slot if it's garbage
                                 if (garbage.isPresent()) {
-                                    mod.getSlotHandler().clickSlot(garbage.get(), 0, SlotActionType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                                     return null;
                                 }
-                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                             } else {
                                 StorageHelper.closeScreen();
                             }
                         }
-                        Slot toMove = PlayerSlot.getEquipSlot(item.getSlotType());
+                        net.minecraft.world.entity.EquipmentSlot itemSlot = ItemHelper.getArmorSlot(item);
+                        if (itemSlot == null) {
+                            Debug.logWarning("Invalid armor equip slot for item " + item.getDescriptionId());
+                            return null;
+                        }
+                        Slot toMove = PlayerSlot.getEquipSlot(itemSlot);
                         if (toMove == null) {
-                            Debug.logWarning("Invalid armor equip slot for item " + item.getTranslationKey() + ": " + item.getSlotType());
+                            Debug.logWarning("Invalid armor equip slot for item " + item.getDescriptionId() + ": " + itemSlot);
                         }
                         return new MoveItemToSlotFromInventoryTask(targetArmor, toMove);
                     }
                 }
-                //#else
-                //$$ Item item = Objects.requireNonNull(targetArmor.getMatches())[0];
-                //$$ if (item == null) {
-                //$$     Debug.logWarning("Item " + targetArmor + " is not armor! Will not equip.");
-                //$$ } else {
-                //$$     if (!StorageHelper.isArmorEquipped(item)) {
-                //$$         if (!(mod.getPlayer().currentScreenHandler instanceof PlayerScreenHandler)) {
-                //$$             ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
-                //$$             if (!cursorStack.isEmpty()) {
-                //$$                 Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
-                //$$                 if (moveTo.isPresent()) {
-                //$$                     mod.getSlotHandler().clickSlot(moveTo.get(), 0, SlotActionType.PICKUP);
-                //$$                     return null;
-                //$$                 }
-                //$$                 if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                //$$                     mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
-                //$$                     return null;
-                //$$                 }
-                //$$                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
-                //$$                 if (garbage.isPresent()) {
-                //$$                     mod.getSlotHandler().clickSlot(garbage.get(), 0, SlotActionType.PICKUP);
-                //$$                     return null;
-                //$$                 }
-                //$$                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
-                //$$             } else {
-                //$$                 StorageHelper.closeScreen();
-                //$$             }
-                //$$         }
-                //$$         net.minecraft.entity.EquipmentSlot itemSlot = ItemHelper.getArmorSlot(item);
-                //$$         if (itemSlot == null) {
-                //$$             Debug.logWarning("Invalid armor equip slot for item " + item.getTranslationKey());
-                //$$             return null;
-                //$$         }
-                //$$         Slot toMove = PlayerSlot.getEquipSlot(itemSlot);
-                //$$         if (toMove == null) {
-                //$$             Debug.logWarning("Invalid armor equip slot for item " + item.getTranslationKey() + ": " + itemSlot);
-                //$$         }
-                //$$         return new MoveItemToSlotFromInventoryTask(targetArmor, toMove);
-                //$$     }
-                //$$ }
                 //#endif
             }
         }

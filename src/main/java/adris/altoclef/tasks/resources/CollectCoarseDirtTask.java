@@ -5,10 +5,10 @@ import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.*;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
 
 import java.util.Optional;
 
@@ -39,7 +39,7 @@ public class CollectCoarseDirtTask extends ResourceTask {
         // If not enough dirt and gravel for the recipe, and coarse dirt within a certain distance, collect coarse dirt
         if (!(mod.getItemStorage().getItemCount(Items.DIRT) >= c &&
                 mod.getItemStorage().getItemCount(Items.GRAVEL) >= c) &&
-                closest.isPresent() && closest.get().isWithinDistance(mod.getPlayer().getPos(), CLOSE_ENOUGH_COARSE_DIRT)) {
+                closest.isPresent() && closest.get().closerThan(BlockPos.containing(mod.getPlayer().position()), CLOSE_ENOUGH_COARSE_DIRT)) {
             return new MineAndCollectTask(new ItemTarget(Items.COARSE_DIRT), new Block[]{Blocks.COARSE_DIRT}, MiningRequirement.HAND).forceDimension(Dimension.OVERWORLD);
         } else {
             int target = _count;

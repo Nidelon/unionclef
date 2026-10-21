@@ -10,17 +10,16 @@ import adris.altoclef.multiversion.item.ItemVer;
 import adris.altoclef.multiversion.versionedfields.Blocks;
 import adris.altoclef.multiversion.versionedfields.Items;
 import adris.altoclef.util.WoodType;
-import net.minecraft.block.Block;
-import net.minecraft.block.LeavesBlock;
-import net.minecraft.block.MapColor;
-import net.minecraft.block.entity.AbstractFurnaceBlockEntity;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.*;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.DyeColor;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.DyeColor;
 
 import java.util.*;
 
@@ -43,12 +42,12 @@ public class ItemHelper {
             Items.NETHER_STAR, Items.COAL, Items.WITHER_SKELETON_SKULL, Items.GHAST_TEAR, Items.IRON_INGOT,
             Items.CARROT, Items.POTATO, Items.BAKED_POTATO, Items.COPPER_INGOT};
     public static final Item[] DIRTS = new Item[]{Items.DIRT, Items.DIRT_PATH, Items.COARSE_DIRT, Items.ROOTED_DIRT};
-    public static final Item[] COPPER_BLOCKS = new Item[]{Items.COPPER_BLOCK, Items.EXPOSED_COPPER,
-            Items.WEATHERED_COPPER, Items.OXIDIZED_COPPER, Items.CUT_COPPER, Items.EXPOSED_CUT_COPPER,
-            Items.WEATHERED_CUT_COPPER, Items.OXIDIZED_CUT_COPPER, Items.WAXED_COPPER_BLOCK,
-            Items.WAXED_EXPOSED_COPPER, Items.WAXED_WEATHERED_COPPER, Items.WAXED_OXIDIZED_COPPER,
-            Items.WAXED_CUT_COPPER, Items.WAXED_EXPOSED_CUT_COPPER, Items.WAXED_WEATHERED_CUT_COPPER,
-            Items.WAXED_OXIDIZED_CUT_COPPER};
+    public static final Item[] COPPER_BLOCKS = new Item[]{Items.COPPER_BLOCK.weathering().unaffected(), Items.COPPER_BLOCK.weathering().exposed(),
+            Items.COPPER_BLOCK.weathering().weathered(), Items.COPPER_BLOCK.weathering().oxidized(), Items.CUT_COPPER.weathering().unaffected(), Items.CUT_COPPER.weathering().exposed(),
+            Items.CUT_COPPER.weathering().weathered(), Items.CUT_COPPER.weathering().oxidized(), Items.COPPER_BLOCK.waxed().unaffected(),
+            Items.COPPER_BLOCK.waxed().exposed(), Items.COPPER_BLOCK.waxed().weathered(), Items.COPPER_BLOCK.waxed().oxidized(),
+            Items.CUT_COPPER.waxed().unaffected(), Items.CUT_COPPER.waxed().exposed(), Items.CUT_COPPER.waxed().weathered(),
+            Items.CUT_COPPER.waxed().oxidized()};
     public static final Item[] PLANKS = new Item[]{Items.ACACIA_PLANKS, Items.BIRCH_PLANKS, Items.CRIMSON_PLANKS,
             Items.DARK_OAK_PLANKS, Items.OAK_PLANKS, Items.JUNGLE_PLANKS, Items.SPRUCE_PLANKS, Items.WARPED_PLANKS,
             Items.MANGROVE_PLANKS, Items.CHERRY_PLANKS, Items.BAMBOO_PLANKS};
@@ -109,14 +108,14 @@ public class ItemHelper {
     public static final Item[] STRIPPABLE_LOGS = new Item[]{Items.ACACIA_LOG, Items.BIRCH_LOG, Items.DARK_OAK_LOG,
             Items.OAK_LOG, Items.JUNGLE_LOG, Items.SPRUCE_LOG, Items.CRIMSON_STEM, Items.WARPED_STEM, Items.MANGROVE_LOG,
             Items.CHERRY_LOG};
-    public static final Item[] DYE = new Item[]{Items.WHITE_DYE, Items.BLACK_DYE, Items.BLUE_DYE, Items.BROWN_DYE, Items.CYAN_DYE, Items.GRAY_DYE, Items.GREEN_DYE, Items.LIGHT_BLUE_DYE, Items.LIGHT_GRAY_DYE, Items.LIME_DYE, Items.MAGENTA_DYE, Items.ORANGE_DYE, Items.PINK_DYE, Items.PURPLE_DYE, Items.RED_DYE, Items.YELLOW_DYE};
-    public static final Item[] WOOL = new Item[]{Items.WHITE_WOOL, Items.BLACK_WOOL, Items.BLUE_WOOL, Items.BROWN_WOOL, Items.CYAN_WOOL, Items.GRAY_WOOL, Items.GREEN_WOOL, Items.LIGHT_BLUE_WOOL, Items.LIGHT_GRAY_WOOL, Items.LIME_WOOL, Items.MAGENTA_WOOL, Items.ORANGE_WOOL, Items.PINK_WOOL, Items.PURPLE_WOOL, Items.RED_WOOL, Items.YELLOW_WOOL};
-    public static final Item[] BED = new Item[]{Items.WHITE_BED, Items.BLACK_BED, Items.BLUE_BED, Items.BROWN_BED, Items.CYAN_BED, Items.GRAY_BED, Items.GREEN_BED, Items.LIGHT_BLUE_BED, Items.LIGHT_GRAY_BED, Items.LIME_BED, Items.MAGENTA_BED, Items.ORANGE_BED, Items.PINK_BED, Items.PURPLE_BED, Items.RED_BED, Items.YELLOW_BED};
+    public static final Item[] DYE = new Item[]{Items.DYE.white(), Items.DYE.black(), Items.DYE.blue(), Items.DYE.brown(), Items.DYE.cyan(), Items.DYE.gray(), Items.DYE.green(), Items.DYE.lightBlue(), Items.DYE.lightGray(), Items.DYE.lime(), Items.DYE.magenta(), Items.DYE.orange(), Items.DYE.pink(), Items.DYE.purple(), Items.DYE.red(), Items.DYE.yellow()};
+    public static final Item[] WOOL = new Item[]{Items.WOOL.white(), Items.WOOL.black(), Items.WOOL.blue(), Items.WOOL.brown(), Items.WOOL.cyan(), Items.WOOL.gray(), Items.WOOL.green(), Items.WOOL.lightBlue(), Items.WOOL.lightGray(), Items.WOOL.lime(), Items.WOOL.magenta(), Items.WOOL.orange(), Items.WOOL.pink(), Items.WOOL.purple(), Items.WOOL.red(), Items.WOOL.yellow()};
+    public static final Item[] BED = new Item[]{Items.BED.white(), Items.BED.black(), Items.BED.blue(), Items.BED.brown(), Items.BED.cyan(), Items.BED.gray(), Items.BED.green(), Items.BED.lightBlue(), Items.BED.lightGray(), Items.BED.lime(), Items.BED.magenta(), Items.BED.orange(), Items.BED.pink(), Items.BED.purple(), Items.BED.red(), Items.BED.yellow()};
     public static final Item[] ARROWS = new Item[]{Items.ARROW, Items.SPECTRAL_ARROW, Items.TIPPED_ARROW};
     public static final Item[] ShootWeapons = new Item[]{Items.BOW, Items.CROSSBOW};
     public static final Item[] FunnyShiftItems = new Item[]{Items.BLAZE_ROD, Items.STICK};
-    public static final Item[] CARPET = new Item[]{Items.WHITE_CARPET, Items.BLACK_CARPET, Items.BLUE_CARPET, Items.BROWN_CARPET, Items.CYAN_CARPET, Items.GRAY_CARPET, Items.GREEN_CARPET, Items.LIGHT_BLUE_CARPET, Items.LIGHT_GRAY_CARPET, Items.LIME_CARPET, Items.MAGENTA_CARPET, Items.ORANGE_CARPET, Items.PINK_CARPET, Items.PURPLE_CARPET, Items.RED_CARPET, Items.YELLOW_CARPET};
-    public static final Item[] SHULKER_BOXES = new Item[]{Items.WHITE_SHULKER_BOX, Items.BLACK_SHULKER_BOX, Items.BLUE_SHULKER_BOX, Items.BROWN_SHULKER_BOX, Items.CYAN_SHULKER_BOX, Items.GRAY_SHULKER_BOX, Items.GREEN_SHULKER_BOX, Items.LIGHT_BLUE_SHULKER_BOX, Items.LIGHT_GRAY_SHULKER_BOX, Items.LIME_SHULKER_BOX, Items.MAGENTA_SHULKER_BOX, Items.ORANGE_SHULKER_BOX, Items.PINK_SHULKER_BOX, Items.PURPLE_SHULKER_BOX, Items.RED_SHULKER_BOX, Items.YELLOW_SHULKER_BOX};
+    public static final Item[] CARPET = new Item[]{Items.CARPET.white(), Items.CARPET.black(), Items.CARPET.blue(), Items.CARPET.brown(), Items.CARPET.cyan(), Items.CARPET.gray(), Items.CARPET.green(), Items.CARPET.lightBlue(), Items.CARPET.lightGray(), Items.CARPET.lime(), Items.CARPET.magenta(), Items.CARPET.orange(), Items.CARPET.pink(), Items.CARPET.purple(), Items.CARPET.red(), Items.CARPET.yellow()};
+    public static final Item[] SHULKER_BOXES = new Item[]{Items.DYED_SHULKER_BOX.white(), Items.DYED_SHULKER_BOX.black(), Items.DYED_SHULKER_BOX.blue(), Items.DYED_SHULKER_BOX.brown(), Items.DYED_SHULKER_BOX.cyan(), Items.DYED_SHULKER_BOX.gray(), Items.DYED_SHULKER_BOX.green(), Items.DYED_SHULKER_BOX.lightBlue(), Items.DYED_SHULKER_BOX.lightGray(), Items.DYED_SHULKER_BOX.lime(), Items.DYED_SHULKER_BOX.magenta(), Items.DYED_SHULKER_BOX.orange(), Items.DYED_SHULKER_BOX.pink(), Items.DYED_SHULKER_BOX.purple(), Items.DYED_SHULKER_BOX.red(), Items.DYED_SHULKER_BOX.yellow()};
     public static final Item[] FLOWER = new Item[]{Items.ALLIUM, Items.AZURE_BLUET, Items.BLUE_ORCHID, Items.CORNFLOWER, Items.DANDELION, Items.LILAC, Items.LILY_OF_THE_VALLEY, Items.ORANGE_TULIP, Items.OXEYE_DAISY, Items.PINK_TULIP, Items.POPPY, Items.PEONY, Items.RED_TULIP, Items.ROSE_BUSH, Items.SUNFLOWER, Items.WHITE_TULIP};
     public static final Item[] LEATHER_ARMORS = new Item[]{Items.LEATHER_CHESTPLATE, Items.LEATHER_LEGGINGS, Items.LEATHER_HELMET, Items.LEATHER_BOOTS};
     public static final Item[] GOLDEN_ARMORS = new Item[]{Items.GOLDEN_CHESTPLATE, Items.GOLDEN_LEGGINGS, Items.GOLDEN_HELMET, Items.GOLDEN_BOOTS};
@@ -210,23 +209,23 @@ public class ItemHelper {
     // This is kinda jank ngl
     private static final Map<MapColor, ColorfulItems> colorMap = new HashMap<MapColor, ColorfulItems>() {
         {
-            p(DyeColor.RED, "red", Items.RED_DYE, Items.RED_WOOL, Items.RED_BED, Items.RED_CARPET, Items.RED_STAINED_GLASS, Items.RED_STAINED_GLASS_PANE, Items.RED_TERRACOTTA, Items.RED_GLAZED_TERRACOTTA, Items.RED_CONCRETE, Items.RED_CONCRETE_POWDER, Items.RED_BANNER, Items.RED_SHULKER_BOX, Blocks.RED_WALL_BANNER);
-            p(DyeColor.WHITE, "white", Items.WHITE_DYE, Items.WHITE_WOOL, Items.WHITE_BED, Items.WHITE_CARPET, Items.WHITE_STAINED_GLASS, Items.WHITE_STAINED_GLASS_PANE, Items.WHITE_TERRACOTTA, Items.WHITE_GLAZED_TERRACOTTA, Items.WHITE_CONCRETE, Items.WHITE_CONCRETE_POWDER, Items.WHITE_BANNER, Items.WHITE_SHULKER_BOX, Blocks.WHITE_WALL_BANNER);
-            p(DyeColor.BLACK, "black", Items.BLACK_DYE, Items.BLACK_WOOL, Items.BLACK_BED, Items.BLACK_CARPET, Items.BLACK_STAINED_GLASS, Items.BLACK_STAINED_GLASS_PANE, Items.BLACK_TERRACOTTA, Items.BLACK_GLAZED_TERRACOTTA, Items.BLACK_CONCRETE, Items.BLACK_CONCRETE_POWDER, Items.BLACK_BANNER, Items.BLACK_SHULKER_BOX, Blocks.BLACK_WALL_BANNER);
-            p(DyeColor.BLUE, "blue", Items.BLUE_DYE, Items.BLUE_WOOL, Items.BLUE_BED, Items.BLUE_CARPET, Items.BLUE_STAINED_GLASS, Items.BLUE_STAINED_GLASS_PANE, Items.BLUE_TERRACOTTA, Items.BLUE_GLAZED_TERRACOTTA, Items.BLUE_CONCRETE, Items.BLUE_CONCRETE_POWDER, Items.BLUE_BANNER, Items.BLUE_SHULKER_BOX, Blocks.BLUE_WALL_BANNER);
-            p(DyeColor.BROWN, "brown", Items.BROWN_DYE, Items.BROWN_WOOL, Items.BROWN_BED, Items.BROWN_CARPET, Items.BROWN_STAINED_GLASS, Items.BROWN_STAINED_GLASS_PANE, Items.BROWN_TERRACOTTA, Items.BROWN_GLAZED_TERRACOTTA, Items.BROWN_CONCRETE, Items.BROWN_CONCRETE_POWDER, Items.BROWN_BANNER, Items.BROWN_SHULKER_BOX, Blocks.BROWN_WALL_BANNER);
-            p(DyeColor.CYAN, "cyan", Items.CYAN_DYE, Items.CYAN_WOOL, Items.CYAN_BED, Items.CYAN_CARPET, Items.CYAN_STAINED_GLASS, Items.CYAN_STAINED_GLASS_PANE, Items.CYAN_TERRACOTTA, Items.CYAN_GLAZED_TERRACOTTA, Items.CYAN_CONCRETE, Items.CYAN_CONCRETE_POWDER, Items.CYAN_BANNER, Items.CYAN_SHULKER_BOX, Blocks.CYAN_WALL_BANNER);
-            p(DyeColor.GRAY, "gray", Items.GRAY_DYE, Items.GRAY_WOOL, Items.GRAY_BED, Items.GRAY_CARPET, Items.GRAY_STAINED_GLASS, Items.GRAY_STAINED_GLASS_PANE, Items.GRAY_TERRACOTTA, Items.GRAY_GLAZED_TERRACOTTA, Items.GRAY_CONCRETE, Items.GRAY_CONCRETE_POWDER, Items.GRAY_BANNER, Items.GRAY_SHULKER_BOX, Blocks.GRAY_WALL_BANNER);
-            p(DyeColor.GREEN, "green", Items.GREEN_DYE, Items.GREEN_WOOL, Items.GREEN_BED, Items.GREEN_CARPET, Items.GREEN_STAINED_GLASS, Items.GREEN_STAINED_GLASS_PANE, Items.GREEN_TERRACOTTA, Items.GREEN_GLAZED_TERRACOTTA, Items.GREEN_CONCRETE, Items.GREEN_CONCRETE_POWDER, Items.GREEN_BANNER, Items.GREEN_SHULKER_BOX, Blocks.GREEN_WALL_BANNER);
-            p(DyeColor.LIGHT_BLUE, "light_blue", Items.LIGHT_BLUE_DYE, Items.LIGHT_BLUE_WOOL, Items.LIGHT_BLUE_BED, Items.LIGHT_BLUE_CARPET, Items.LIGHT_BLUE_STAINED_GLASS, Items.LIGHT_BLUE_STAINED_GLASS_PANE, Items.LIGHT_BLUE_TERRACOTTA, Items.LIGHT_BLUE_GLAZED_TERRACOTTA, Items.LIGHT_BLUE_CONCRETE, Items.LIGHT_BLUE_CONCRETE_POWDER, Items.LIGHT_BLUE_BANNER, Items.LIGHT_BLUE_SHULKER_BOX, Blocks.LIGHT_BLUE_WALL_BANNER);
-            p(DyeColor.LIGHT_GRAY, "light_gray", Items.LIGHT_GRAY_DYE, Items.LIGHT_GRAY_WOOL, Items.LIGHT_GRAY_BED, Items.LIGHT_GRAY_CARPET, Items.LIGHT_GRAY_STAINED_GLASS, Items.LIGHT_GRAY_STAINED_GLASS_PANE, Items.LIGHT_GRAY_TERRACOTTA, Items.LIGHT_GRAY_GLAZED_TERRACOTTA, Items.LIGHT_GRAY_CONCRETE, Items.LIGHT_GRAY_CONCRETE_POWDER, Items.LIGHT_GRAY_BANNER, Items.LIGHT_GRAY_SHULKER_BOX, Blocks.LIGHT_GRAY_WALL_BANNER);
-            p(DyeColor.LIME, "lime", Items.LIME_DYE, Items.LIME_WOOL, Items.LIME_BED, Items.LIME_CARPET, Items.LIME_STAINED_GLASS, Items.LIME_STAINED_GLASS_PANE, Items.LIME_TERRACOTTA, Items.LIME_GLAZED_TERRACOTTA, Items.LIME_CONCRETE, Items.LIME_CONCRETE_POWDER, Items.LIME_BANNER, Items.LIME_SHULKER_BOX, Blocks.LIME_WALL_BANNER);
-            p(DyeColor.MAGENTA, "magenta", Items.MAGENTA_DYE, Items.MAGENTA_WOOL, Items.MAGENTA_BED, Items.MAGENTA_CARPET, Items.MAGENTA_STAINED_GLASS, Items.MAGENTA_STAINED_GLASS_PANE, Items.MAGENTA_TERRACOTTA, Items.MAGENTA_GLAZED_TERRACOTTA, Items.MAGENTA_CONCRETE, Items.MAGENTA_CONCRETE_POWDER, Items.MAGENTA_BANNER, Items.MAGENTA_SHULKER_BOX, Blocks.MAGENTA_WALL_BANNER);
-            p(DyeColor.ORANGE, "orange", Items.ORANGE_DYE, Items.ORANGE_WOOL, Items.ORANGE_BED, Items.ORANGE_CARPET, Items.ORANGE_STAINED_GLASS, Items.ORANGE_STAINED_GLASS_PANE, Items.ORANGE_TERRACOTTA, Items.ORANGE_GLAZED_TERRACOTTA, Items.ORANGE_CONCRETE, Items.ORANGE_CONCRETE_POWDER, Items.ORANGE_BANNER, Items.ORANGE_SHULKER_BOX, Blocks.ORANGE_WALL_BANNER);
-            p(DyeColor.PINK, "pink", Items.PINK_DYE, Items.PINK_WOOL, Items.PINK_BED, Items.PINK_CARPET, Items.PINK_STAINED_GLASS, Items.PINK_STAINED_GLASS_PANE, Items.PINK_TERRACOTTA, Items.PINK_GLAZED_TERRACOTTA, Items.PINK_CONCRETE, Items.PINK_CONCRETE_POWDER, Items.PINK_BANNER, Items.PINK_SHULKER_BOX, Blocks.PINK_WALL_BANNER);
-            p(DyeColor.PURPLE, "purple", Items.PURPLE_DYE, Items.PURPLE_WOOL, Items.PURPLE_BED, Items.PURPLE_CARPET, Items.PURPLE_STAINED_GLASS, Items.PURPLE_STAINED_GLASS_PANE, Items.PURPLE_TERRACOTTA, Items.PURPLE_GLAZED_TERRACOTTA, Items.PURPLE_CONCRETE, Items.PURPLE_CONCRETE_POWDER, Items.PURPLE_BANNER, Items.PURPLE_SHULKER_BOX, Blocks.PURPLE_WALL_BANNER);
-            p(DyeColor.RED, "red", Items.RED_DYE, Items.RED_WOOL, Items.RED_BED, Items.RED_CARPET, Items.RED_STAINED_GLASS, Items.RED_STAINED_GLASS_PANE, Items.RED_TERRACOTTA, Items.RED_GLAZED_TERRACOTTA, Items.RED_CONCRETE, Items.RED_CONCRETE_POWDER, Items.RED_BANNER, Items.RED_SHULKER_BOX, Blocks.RED_WALL_BANNER);
-            p(DyeColor.YELLOW, "yellow", Items.YELLOW_DYE, Items.YELLOW_WOOL, Items.YELLOW_BED, Items.YELLOW_CARPET, Items.YELLOW_STAINED_GLASS, Items.YELLOW_STAINED_GLASS_PANE, Items.YELLOW_TERRACOTTA, Items.YELLOW_GLAZED_TERRACOTTA, Items.YELLOW_CONCRETE, Items.YELLOW_CONCRETE_POWDER, Items.YELLOW_BANNER, Items.YELLOW_SHULKER_BOX, Blocks.YELLOW_WALL_BANNER);
+            p(DyeColor.RED, "red", Items.DYE.red(), Items.WOOL.red(), Items.BED.red(), Items.CARPET.red(), Items.STAINED_GLASS.red(), Items.STAINED_GLASS_PANE.red(), Items.DYED_TERRACOTTA.red(), Items.GLAZED_TERRACOTTA.red(), Items.CONCRETE.red(), Items.CONCRETE_POWDER.red(), Items.BANNER.red(), Items.DYED_SHULKER_BOX.red(), Blocks.WALL_BANNER.red());
+            p(DyeColor.WHITE, "white", Items.DYE.white(), Items.WOOL.white(), Items.BED.white(), Items.CARPET.white(), Items.STAINED_GLASS.white(), Items.STAINED_GLASS_PANE.white(), Items.DYED_TERRACOTTA.white(), Items.GLAZED_TERRACOTTA.white(), Items.CONCRETE.white(), Items.CONCRETE_POWDER.white(), Items.BANNER.white(), Items.DYED_SHULKER_BOX.white(), Blocks.WALL_BANNER.white());
+            p(DyeColor.BLACK, "black", Items.DYE.black(), Items.WOOL.black(), Items.BED.black(), Items.CARPET.black(), Items.STAINED_GLASS.black(), Items.STAINED_GLASS_PANE.black(), Items.DYED_TERRACOTTA.black(), Items.GLAZED_TERRACOTTA.black(), Items.CONCRETE.black(), Items.CONCRETE_POWDER.black(), Items.BANNER.black(), Items.DYED_SHULKER_BOX.black(), Blocks.WALL_BANNER.black());
+            p(DyeColor.BLUE, "blue", Items.DYE.blue(), Items.WOOL.blue(), Items.BED.blue(), Items.CARPET.blue(), Items.STAINED_GLASS.blue(), Items.STAINED_GLASS_PANE.blue(), Items.DYED_TERRACOTTA.blue(), Items.GLAZED_TERRACOTTA.blue(), Items.CONCRETE.blue(), Items.CONCRETE_POWDER.blue(), Items.BANNER.blue(), Items.DYED_SHULKER_BOX.blue(), Blocks.WALL_BANNER.blue());
+            p(DyeColor.BROWN, "brown", Items.DYE.brown(), Items.WOOL.brown(), Items.BED.brown(), Items.CARPET.brown(), Items.STAINED_GLASS.brown(), Items.STAINED_GLASS_PANE.brown(), Items.DYED_TERRACOTTA.brown(), Items.GLAZED_TERRACOTTA.brown(), Items.CONCRETE.brown(), Items.CONCRETE_POWDER.brown(), Items.BANNER.brown(), Items.DYED_SHULKER_BOX.brown(), Blocks.WALL_BANNER.brown());
+            p(DyeColor.CYAN, "cyan", Items.DYE.cyan(), Items.WOOL.cyan(), Items.BED.cyan(), Items.CARPET.cyan(), Items.STAINED_GLASS.cyan(), Items.STAINED_GLASS_PANE.cyan(), Items.DYED_TERRACOTTA.cyan(), Items.GLAZED_TERRACOTTA.cyan(), Items.CONCRETE.cyan(), Items.CONCRETE_POWDER.cyan(), Items.BANNER.cyan(), Items.DYED_SHULKER_BOX.cyan(), Blocks.WALL_BANNER.cyan());
+            p(DyeColor.GRAY, "gray", Items.DYE.gray(), Items.WOOL.gray(), Items.BED.gray(), Items.CARPET.gray(), Items.STAINED_GLASS.gray(), Items.STAINED_GLASS_PANE.gray(), Items.DYED_TERRACOTTA.gray(), Items.GLAZED_TERRACOTTA.gray(), Items.CONCRETE.gray(), Items.CONCRETE_POWDER.gray(), Items.BANNER.gray(), Items.DYED_SHULKER_BOX.gray(), Blocks.WALL_BANNER.gray());
+            p(DyeColor.GREEN, "green", Items.DYE.green(), Items.WOOL.green(), Items.BED.green(), Items.CARPET.green(), Items.STAINED_GLASS.green(), Items.STAINED_GLASS_PANE.green(), Items.DYED_TERRACOTTA.green(), Items.GLAZED_TERRACOTTA.green(), Items.CONCRETE.green(), Items.CONCRETE_POWDER.green(), Items.BANNER.green(), Items.DYED_SHULKER_BOX.green(), Blocks.WALL_BANNER.green());
+            p(DyeColor.LIGHT_BLUE, "light_blue", Items.DYE.lightBlue(), Items.WOOL.lightBlue(), Items.BED.lightBlue(), Items.CARPET.lightBlue(), Items.STAINED_GLASS.lightBlue(), Items.STAINED_GLASS_PANE.lightBlue(), Items.DYED_TERRACOTTA.lightBlue(), Items.GLAZED_TERRACOTTA.lightBlue(), Items.CONCRETE.lightBlue(), Items.CONCRETE_POWDER.lightBlue(), Items.BANNER.lightBlue(), Items.DYED_SHULKER_BOX.lightBlue(), Blocks.WALL_BANNER.lightBlue());
+            p(DyeColor.LIGHT_GRAY, "light_gray", Items.DYE.lightGray(), Items.WOOL.lightGray(), Items.BED.lightGray(), Items.CARPET.lightGray(), Items.STAINED_GLASS.lightGray(), Items.STAINED_GLASS_PANE.lightGray(), Items.DYED_TERRACOTTA.lightGray(), Items.GLAZED_TERRACOTTA.lightGray(), Items.CONCRETE.lightGray(), Items.CONCRETE_POWDER.lightGray(), Items.BANNER.lightGray(), Items.DYED_SHULKER_BOX.lightGray(), Blocks.WALL_BANNER.lightGray());
+            p(DyeColor.LIME, "lime", Items.DYE.lime(), Items.WOOL.lime(), Items.BED.lime(), Items.CARPET.lime(), Items.STAINED_GLASS.lime(), Items.STAINED_GLASS_PANE.lime(), Items.DYED_TERRACOTTA.lime(), Items.GLAZED_TERRACOTTA.lime(), Items.CONCRETE.lime(), Items.CONCRETE_POWDER.lime(), Items.BANNER.lime(), Items.DYED_SHULKER_BOX.lime(), Blocks.WALL_BANNER.lime());
+            p(DyeColor.MAGENTA, "magenta", Items.DYE.magenta(), Items.WOOL.magenta(), Items.BED.magenta(), Items.CARPET.magenta(), Items.STAINED_GLASS.magenta(), Items.STAINED_GLASS_PANE.magenta(), Items.DYED_TERRACOTTA.magenta(), Items.GLAZED_TERRACOTTA.magenta(), Items.CONCRETE.magenta(), Items.CONCRETE_POWDER.magenta(), Items.BANNER.magenta(), Items.DYED_SHULKER_BOX.magenta(), Blocks.WALL_BANNER.magenta());
+            p(DyeColor.ORANGE, "orange", Items.DYE.orange(), Items.WOOL.orange(), Items.BED.orange(), Items.CARPET.orange(), Items.STAINED_GLASS.orange(), Items.STAINED_GLASS_PANE.orange(), Items.DYED_TERRACOTTA.orange(), Items.GLAZED_TERRACOTTA.orange(), Items.CONCRETE.orange(), Items.CONCRETE_POWDER.orange(), Items.BANNER.orange(), Items.DYED_SHULKER_BOX.orange(), Blocks.WALL_BANNER.orange());
+            p(DyeColor.PINK, "pink", Items.DYE.pink(), Items.WOOL.pink(), Items.BED.pink(), Items.CARPET.pink(), Items.STAINED_GLASS.pink(), Items.STAINED_GLASS_PANE.pink(), Items.DYED_TERRACOTTA.pink(), Items.GLAZED_TERRACOTTA.pink(), Items.CONCRETE.pink(), Items.CONCRETE_POWDER.pink(), Items.BANNER.pink(), Items.DYED_SHULKER_BOX.pink(), Blocks.WALL_BANNER.pink());
+            p(DyeColor.PURPLE, "purple", Items.DYE.purple(), Items.WOOL.purple(), Items.BED.purple(), Items.CARPET.purple(), Items.STAINED_GLASS.purple(), Items.STAINED_GLASS_PANE.purple(), Items.DYED_TERRACOTTA.purple(), Items.GLAZED_TERRACOTTA.purple(), Items.CONCRETE.purple(), Items.CONCRETE_POWDER.purple(), Items.BANNER.purple(), Items.DYED_SHULKER_BOX.purple(), Blocks.WALL_BANNER.purple());
+            p(DyeColor.RED, "red", Items.DYE.red(), Items.WOOL.red(), Items.BED.red(), Items.CARPET.red(), Items.STAINED_GLASS.red(), Items.STAINED_GLASS_PANE.red(), Items.DYED_TERRACOTTA.red(), Items.GLAZED_TERRACOTTA.red(), Items.CONCRETE.red(), Items.CONCRETE_POWDER.red(), Items.BANNER.red(), Items.DYED_SHULKER_BOX.red(), Blocks.WALL_BANNER.red());
+            p(DyeColor.YELLOW, "yellow", Items.DYE.yellow(), Items.WOOL.yellow(), Items.BED.yellow(), Items.CARPET.yellow(), Items.STAINED_GLASS.yellow(), Items.STAINED_GLASS_PANE.yellow(), Items.DYED_TERRACOTTA.yellow(), Items.GLAZED_TERRACOTTA.yellow(), Items.CONCRETE.yellow(), Items.CONCRETE_POWDER.yellow(), Items.BANNER.yellow(), Items.DYED_SHULKER_BOX.yellow(), Blocks.WALL_BANNER.yellow());
         }
 
         void p(DyeColor color, String colorName, Item dye, Item wool, Item bed, Item carpet, Item stainedGlass, Item stainedGlassPane, Item terracotta, Item glazedTerracotta, Item concrete, Item concretePowder, Item banner, Item shulker, Block wallBanner) {
@@ -271,11 +270,11 @@ public class ItemHelper {
     public static String stripItemName(Item item) {
         String[] possibilities = new String[]{"item.minecraft.", "block.minecraft."};
         for (String possible : possibilities) {
-            if (item.getTranslationKey().startsWith(possible)) {
-                return item.getTranslationKey().substring(possible.length());
+            if (item.getDescriptionId().startsWith(possible)) {
+                return item.getDescriptionId().substring(possible.length());
             }
         }
-        return item.getTranslationKey();
+        return item.getDescriptionId();
     }
 
     public static Item[] blocksToItems(Block[] blocks) {
@@ -321,7 +320,7 @@ public class ItemHelper {
         ArrayList<Block> result = new ArrayList<>();
         for (Item item : items) {
             if (item instanceof BlockItem) {
-                Block b = Block.getBlockFromItem(item);
+                Block b = Block.byItem(item);
                 if (b != null && b != Blocks.AIR) {
                     result.add(b);
                 }
@@ -393,7 +392,7 @@ public class ItemHelper {
     }
 
     private static boolean isStackProtected(AltoClef mod, ItemStack stack) {
-        if (stack.hasEnchantments() && mod.getModSettings().getDontThrowAwayEnchantedItems())
+        if (stack.isEnchanted() && mod.getModSettings().getDontThrowAwayEnchantedItems())
             return true;
         if (ItemVer.hasCustomName(stack) && mod.getModSettings().getDontThrowAwayCustomNameItems())
             return true;
@@ -416,9 +415,9 @@ public class ItemHelper {
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public static boolean canStackTogether(ItemStack from, ItemStack to) {
-        if (to.isEmpty() && from.getCount() <= from.getMaxCount())
+        if (to.isEmpty() && from.getCount() <= from.getMaxStackSize())
             return true;
-        return to.getItem().equals(from.getItem()) && (from.getCount() + to.getCount() < to.getMaxCount());
+        return to.getItem().equals(from.getItem()) && (from.getCount() + to.getCount() < to.getMaxStackSize());
     }
 
     /**
@@ -451,17 +450,17 @@ public class ItemHelper {
     private static Map<Item, Integer> getFuelTimeMap() {
         if (fuelTimeMap == null || fuelTimeMap.isEmpty()) {
             //#if MC < 12111
-            fuelTimeMap = AbstractFurnaceBlockEntity.createFuelTimeMap();
+            //$$ fuelTimeMap = AbstractFurnaceBlockEntity.createFuelTimeMap();
             //#else
-            //$$ java.util.Map<Item, Integer> built = new java.util.HashMap<>();
-            //$$ net.minecraft.client.world.ClientWorld world = net.minecraft.client.MinecraftClient.getInstance().world;
-            //$$ if (world != null) {
-            //$$     net.minecraft.item.FuelRegistry registry = world.getFuelRegistry();
-            //$$     for (Item item : registry.getFuelItems()) {
-            //$$         built.put(item, registry.getFuelTicks(new ItemStack(item)));
-            //$$     }
-            //$$ }
-            //$$ fuelTimeMap = built;
+            java.util.Map<Item, Integer> built = new java.util.HashMap<>();
+            net.minecraft.client.multiplayer.ClientLevel world = net.minecraft.client.Minecraft.getInstance().level;
+            if (world != null) {
+                net.minecraft.world.level.block.entity.FuelValues registry = world.fuelValues();
+                for (Item item : registry.fuelItems()) {
+                    built.put(item, registry.burnDuration(new ItemStack(item)));
+                }
+            }
+            fuelTimeMap = built;
             //#endif
         }
         return fuelTimeMap;
@@ -594,7 +593,7 @@ public class ItemHelper {
     public static boolean clickCustomItem(AltoClef mod, String... joinItems) {
         // Don't equip/click while a container screen is open — forceEquipSlot would
         // do a SWAP through the chest handler, corrupting the GUI and closing it.
-        if (!(mod.getPlayer().currentScreenHandler instanceof net.minecraft.screen.PlayerScreenHandler)) {
+        if (!(mod.getPlayer().containerMenu instanceof net.minecraft.world.inventory.InventoryMenu)) {
             return false;
         }
         Slot newGameSlot = getCustomItemSlot(mod, joinItems);
@@ -626,15 +625,15 @@ public class ItemHelper {
         Iterable<Slot> slots = Slot.getCurrentScreenSlots();
         if (!AltoClef.inGame() || mod.getPlayer() == null || slots == null) return null;
         for (Slot slot : slots) {
-            net.minecraft.item.ItemStack item = StorageHelper.getItemStackInSlot(slot);
+            net.minecraft.world.item.ItemStack item = StorageHelper.getItemStackInSlot(slot);
             if (item != null && !item.isEmpty()) {
                 //#if MC >= 12005
-                boolean hasCustomName = item.get(net.minecraft.component.DataComponentTypes.CUSTOM_NAME) != null;
+                boolean hasCustomName = item.get(net.minecraft.core.component.DataComponents.CUSTOM_NAME) != null;
                 //#else
                 //$$ boolean hasCustomName = item.hasCustomName();
                 //#endif
                 if (hasCustomName) {
-                    String itemCustomName = removeMCFormatCodes(item.getName().getString().toLowerCase());
+                    String itemCustomName = removeMCFormatCodes(item.getHoverName().getString().toLowerCase());
                     for (String check : checkItemName) {
                         String checkLower = check.toLowerCase();
                         if (checkLower.equals(itemCustomName)
@@ -655,22 +654,22 @@ public class ItemHelper {
 
     // --- Combat item arrays and weapon threat helpers (ported from autoclef) ---
 
-    public static final net.minecraft.item.Item[] MMKillerWeapons = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.SHEARS, net.minecraft.item.Items.IRON_SWORD, net.minecraft.item.Items.IRON_AXE
+    public static final net.minecraft.world.item.Item[] MMKillerWeapons = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.SHEARS, net.minecraft.world.item.Items.IRON_SWORD, net.minecraft.world.item.Items.IRON_AXE
     };
-    public static final net.minecraft.item.Item[] MMDetectiveWeapons = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.BOW, net.minecraft.item.Items.CROSSBOW
-    };
-
-    public static final net.minecraft.item.Item[] RangedTopPriority = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.BOW, net.minecraft.item.Items.CROSSBOW,
-        net.minecraft.item.Items.SPLASH_POTION, net.minecraft.item.Items.LINGERING_POTION,
-        net.minecraft.item.Items.SNOWBALL
+    public static final net.minecraft.world.item.Item[] MMDetectiveWeapons = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.BOW, net.minecraft.world.item.Items.CROSSBOW
     };
 
-    public static boolean holdWeapon(PlayerEntity entity, net.minecraft.item.Item... items) {
-        for (net.minecraft.item.Item weapon : items) {
-            if (entity.getMainHandStack().isOf(weapon)) return true;
+    public static final net.minecraft.world.item.Item[] RangedTopPriority = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.BOW, net.minecraft.world.item.Items.CROSSBOW,
+        net.minecraft.world.item.Items.SPLASH_POTION, net.minecraft.world.item.Items.LINGERING_POTION,
+        net.minecraft.world.item.Items.SNOWBALL
+    };
+
+    public static boolean holdWeapon(Player entity, net.minecraft.world.item.Item... items) {
+        for (net.minecraft.world.item.Item weapon : items) {
+            if (entity.getMainHandItem().is(weapon)) return true;
         }
         return false;
     }
@@ -685,14 +684,14 @@ public class ItemHelper {
      * answer was silently ZERO -- see {@link adris.altoclef.control.KillAura#equipWeapon}, whose
      * whole body sat in the dead half.
      *
-     * <p>Matched by the attribute's registry PATH rather than an EntityAttributes constant: the
+     * <p>Matched by the attribute's registry PATH rather than an Attributes constant: the
      * constant is GENERIC_ATTACK_DAMAGE on one version and ATTACK_DAMAGE on the other, and the
      * point of this method is to stop maintaining two spellings of one question. The registry id
      * is "attack_damage" on both.
      *
      * <p>Returns 0 for anything that is not a weapon, which every caller reads as "no weapon".
      */
-    public static float meleeDamageOf(net.minecraft.item.Item item) {
+    public static float meleeDamageOf(net.minecraft.world.item.Item item) {
         return attributeSum(item, "attack_damage");
     }
 
@@ -708,7 +707,7 @@ public class ItemHelper {
      *
      * <p>Base values are the vanilla player's: 1 damage, 4 swings a second, before modifiers.
      */
-    public static float meleeDps(net.minecraft.item.Item item) {
+    public static float meleeDps(net.minecraft.world.item.Item item) {
         float damage = 1.0f + attributeSum(item, "attack_damage");
         float speed = 4.0f + attributeSum(item, "attack_speed");
         if (speed <= 0) {
@@ -752,32 +751,32 @@ public class ItemHelper {
      *
      * @return blocks per tick, or -1 when the block cannot be broken
      */
-    public static double miningSpeedVsBlock(ItemStack item, net.minecraft.block.BlockState state) {
+    public static double miningSpeedVsBlock(ItemStack item, net.minecraft.world.level.block.state.BlockState state) {
         float hardness;
         try {
-            hardness = state.getHardness(null, null);
+            hardness = state.getDestroySpeed(null, null);
         } catch (NullPointerException npe) {
             return -1;
         }
         if (hardness < 0) {
             return -1;
         }
-        float speed = item.getMiningSpeedMultiplier(state);
+        float speed = item.getDestroySpeed(state);
         if (speed > 1) {
             var enchants = item.getEnchantments();
             outer:
-            for (var enchant : enchants.getEnchantments()) {
-                var effects = enchant.value().getEffect(
-                        net.minecraft.component.EnchantmentEffectComponentTypes.ATTRIBUTES);
+            for (var enchant : enchants.keySet()) {
+                var effects = enchant.value().getEffects(
+                        net.minecraft.world.item.enchantment.EnchantmentEffectComponents.ATTRIBUTES);
                 for (var e : effects) {
-                    // BY REGISTRY PATH, NOT BY CONSTANT. EntityAttributes.MINING_EFFICIENCY does
+                    // BY REGISTRY PATH, NOT BY CONSTANT. Attributes.MINING_EFFICIENCY does
                     // not exist on every version altoclef builds for (shredder compiles against
                     // one; this module compiles against three), and the build says so. Same
                     // technique as meleeDamageOf above, for the same reason.
-                    String attrPath = e.attribute().getKey()
-                            .map(k -> k.getValue().getPath()).orElse("");
+                    String attrPath = e.attribute().unwrapKey()
+                            .map(k -> k.identifier().getPath()).orElse("");
                     if ("mining_efficiency".equals(attrPath)) {
-                        speed += e.amount().getValue(enchants.getLevel(enchant));
+                        speed += e.amount().calculate(enchants.getLevel(enchant));
                         break outer;
                     }
                 }
@@ -787,7 +786,7 @@ public class ItemHelper {
             return Double.POSITIVE_INFINITY;
         }
         speed /= hardness;
-        if (!state.isToolRequired() || (!item.isEmpty() && item.isSuitableFor(state))) {
+        if (!state.requiresCorrectToolForDrops() || (!item.isEmpty() && item.isCorrectToolForDrops(state))) {
             return speed / 30;
         }
         return speed / 100;
@@ -796,21 +795,21 @@ public class ItemHelper {
     /**
      * Is this a tool — a pickaxe, axe, shovel, hoe or sword?
      *
-     * <p>Replaces {@code item instanceof ToolItem}, which 1.21.11 deleted. The TOOL component is
+     * <p>Replaces {@code item instanceof TieredItem}, which 1.21.11 deleted. The TOOL component is
      * what the game itself uses to decide mining behaviour, and swords carry it there exactly as
-     * they used to extend ToolItem, so the set this matches is the same one on both versions.
+     * they used to extend TieredItem, so the set this matches is the same one on both versions.
      *
      * <p>Two callers were silently inverted without it. {@code @deposit} filtered tools OUT of the
-     * chest with {@code !(item instanceof ToolItem)} and its 1.21.11 stub was {@code return true} —
+     * chest with {@code !(item instanceof TieredItem)} and its 1.21.11 stub was {@code return true} —
      * so on the live version the command posted the bot's own pickaxe into the chest. And
      * {@code forceDeequipHitTool} stubbed to {@code stack -> false}, which never puts anything away.
      */
-    public static boolean isTool(net.minecraft.item.Item item) {
-        return item != null && item.getComponents().contains(net.minecraft.component.DataComponentTypes.TOOL);
+    public static boolean isTool(net.minecraft.world.item.Item item) {
+        return item != null && item.components().has(net.minecraft.core.component.DataComponents.TOOL);
     }
 
     /**
-     * Which {@link net.minecraft.entity.EquipmentSlot} this item wears in, or {@code null} if it
+     * Which {@link net.minecraft.world.entity.EquipmentSlot} this item wears in, or {@code null} if it
      * is not equippable at all.
      *
      * <p>Replaces {@code ((ArmorItem) item).getSlotType()}, which 1.21.11 deleted along with the
@@ -818,17 +817,17 @@ public class ItemHelper {
      * decide which slot an item goes in on right-click/dispenser-equip, so this matches the same
      * slot vanilla would pick.
      */
-    public static net.minecraft.entity.EquipmentSlot getArmorSlot(net.minecraft.item.Item item) {
+    public static net.minecraft.world.entity.EquipmentSlot getArmorSlot(net.minecraft.world.item.Item item) {
         if (item == null) {
             return null;
         }
         //#if MC >= 12111
-        //$$ var equippable = item.getComponents().get(net.minecraft.component.DataComponentTypes.EQUIPPABLE);
-        //$$ return equippable == null ? null : equippable.slot();
+        var equippable = item.components().get(net.minecraft.core.component.DataComponents.EQUIPPABLE);
+        return equippable == null ? null : equippable.slot();
         //#else
-        // Before 1.21.11 the EQUIPPABLE component does not exist and ArmorItem still does,
-        // so the slot comes off the item class exactly as it always did.
-        return item instanceof net.minecraft.item.ArmorItem armor ? armor.getSlotType() : null;
+        //$$ // Before 1.21.11 the EQUIPPABLE component does not exist and ArmorItem still does,
+        //$$ // so the slot comes off the item class exactly as it always did.
+        //$$ return item instanceof net.minecraft.world.item.ArmorItem armor ? armor.getSlotType() : null;
         //#endif
     }
 
@@ -842,21 +841,21 @@ public class ItemHelper {
      * data-driven and stable across versions — the same grouping the game itself uses to decide,
      * for instance, which items a lodestone compass or a piglin trade will accept.
      */
-    public static net.minecraft.registry.tag.TagKey<net.minecraft.item.Item> toolFamily(net.minecraft.item.Item item) {
+    public static net.minecraft.tags.TagKey<net.minecraft.world.item.Item> toolFamily(net.minecraft.world.item.Item item) {
         if (item == null) {
             return null;
         }
-        net.minecraft.item.ItemStack stack = new net.minecraft.item.ItemStack(item);
-        if (stack.isIn(net.minecraft.registry.tag.ItemTags.PICKAXES)) return net.minecraft.registry.tag.ItemTags.PICKAXES;
-        if (stack.isIn(net.minecraft.registry.tag.ItemTags.AXES)) return net.minecraft.registry.tag.ItemTags.AXES;
-        if (stack.isIn(net.minecraft.registry.tag.ItemTags.SHOVELS)) return net.minecraft.registry.tag.ItemTags.SHOVELS;
-        if (stack.isIn(net.minecraft.registry.tag.ItemTags.HOES)) return net.minecraft.registry.tag.ItemTags.HOES;
-        if (stack.isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) return net.minecraft.registry.tag.ItemTags.SWORDS;
+        net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(item);
+        if (stack.is(net.minecraft.tags.ItemTags.PICKAXES)) return net.minecraft.tags.ItemTags.PICKAXES;
+        if (stack.is(net.minecraft.tags.ItemTags.AXES)) return net.minecraft.tags.ItemTags.AXES;
+        if (stack.is(net.minecraft.tags.ItemTags.SHOVELS)) return net.minecraft.tags.ItemTags.SHOVELS;
+        if (stack.is(net.minecraft.tags.ItemTags.HOES)) return net.minecraft.tags.ItemTags.HOES;
+        if (stack.is(net.minecraft.tags.ItemTags.SWORDS)) return net.minecraft.tags.ItemTags.SWORDS;
         return null;
     }
 
     /**
-     * A material-agnostic replacement for the deleted {@code ToolMaterial} "mining level"
+     * A material-agnostic replacement for the deleted {@code Tier} "mining level"
      * (0 = wood/gold ... 4 = netherite) — meaningful only to compare two tools of the SAME
      * {@link #toolFamily}, never across families.
      *
@@ -867,42 +866,42 @@ public class ItemHelper {
      * {@link #meleeDps} plays the same role: sword damage strictly increases with material tier at
      * a fixed attack speed, so DPS preserves the same ordering material tier used to give directly.
      */
-    public static double toolQuality(net.minecraft.item.Item item) {
-        net.minecraft.item.ItemStack stack = new net.minecraft.item.ItemStack(item);
-        if (stack.isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) {
+    public static double toolQuality(net.minecraft.world.item.Item item) {
+        net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(item);
+        if (stack.is(net.minecraft.tags.ItemTags.SWORDS)) {
             return meleeDps(item);
         }
-        net.minecraft.block.BlockState reference;
-        if (stack.isIn(net.minecraft.registry.tag.ItemTags.PICKAXES)) {
-            reference = net.minecraft.block.Blocks.STONE.getDefaultState();
-        } else if (stack.isIn(net.minecraft.registry.tag.ItemTags.AXES)) {
-            reference = net.minecraft.block.Blocks.OAK_LOG.getDefaultState();
-        } else if (stack.isIn(net.minecraft.registry.tag.ItemTags.SHOVELS)) {
-            reference = net.minecraft.block.Blocks.DIRT.getDefaultState();
+        net.minecraft.world.level.block.state.BlockState reference;
+        if (stack.is(net.minecraft.tags.ItemTags.PICKAXES)) {
+            reference = net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
+        } else if (stack.is(net.minecraft.tags.ItemTags.AXES)) {
+            reference = net.minecraft.world.level.block.Blocks.OAK_LOG.defaultBlockState();
+        } else if (stack.is(net.minecraft.tags.ItemTags.SHOVELS)) {
+            reference = net.minecraft.world.level.block.Blocks.DIRT.defaultBlockState();
         } else {
             // Hoes (and anything else with no natural "how fast does it mine" reference): fall
             // back to the pickaxe-vs-stone reading. Only ever compared within its own family, so
             // this only needs to preserve ORDER between two hoes, not match a real-world speed.
-            reference = net.minecraft.block.Blocks.STONE.getDefaultState();
+            reference = net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
         }
-        return stack.getMiningSpeedMultiplier(reference);
+        return stack.getDestroySpeed(reference);
     }
 
-    private static float attributeSum(net.minecraft.item.Item item, String path) {
+    private static float attributeSum(net.minecraft.world.item.Item item, String path) {
         if (item == null) {
             return 0;
         }
         try {
             ItemStack stack = new ItemStack(item);
-            var comp = stack.get(net.minecraft.component.DataComponentTypes.ATTRIBUTE_MODIFIERS);
+            var comp = stack.get(net.minecraft.core.component.DataComponents.ATTRIBUTE_MODIFIERS);
             if (comp == null) {
                 return 0;
             }
             float sum = 0;
             for (var entry : comp.modifiers()) {
-                String id = entry.attribute().getKey().map(k -> k.getValue().getPath()).orElse("");
+                String id = entry.attribute().unwrapKey().map(k -> k.identifier().getPath()).orElse("");
                 if (path.equals(id)) {
-                    sum += (float) entry.modifier().value();
+                    sum += (float) entry.modifier().amount();
                 }
             }
             return sum;
@@ -912,12 +911,12 @@ public class ItemHelper {
         }
     }
 
-    public static WeaponThreat getWeaponThreat(AltoClef mod, PlayerEntity entity) {
-        ItemStack stack = entity.getMainHandStack();
+    public static WeaponThreat getWeaponThreat(AltoClef mod, Player entity) {
+        ItemStack stack = entity.getMainHandItem();
         if (stack != null) {
             if (holdWeapon(entity, RangedTopPriority)) return WeaponThreat.Ranged;
-            net.minecraft.item.Item handItem = stack.getItem();
-            float damage = (float) entity.getAttributeValue(EntityAttributes.GENERIC_ATTACK_DAMAGE);
+            net.minecraft.world.item.Item handItem = stack.getItem();
+            float damage = (float) entity.getAttributeValue(Attributes.ATTACK_DAMAGE);
             // ASK THE ITEM, DO NOT ASK ITS CLASS. The version split that used to live here had an
             // EMPTY 1.21.11 half, so an enemy holding a diamond sword was read as Harmless unless
             // their base attack attribute already cleared 4 -- on the version this mod ships for.
@@ -928,11 +927,11 @@ public class ItemHelper {
                 damage += weapon + 3;
             }
             //#if MC >= 12100
-            if (handItem instanceof net.minecraft.item.TridentItem || handItem instanceof net.minecraft.item.MaceItem) {
+            if (handItem instanceof net.minecraft.world.item.TridentItem || handItem instanceof net.minecraft.world.item.MaceItem) {
                 damage += 7f;
             }
             //#else
-            //$$ if (handItem instanceof net.minecraft.item.TridentItem) {
+            //$$ if (handItem instanceof net.minecraft.world.item.TridentItem) {
             //$$     damage += 7f;
             //$$ }
             //#endif
@@ -950,77 +949,77 @@ public class ItemHelper {
 
     // --- Priority arrays for KitPVP/SkyWars armor and tool tiers (highest priority = index 0) ---
 
-    public static final net.minecraft.item.Item[] HelmetsTopPriority = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.NETHERITE_HELMET,
-        net.minecraft.item.Items.DIAMOND_HELMET,
-        net.minecraft.item.Items.IRON_HELMET,
-        net.minecraft.item.Items.CHAINMAIL_HELMET,
-        net.minecraft.item.Items.GOLDEN_HELMET,
-        net.minecraft.item.Items.LEATHER_HELMET
+    public static final net.minecraft.world.item.Item[] HelmetsTopPriority = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.NETHERITE_HELMET,
+        net.minecraft.world.item.Items.DIAMOND_HELMET,
+        net.minecraft.world.item.Items.IRON_HELMET,
+        net.minecraft.world.item.Items.CHAINMAIL_HELMET,
+        net.minecraft.world.item.Items.GOLDEN_HELMET,
+        net.minecraft.world.item.Items.LEATHER_HELMET
     };
-    public static final net.minecraft.item.Item[] ChestplatesTopPriority = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.NETHERITE_CHESTPLATE,
-        net.minecraft.item.Items.DIAMOND_CHESTPLATE,
-        net.minecraft.item.Items.IRON_CHESTPLATE,
-        net.minecraft.item.Items.CHAINMAIL_CHESTPLATE,
-        net.minecraft.item.Items.GOLDEN_CHESTPLATE,
-        net.minecraft.item.Items.LEATHER_CHESTPLATE
+    public static final net.minecraft.world.item.Item[] ChestplatesTopPriority = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.NETHERITE_CHESTPLATE,
+        net.minecraft.world.item.Items.DIAMOND_CHESTPLATE,
+        net.minecraft.world.item.Items.IRON_CHESTPLATE,
+        net.minecraft.world.item.Items.CHAINMAIL_CHESTPLATE,
+        net.minecraft.world.item.Items.GOLDEN_CHESTPLATE,
+        net.minecraft.world.item.Items.LEATHER_CHESTPLATE
     };
-    public static final net.minecraft.item.Item[] LeggingsTopPriority = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.NETHERITE_LEGGINGS,
-        net.minecraft.item.Items.DIAMOND_LEGGINGS,
-        net.minecraft.item.Items.IRON_LEGGINGS,
-        net.minecraft.item.Items.CHAINMAIL_LEGGINGS,
-        net.minecraft.item.Items.GOLDEN_LEGGINGS,
-        net.minecraft.item.Items.LEATHER_LEGGINGS
+    public static final net.minecraft.world.item.Item[] LeggingsTopPriority = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.NETHERITE_LEGGINGS,
+        net.minecraft.world.item.Items.DIAMOND_LEGGINGS,
+        net.minecraft.world.item.Items.IRON_LEGGINGS,
+        net.minecraft.world.item.Items.CHAINMAIL_LEGGINGS,
+        net.minecraft.world.item.Items.GOLDEN_LEGGINGS,
+        net.minecraft.world.item.Items.LEATHER_LEGGINGS
     };
-    public static final net.minecraft.item.Item[] BootsTopPriority = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.NETHERITE_BOOTS,
-        net.minecraft.item.Items.DIAMOND_BOOTS,
-        net.minecraft.item.Items.IRON_BOOTS,
-        net.minecraft.item.Items.CHAINMAIL_BOOTS,
-        net.minecraft.item.Items.GOLDEN_BOOTS,
-        net.minecraft.item.Items.LEATHER_BOOTS
+    public static final net.minecraft.world.item.Item[] BootsTopPriority = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.NETHERITE_BOOTS,
+        net.minecraft.world.item.Items.DIAMOND_BOOTS,
+        net.minecraft.world.item.Items.IRON_BOOTS,
+        net.minecraft.world.item.Items.CHAINMAIL_BOOTS,
+        net.minecraft.world.item.Items.GOLDEN_BOOTS,
+        net.minecraft.world.item.Items.LEATHER_BOOTS
     };
-    public static final net.minecraft.item.Item[] SwordsTopPriority = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.NETHERITE_SWORD,
-        net.minecraft.item.Items.DIAMOND_SWORD,
-        net.minecraft.item.Items.IRON_SWORD,
-        net.minecraft.item.Items.GOLDEN_SWORD,
-        net.minecraft.item.Items.STONE_SWORD,
-        net.minecraft.item.Items.WOODEN_SWORD
+    public static final net.minecraft.world.item.Item[] SwordsTopPriority = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.NETHERITE_SWORD,
+        net.minecraft.world.item.Items.DIAMOND_SWORD,
+        net.minecraft.world.item.Items.IRON_SWORD,
+        net.minecraft.world.item.Items.GOLDEN_SWORD,
+        net.minecraft.world.item.Items.STONE_SWORD,
+        net.minecraft.world.item.Items.WOODEN_SWORD
     };
-    public static final net.minecraft.item.Item[] AxesTopPriority = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.NETHERITE_AXE,
-        net.minecraft.item.Items.DIAMOND_AXE,
-        net.minecraft.item.Items.IRON_AXE,
-        net.minecraft.item.Items.GOLDEN_AXE,
-        net.minecraft.item.Items.STONE_AXE,
-        net.minecraft.item.Items.WOODEN_AXE
+    public static final net.minecraft.world.item.Item[] AxesTopPriority = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.NETHERITE_AXE,
+        net.minecraft.world.item.Items.DIAMOND_AXE,
+        net.minecraft.world.item.Items.IRON_AXE,
+        net.minecraft.world.item.Items.GOLDEN_AXE,
+        net.minecraft.world.item.Items.STONE_AXE,
+        net.minecraft.world.item.Items.WOODEN_AXE
     };
-    public static final net.minecraft.item.Item[] PickaxesTopPriority = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.NETHERITE_PICKAXE,
-        net.minecraft.item.Items.DIAMOND_PICKAXE,
-        net.minecraft.item.Items.IRON_PICKAXE,
-        net.minecraft.item.Items.GOLDEN_PICKAXE,
-        net.minecraft.item.Items.STONE_PICKAXE,
-        net.minecraft.item.Items.WOODEN_PICKAXE
+    public static final net.minecraft.world.item.Item[] PickaxesTopPriority = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.NETHERITE_PICKAXE,
+        net.minecraft.world.item.Items.DIAMOND_PICKAXE,
+        net.minecraft.world.item.Items.IRON_PICKAXE,
+        net.minecraft.world.item.Items.GOLDEN_PICKAXE,
+        net.minecraft.world.item.Items.STONE_PICKAXE,
+        net.minecraft.world.item.Items.WOODEN_PICKAXE
     };
-    public static final net.minecraft.item.Item[] ShovelsTopPriority = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.NETHERITE_SHOVEL,
-        net.minecraft.item.Items.DIAMOND_SHOVEL,
-        net.minecraft.item.Items.IRON_SHOVEL,
-        net.minecraft.item.Items.GOLDEN_SHOVEL,
-        net.minecraft.item.Items.STONE_SHOVEL,
-        net.minecraft.item.Items.WOODEN_SHOVEL
+    public static final net.minecraft.world.item.Item[] ShovelsTopPriority = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.NETHERITE_SHOVEL,
+        net.minecraft.world.item.Items.DIAMOND_SHOVEL,
+        net.minecraft.world.item.Items.IRON_SHOVEL,
+        net.minecraft.world.item.Items.GOLDEN_SHOVEL,
+        net.minecraft.world.item.Items.STONE_SHOVEL,
+        net.minecraft.world.item.Items.WOODEN_SHOVEL
     };
-    public static final net.minecraft.item.Item[] HoesTopPriority = new net.minecraft.item.Item[]{
-        net.minecraft.item.Items.NETHERITE_HOE,
-        net.minecraft.item.Items.DIAMOND_HOE,
-        net.minecraft.item.Items.IRON_HOE,
-        net.minecraft.item.Items.GOLDEN_HOE,
-        net.minecraft.item.Items.STONE_HOE,
-        net.minecraft.item.Items.WOODEN_HOE
+    public static final net.minecraft.world.item.Item[] HoesTopPriority = new net.minecraft.world.item.Item[]{
+        net.minecraft.world.item.Items.NETHERITE_HOE,
+        net.minecraft.world.item.Items.DIAMOND_HOE,
+        net.minecraft.world.item.Items.IRON_HOE,
+        net.minecraft.world.item.Items.GOLDEN_HOE,
+        net.minecraft.world.item.Items.STONE_HOE,
+        net.minecraft.world.item.Items.WOODEN_HOE
     };
 
 }

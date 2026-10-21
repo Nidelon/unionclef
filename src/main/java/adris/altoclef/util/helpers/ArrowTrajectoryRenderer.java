@@ -1,23 +1,23 @@
 package adris.altoclef.util.helpers;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.*;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Camera;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.Vec3;
 
 public class ArrowTrajectoryRenderer {
     private static final double GRAVITY = 0.05D;
     private static final float ARROW_VELOCITY = 3.0F;
 
-    public void renderTrajectory(MatrixStack matrixStack, float partialTicks, PlayerEntity player) {
+    public void renderTrajectory(PoseStack matrixStack, float partialTicks, Player player) {
         if (!player.isUsingItem() || player.getActiveItem().getItem() != Items.BOW) {
             return;
         }
 
         // Calculate bow charge
-        int useDuration = player.getItemUseTime();
+        int useDuration = player.getTicksUsingItem();
         float power = (float) (useDuration) / 20.0F;
         power = (power * power + power * 2.0F) / 3.0F;
         power = Math.min(1.0F, power);
@@ -25,20 +25,20 @@ public class ArrowTrajectoryRenderer {
         if (power < 0.1F) {
             return;
         }
-        matrixStack.push();
+        matrixStack.pushPose();
 
         // Get camera position for proper transformation
-        Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
+        Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
         matrixStack.translate(
-                -camera.getPos().x,
-                -camera.getPos().y,
-                -camera.getPos().z
+                -camera.position().x,
+                -camera.position().y,
+                -camera.position().z
         );
 
         // Start position
-        Vec3d startPos = player.getEyePos().subtract(0, 0.1, 0)
-                .add(player.getRotationVector().multiply(0.5));
-        Vec3d lookVec = player.getRotationVector();
+        Vec3 startPos = player.getEyePosition().subtract(0, 0.1, 0)
+                .add(player.getLookAngle().scale(0.5));
+        Vec3 lookVec = player.getLookAngle();
 
         // Initial velocity
         double velocityX = lookVec.x * ARROW_VELOCITY * power;
@@ -48,6 +48,6 @@ public class ArrowTrajectoryRenderer {
         // Trajectory rendering currently disabled (rendering API changes between MC versions).
         // Uncomment and adapt for your Minecraft version if needed.
 
-        matrixStack.pop();
+        matrixStack.popPose();
     }
 }

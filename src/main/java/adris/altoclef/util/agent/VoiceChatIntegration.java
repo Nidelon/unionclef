@@ -3,21 +3,21 @@ package adris.altoclef.util.agent;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Py4jEntryPoint;
 import de.maxhenkel.voicechat.api.events.ClientReceiveSoundEvent;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.UUID;
 
 public class VoiceChatIntegration {
 
     public static void onSound(AltoClef mod, ClientReceiveSoundEvent.EntitySound event) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null || mc.world == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) return;
 
         UUID senderId = event.getId();
 
         // Resolve player name via Minecraft world — no internal voicechat APIs needed
-        PlayerEntity player = mc.world.getPlayerByUuid(senderId);
+        Player player = mc.level.getPlayerByUUID(senderId);
         if (player == null) return;
 
         String playerName = player.getName().getString();

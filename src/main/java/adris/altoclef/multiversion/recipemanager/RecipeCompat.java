@@ -23,7 +23,7 @@ public final class RecipeCompat {
             if (level == null) {
                 return ItemStack.EMPTY;
             }
-            return recipe.display().result()
+            return recipe.display().get(0).result()
                     .resolveForFirstStack(SlotDisplayContext.fromLevel(level));
         } catch (Exception e) {
             return ItemStack.EMPTY;

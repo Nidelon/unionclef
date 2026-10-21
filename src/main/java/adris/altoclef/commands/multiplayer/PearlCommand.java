@@ -7,9 +7,9 @@ import adris.altoclef.commandsystem.args.PlayerArg;
 import adris.altoclef.commandsystem.exception.CommandException;
 import adris.altoclef.commandsystem.exception.RuntimeCommandException;
 import adris.altoclef.tasks.movement.ThrowEnderPearlSimpleProjectileTask;
-import net.minecraft.entity.Entity;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
 
 import java.util.Optional;
 
@@ -29,7 +29,7 @@ public class PearlCommand extends Command {
             player = mod.getEntityTracker().getPlayerEntity(playerName).map(Entity.class::cast);
         }
         if (player.isPresent()) {
-            BlockPos pos = player.get().getBlockPos();
+            BlockPos pos = player.get().blockPosition();
             if (pos != null) {
                 mod.runUserTask(new ThrowEnderPearlSimpleProjectileTask(pos), this::finish);
                 return;

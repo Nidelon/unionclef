@@ -1,9 +1,9 @@
 package kaptainwutax.tungsten.task;
 
 import kaptainwutax.tungsten.TungstenMod;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,22 +52,22 @@ public class TrailTracker {
     }
 
     /** Call every game tick with target's current position. Only records ground positions. */
-    public void recordPosition(Vec3d targetPos) {
+    public void recordPosition(Vec3 targetPos) {
         if (targetPos == null) return;
         recordTick++;
         if (recordTick < RECORD_INTERVAL) return;
         recordTick = 0;
 
         // Snap to ground: find solid block below target (max 5 blocks down)
-        WorldView world = TungstenMod.mc.world;
+        LevelReader world = TungstenMod.mc.level;
         if (world == null) return;
-        Vec3d groundPos = snapToGround(world, targetPos);
+        Vec3 groundPos = snapToGround(world, targetPos);
         if (groundPos == null) return; // no ground found — skip (void, mid-air over nothing)
 
         // skip if target barely moved since last recording
         if (!trail.isEmpty()) {
             TrailPoint last = trail.get(trail.size() - 1);
-            if (last.pos.squaredDistanceTo(groundPos) < MIN_RECORD_DIST * MIN_RECORD_DIST) return;
+            if (last.pos.distanceToSqr(groundPos) < MIN_RECORD_DIST * MIN_RECORD_DIST) return;
         }
 
         trail.add(new TrailPoint(groundPos));
@@ -99,7 +99,7 @@ public class TrailTracker {
      * Call every tick to update trailing state.
      * @return true if trailing mode is active after this update
      */
-    public boolean update(Vec3d playerPos, Vec3d targetPos) {
+    public boolean update(Vec3 playerPos, Vec3 targetPos) {
         if (playerPos == null || targetPos == null) return trailing;
 
         double dist = playerPos.distanceTo(targetPos);
@@ -144,7 +144,7 @@ public class TrailTracker {
      * Returns the current waypoint to navigate to, or null if not trailing.
      * Advances along the chain when waypoints are reached.
      */
-    public Vec3d getWaypoint(Vec3d playerPos) {
+    public Vec3 getWaypoint(Vec3 playerPos) {
         if (!trailing || trail.isEmpty()) return null;
 
         // clamp index
@@ -152,10 +152,10 @@ public class TrailTracker {
             waypointIndex = findNearestIndex(playerPos);
         }
 
-        Vec3d wp = trail.get(waypointIndex).pos;
+        Vec3 wp = trail.get(waypointIndex).pos;
 
         // check if reached current waypoint
-        if (playerPos.squaredDistanceTo(wp) < WAYPOINT_REACH_DIST * WAYPOINT_REACH_DIST) {
+        if (playerPos.distanceToSqr(wp) < WAYPOINT_REACH_DIST * WAYPOINT_REACH_DIST) {
             waypointIndex++;
             if (waypointIndex >= trail.size()) {
                 // reached end of trail — exit trailing
@@ -174,11 +174,11 @@ public class TrailTracker {
 
     public int getWaypointIndex() { return waypointIndex; }
 
-    private int findNearestIndex(Vec3d pos) {
+    private int findNearestIndex(Vec3 pos) {
         int nearest = 0;
         double nearestDist = Double.MAX_VALUE;
         for (int i = 0; i < trail.size(); i++) {
-            double d = pos.squaredDistanceTo(trail.get(i).pos);
+            double d = pos.distanceToSqr(trail.get(i).pos);
             if (d < nearestDist) {
                 nearestDist = d;
                 nearest = i;
@@ -191,23 +191,23 @@ public class TrailTracker {
      * Snap a position to ground if within 2 blocks below (parkour-safe).
      * Returns position on top of solid block, or null if too far from ground.
      */
-    private static Vec3d snapToGround(WorldView world, Vec3d pos) {
-        BlockPos feet = BlockPos.ofFloored(pos.x, pos.y, pos.z);
+    private static Vec3 snapToGround(LevelReader world, Vec3 pos) {
+        BlockPos feet = BlockPos.containing(pos.x, pos.y, pos.z);
         // Check feet level and 1 block down (max ~1.9 blocks gap)
         for (int dy = 0; dy <= 1; dy++) {
-            BlockPos below = feet.down(dy + 1);
-            if (world.getBlockState(below).isSolidBlock(world, below)) {
-                return new Vec3d(pos.x, below.getY() + 1, pos.z);
+            BlockPos below = feet.below(dy + 1);
+            if (world.getBlockState(below).isRedstoneConductor(world, below)) {
+                return new Vec3(pos.x, below.getY() + 1, pos.z);
             }
         }
         return null; // too far from ground — skip
     }
 
     private static class TrailPoint {
-        final Vec3d pos;
+        final Vec3 pos;
         final long  timestamp;
 
-        TrailPoint(Vec3d pos) {
+        TrailPoint(Vec3 pos) {
             this.pos = pos;
             this.timestamp = System.currentTimeMillis();
         }

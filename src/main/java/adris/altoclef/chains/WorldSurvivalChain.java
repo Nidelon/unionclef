@@ -21,16 +21,16 @@ import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Rotation;
 import kaptainwutax.tungsten.util.WindMouseRotation;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.AbstractFireBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
+import net.minecraft.world.level.block.BaseFireBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 
 import java.util.Optional;
 
@@ -92,7 +92,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
     public static volatile String deathTakeoff = "-";
     public static volatile int deaths;
     private boolean wasDead = false;
-    private final java.util.ArrayDeque<net.minecraft.util.math.Vec3d> _recentPos = new java.util.ArrayDeque<>();
+    private final java.util.ArrayDeque<net.minecraft.world.phys.Vec3> _recentPos = new java.util.ArrayDeque<>();
     private boolean wasInLavaLastTick = false;
 
     /**
@@ -155,7 +155,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
 
     // Movement stuck detection
     private final TimerGame _moveStuckTimer = new TimerGame(15);
-    private Vec3d _lastPos;
+    private Vec3 _lastPos;
     private int _numTryingUnstuck;
 
     // Block break tracking
@@ -163,7 +163,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private BlockPos _lastBrokenBlockPos = null;
     /** What was broken there: a DIFFERENT block in the cell half a second later was put there, not
      *  refused (a shelter cap of cobblestone in a dug dirt cell, gravel falling in). */
-    private net.minecraft.block.Block _lastBrokenBlockType = null;
+    private net.minecraft.world.level.block.Block _lastBrokenBlockType = null;
     public static volatile int breakFailReplaced;
 
     /**
@@ -220,21 +220,21 @@ public class WorldSurvivalChain extends SingleTaskChain {
             lavaEntries++;
             var p = mod.getPlayer();
             lavaEntryHurtTime = p.hurtTime;
-            lavaEntryOnGround = p.isOnGround() ? 1 : 0;
-            Vec3d v = p.getVelocity();
+            lavaEntryOnGround = p.onGround() ? 1 : 0;
+            Vec3 v = p.getDeltaMovement();
             lavaEntrySpeedCm = (int) Math.round(Math.sqrt(v.x * v.x + v.z * v.z) * 100.0);
             lavaEntryFlee = kaptainwutax.tungsten.task.RunAwayTask.isActive() ? 1 : 0;
             lavaEntryPunk = kaptainwutax.tungsten.task.PunkPlayerTask.isActive() ? 1 : 0;
             lavaEntryStage = String.valueOf(kaptainwutax.tungsten.combat.CombatController.lastStage);
             lavaEntryCombatFwd = kaptainwutax.tungsten.combat.CombatController.lastForwardPressed ? 1 : 0;
-            lavaEntryPos = p.getBlockPos().toShortString();
+            lavaEntryPos = p.blockPosition().toShortString();
             lavaEntryTakeoff = String.valueOf(kaptainwutax.tungsten.combat.DamageWatch.lastFall);
             // The fall VECTOR: where the body was one tick and ten ticks ago. A body that was thrown
             // travels horizontally between those samples; a body that stepped or fell into a hole
             // does not. This is the measurement the first pass inferred instead of taking.
-            Vec3d prev1 = null, prev10 = null;
+            Vec3 prev1 = null, prev10 = null;
             int idx = 0;
-            for (Vec3d q : _recentPos) {          // newest first (addFirst below)
+            for (Vec3 q : _recentPos) {          // newest first (addFirst below)
                 if (idx == 0) prev1 = q;
                 if (idx == 9) { prev10 = q; break; }
                 idx++;
@@ -251,7 +251,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
                     kaptainwutax.tungsten.TungstenModDataContainer.PATHFINDER.active.get() ? 1 : 0,
                     lavaEntryPunk, lavaEntryFlee)
                     // ON the route (the planner handed us lava) or BETWEEN waypoints (a cut corner)?
-                    + " | " + kaptainwutax.tungsten.task.BlockPathWalker.describeAgainstRoute(p.getBlockPos());
+                    + " | " + kaptainwutax.tungsten.task.BlockPathWalker.describeAgainstRoute(p.blockPosition());
             // How deep did the cell the body just left READ as? If this is small, nothing in the
             // terrain model saw a drop there at all, which is a different defect from ignoring one.
             try {
@@ -276,7 +276,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
             deaths++;
             var dp = mod.getPlayer();
             deathTakeoff = String.format("at=%s fallDist=%.1f hurt=%d | %s | driver: walker%d exec%d nav%d pf%d punk%d flee%d",
-                    dp.getBlockPos().toShortString(), dp.fallDistance, dp.hurtTime,
+                    dp.blockPosition().toShortString(), dp.fallDistance, dp.hurtTime,
                     kaptainwutax.tungsten.combat.DamageWatch.lastFall,
                     kaptainwutax.tungsten.task.BlockPathWalker.isRunning() ? 1 : 0,
                     kaptainwutax.tungsten.TungstenModDataContainer.EXECUTOR != null
@@ -287,7 +287,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
                     kaptainwutax.tungsten.task.RunAwayTask.isActive() ? 1 : 0);
         }
         wasDead = deadNow;
-        _recentPos.addFirst(mod.getPlayer().getPos());
+        _recentPos.addFirst(mod.getPlayer().position());
         while (_recentPos.size() > 12) _recentPos.removeLast();
 
         if (isInLavaOhShit(mod)) {
@@ -314,8 +314,8 @@ public class WorldSurvivalChain extends SingleTaskChain {
         // A ceiling can make "hold jump" fatal. Reserve the remaining half of
         // the oxygen supply for reaching air, and keep the escape until refilled.
         if (mod.getModSettings().shouldAvoidDrowning()
-                && ((mod.getPlayer().isSubmergedInWater()
-                        && mod.getPlayer().getAir() < mod.getPlayer().getMaxAir() / 2)
+                && ((mod.getPlayer().isUnderWater()
+                        && mod.getPlayer().getAirSupply() < mod.getPlayer().getMaxAirSupply() / 2)
                     || (mainTask instanceof GetToAirTask && !mainTask.isFinished()))) {
             setTask(new GetToAirTask());
             return 100;
@@ -324,18 +324,18 @@ public class WorldSurvivalChain extends SingleTaskChain {
 
         // Extinguish with water
         if (mod.getModSettings().shouldExtinguishSelfWithWater()) {
-            if (!(mainTask instanceof EscapeFromLavaTask && isCurrentlyRunning(mod)) && mod.getPlayer().isOnFire() && !mod.getPlayer().hasStatusEffect(StatusEffects.FIRE_RESISTANCE) && !DimensionVer.isUltrawarm(mod.getWorld().getDimension())) {
+            if (!(mainTask instanceof EscapeFromLavaTask && isCurrentlyRunning(mod)) && mod.getPlayer().isOnFire() && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE) && !DimensionVer.isUltrawarm(mod.getWorld().dimensionType())) {
                 // Extinguish ourselves
                 if (mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
-                    BlockPos targetWaterPos = mod.getPlayer().getBlockPos();
-                    if (WorldHelper.isSolidBlock(targetWaterPos.down()) && WorldHelper.canPlace(targetWaterPos)) {
-                        Optional<Rotation> reach = LookHelper.getReach(targetWaterPos.down(), Direction.UP);
+                    BlockPos targetWaterPos = mod.getPlayer().blockPosition();
+                    if (WorldHelper.isSolidBlock(targetWaterPos.below()) && WorldHelper.canPlace(targetWaterPos)) {
+                        Optional<Rotation> reach = LookHelper.getReach(targetWaterPos.below(), Direction.UP);
                         if (reach.isPresent()) {
                             // Ask the camera driver for the aim and place the water only when the
                             // crosshair has arrived — same request-then-poll shape baritone's
                             // updateTarget gave this branch, now driven by tungsten.
                             WindMouseRotation.INSTANCE.setTarget(reach.get().getYaw(), reach.get().getPitch());
-                            if (LookHelper.isLookingAt(mod, targetWaterPos.down())) {
+                            if (LookHelper.isLookingAt(mod, targetWaterPos.below())) {
                                 if (mod.getSlotHandler().forceEquipItem(Items.WATER_BUCKET)) {
                                     _extinguishWaterPosition = targetWaterPos;
                                     mod.getInputControls().tryPress(Input.CLICK_RIGHT);
@@ -350,7 +350,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 return 90;
             } else if (mod.getItemStorage().hasItem(Items.BUCKET) && _extinguishWaterPosition != null && mod.getBlockScanner().isBlockAtPosition(_extinguishWaterPosition, Blocks.WATER)) {
                 // Pick up the water
-                setTask(new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), Direction.UP, _extinguishWaterPosition.down(), true));
+                setTask(new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), Direction.UP, _extinguishWaterPosition.below(), true));
                 return 60;
             } else {
                 _extinguishWaterPosition = null;
@@ -383,7 +383,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
         // Movement stuck detection
         if (_lastPos == null) {
-            _lastPos = mod.getPlayer().getPos();
+            _lastPos = mod.getPlayer().position();
             _moveStuckTimer.reset();
         }
         if (_numTryingUnstuck > 3) {
@@ -393,8 +393,8 @@ public class WorldSurvivalChain extends SingleTaskChain {
             setTask(new SafeRandomShimmyTask());
         }
         if (_moveStuckTimer.elapsed() && mod.getInfoSender().hasActiveTask()) {
-            Vec3d pos = mod.getPlayer().getPos();
-            if (_lastPos.isInRange(pos, 2.0D)) {
+            Vec3 pos = mod.getPlayer().position();
+            if (_lastPos.closerThan(pos, 2.0D)) {
                 _numTryingUnstuck++;
                 Debug.logWarning("Maybe we stuck, change task may help");
             } else {
@@ -435,7 +435,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
             // executing swim route is genuinely underway is left untouched -- it still won't
             // fire in that case, exactly as before.
             if (!Nav.isExecutingRoute()) {
-                if (mod.getPlayer().isTouchingWater() && mod.getPlayer().getAir() < mod.getPlayer().getMaxAir()) {
+                if (mod.getPlayer().isInWater() && mod.getPlayer().getAirSupply() < mod.getPlayer().getMaxAirSupply()) {
                     // Swim up!
                     mod.getInputControls().hold(Input.JUMP);
                     //mod.getInputControls().hold(Input.JUMP);
@@ -462,7 +462,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
     public static volatile int survivalEntered, survivalPastGuard;
 
     private boolean isInLavaOhShit(AltoClef mod) {
-        if (mod.getPlayer().isInLava() && !mod.getPlayer().hasStatusEffect(StatusEffects.FIRE_RESISTANCE)) {
+        if (mod.getPlayer().isInLava() && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE)) {
             wasInLavaTimer.reset();
             return true;
         }
@@ -470,10 +470,10 @@ public class WorldSurvivalChain extends SingleTaskChain {
     }
 
     private boolean isInFire(AltoClef mod) {
-        if (mod.getPlayer().isOnFire() && !mod.getPlayer().hasStatusEffect(StatusEffects.FIRE_RESISTANCE)) {
+        if (mod.getPlayer().isOnFire() && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE)) {
             for (BlockPos pos : WorldHelper.getBlocksTouchingPlayer()) {
                 Block b = mod.getWorld().getBlockState(pos).getBlock();
-                if (b instanceof AbstractFireBlock) {
+                if (b instanceof BaseFireBlock) {
                     return true;
                 }
             }
@@ -488,7 +488,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
 
     private void checkLastBrokenBlock(AltoClef mod) {
         if (_lastBrokenBlock && _lastBrokenBlockPos != null && _blockBreakCheckTimer.elapsed()) {
-            net.minecraft.block.Block nowThere = mod.getWorld().getBlockState(_lastBrokenBlockPos).getBlock();
+            net.minecraft.world.level.block.Block nowThere = mod.getWorld().getBlockState(_lastBrokenBlockPos).getBlock();
             if (!WorldHelper.isAir(_lastBrokenBlockPos) && _lastBrokenBlockType != null
                     && nowThere != _lastBrokenBlockType) {
                 // Broken, then something else put in: not a refusal. The night shelter placing its
@@ -521,8 +521,8 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 boolean wasInReach = false;
                 if (mod.getPlayer() != null) {
                     double reach = kaptainwutax.tungsten.path.movements.RotationHelper.blockReachDistance(mod.getPlayer());
-                    double d = mod.getPlayer().getEyePos().squaredDistanceTo(
-                            net.minecraft.util.math.Vec3d.ofCenter(_lastBrokenBlockPos));
+                    double d = mod.getPlayer().getEyePosition().distanceToSqr(
+                            net.minecraft.world.phys.Vec3.atCenterOf(_lastBrokenBlockPos));
                     wasInReach = d <= (reach + 1) * (reach + 1);
                 }
                 // A BREAK THAT FAILED BECAUSE THE BLOCK IS BURIED SAYS NOTHING ABOUT A CLAIM.
@@ -543,8 +543,8 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 // everything within its 4.5-block reach. The radius was never the defect; believing
                 // the failure was.
                 boolean hasExposedFace = false;
-                for (net.minecraft.util.math.Direction d : net.minecraft.util.math.Direction.values()) {
-                    if (WorldHelper.isAir(_lastBrokenBlockPos.offset(d))) {
+                for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
+                    if (WorldHelper.isAir(_lastBrokenBlockPos.relative(d))) {
                         hasExposedFace = true;
                         break;
                     }
@@ -689,7 +689,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
         _breakAvoidTimer.reset();
     }
 
-    public void onBlockBroken(AltoClef mod, BlockPos pos, BlockState block, PlayerEntity player) {
+    public void onBlockBroken(AltoClef mod, BlockPos pos, BlockState block, Player player) {
         if (mod.getPlayer() != null && player != null && player.equals(mod.getPlayer())) {
             // THE SECOND LOOK BELONGS TO A BLOCK, NOT TO THIS CHAIN. Without clearing it here, a
             // break that starts while an earlier one is still awaiting its second look would have

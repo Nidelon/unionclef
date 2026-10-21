@@ -2,8 +2,8 @@ package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * A recovery is a PLAN, never a random walk (docs/BARITONE-GAPS.md G26/G29, 2026-09-11).
@@ -33,11 +33,11 @@ public final class PlannedEscape {
     public static volatile int escapeArmed, escapeToGoal, escapeToSurface, escapeToNearby, escapeNoWhere;
 
     private static long lastArmMs = 0L;
-    private static Vec3d armedFrom = null;
+    private static Vec3 armedFrom = null;
     private static boolean lastPickWasLiveGoal = false;
 
     /** Where the body was when the current escape started (null when none is running). */
-    public static Vec3d armedFrom() {
+    public static Vec3 armedFrom() {
         return kaptainwutax.tungsten.task.FastNavigator.isActive() ? armedFrom : null;
     }
 
@@ -50,7 +50,7 @@ public final class PlannedEscape {
         long now = System.currentTimeMillis();
         if (now - lastArmMs < 3000) return false;
         if (mod == null || mod.getPlayer() == null || mod.getWorld() == null) return false;
-        Vec3d goal = pickGoal(mod);
+        Vec3 goal = pickGoal(mod);
         if (goal == null) {
             escapeNoWhere++;
             return false;
@@ -62,7 +62,7 @@ public final class PlannedEscape {
         BlockPos reach = lastPickWasLiveGoal ? CustomBaritoneGoalTask.lastGoalReachBlock : null;
         if (reach != null) kaptainwutax.tungsten.task.FastNavigator.start(goal, reach);
         else kaptainwutax.tungsten.task.FastNavigator.start(goal);
-        armedFrom = mod.getPlayer().getPos();
+        armedFrom = mod.getPlayer().position();
         lastArmMs = now;
         escapeArmed++;
         Debug.logMessage(String.format("Planned escape (%s) -> %.1f,%.1f,%.1f via FastPlanner (dig/build allowed)",
@@ -70,14 +70,14 @@ public final class PlannedEscape {
         return true;
     }
 
-    private static Vec3d pickGoal(AltoClef mod) {
-        Vec3d me = mod.getPlayer().getPos();
-        net.minecraft.world.World w = mod.getWorld();
+    private static Vec3 pickGoal(AltoClef mod) {
+        Vec3 me = mod.getPlayer().position();
+        net.minecraft.world.level.Level w = mod.getWorld();
         lastPickWasLiveGoal = false;
         // 1. the live goal
-        Vec3d live = CustomBaritoneGoalTask.lastGoalVec;
+        Vec3 live = CustomBaritoneGoalTask.lastGoalVec;
         if (live != null && System.currentTimeMillis() - CustomBaritoneGoalTask.lastGoalAtMs < 2000
-                && live.squaredDistanceTo(me) > 4.0) {
+                && live.distanceToSqr(me) > 4.0) {
             escapeToGoal++;
             lastPickWasLiveGoal = true;
             return live;
@@ -90,11 +90,11 @@ public final class PlannedEscape {
         //    logged "doomed to fall by Ghast". A roofed dimension has no surface to escape to; its
         //    escape is the nearest standable cell (3.), which the build engine digs to sideways.
         BlockPos feet = kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(mod.getPlayer());
-        if (!w.getDimension().hasCeiling()) {
-            int top = w.getTopY(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING, feet.getX(), feet.getZ());
+        if (!w.dimensionType().hasCeiling()) {
+            int top = w.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, feet.getX(), feet.getZ());
             if (top > feet.getY() + 1) {
                 escapeToSurface++;
-                return new Vec3d(feet.getX() + 0.5, top, feet.getZ() + 0.5);
+                return new Vec3(feet.getX() + 0.5, top, feet.getZ() + 0.5);
             }
         }
         // 3. the nearest standable cell at least three blocks away
@@ -107,7 +107,7 @@ public final class PlannedEscape {
                             int x = feet.getX() + dx, y = feet.getY() + sy, z = feet.getZ() + dz;
                             if (CustomBaritoneGoalTask.standable(w, x, y, z)) {
                                 escapeToNearby++;
-                                return new Vec3d(x + 0.5, y, z + 0.5);
+                                return new Vec3(x + 0.5, y, z + 0.5);
                             }
                         }
                     }
@@ -134,20 +134,20 @@ public final class PlannedEscape {
     public static boolean enclosed(AltoClef mod) {
         if (mod == null || mod.getPlayer() == null || mod.getWorld() == null) return false;
         BlockPos feet = kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(mod.getPlayer());
-        net.minecraft.world.World w = mod.getWorld();
-        if (!mod.getPlayer().isOnGround() && mod.getPlayer().isTouchingWater()) {
+        net.minecraft.world.level.Level w = mod.getWorld();
+        if (!mod.getPlayer().onGround() && mod.getPlayer().isInWater()) {
             BlockPos c = feet;
-            for (int i = 0; i < 3 && w.getBlockState(c.down()).getCollisionShape(w, c.down()).isEmpty()
-                    && !w.getFluidState(c.down()).isEmpty(); i++) {
-                c = c.down();
+            for (int i = 0; i < 3 && w.getBlockState(c.below()).getCollisionShape(w, c.below()).isEmpty()
+                    && !w.getFluidState(c.below()).isEmpty(); i++) {
+                c = c.below();
             }
-            if (!w.getBlockState(c.down()).getCollisionShape(w, c.down()).isEmpty() && !c.equals(feet)) {
+            if (!w.getBlockState(c.below()).getCollisionShape(w, c.below()).isEmpty() && !c.equals(feet)) {
                 feet = c;
                 enclosedAfloat++;
             }
         }
-        for (net.minecraft.util.math.Direction d : net.minecraft.util.math.Direction.Type.HORIZONTAL) {
-            BlockPos n = feet.offset(d);
+        for (net.minecraft.core.Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+            BlockPos n = feet.relative(d);
             if (w.getBlockState(n).getCollisionShape(w, n).isEmpty()) return false;
         }
         describePit(w, feet);
@@ -156,7 +156,7 @@ public final class PlannedEscape {
 
     /** Write the 3x3x3 around a pit to the log once per pit, so a stall there can be read later
      *  without reproducing it: '#' solid, '~' water, 'L' lava, '.' air; layers from the floor up. */
-    private static void describePit(net.minecraft.world.World w, BlockPos feet) {
+    private static void describePit(net.minecraft.world.level.Level w, BlockPos feet) {
         String at = feet.toShortString();
         if (lastPit.startsWith(at)) return;
         StringBuilder sb = new StringBuilder(at).append(" |");
@@ -164,10 +164,10 @@ public final class PlannedEscape {
             for (int dz = -1; dz <= 1; dz++) {
                 sb.append(' ');
                 for (int dx = -1; dx <= 1; dx++) {
-                    BlockPos p = feet.add(dx, dy, dz);
+                    BlockPos p = feet.offset(dx, dy, dz);
                     var st = w.getBlockState(p);
                     char ch = !st.getCollisionShape(w, p).isEmpty() ? '#'
-                            : st.getFluidState().isIn(net.minecraft.registry.tag.FluidTags.LAVA) ? 'L'
+                            : st.getFluidState().is(net.minecraft.tags.FluidTags.LAVA) ? 'L'
                             : !st.getFluidState().isEmpty() ? '~' : '.';
                     sb.append(ch);
                 }

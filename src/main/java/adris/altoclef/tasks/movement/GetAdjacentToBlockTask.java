@@ -5,7 +5,7 @@ import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.goals.AltoGoal;
 import adris.altoclef.util.helpers.LookHelper;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 
 /**
  * Walk -- or DIG -- until a block is within arm's reach. The approach a miner actually needs.

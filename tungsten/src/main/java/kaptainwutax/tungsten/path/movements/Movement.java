@@ -10,23 +10,23 @@ import java.util.Set;
 import kaptainwutax.tungsten.TungstenModDataContainer;
 import kaptainwutax.tungsten.util.WindMouseRotation;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.SlabBlock;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.option.GameOptions;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.FallingBlockEntity;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.Options;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.entity.item.FallingBlockEntity;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Port of {@code baritone/src/main/java/baritone/pathing/movement/Movement.java} (1-296), the
@@ -56,13 +56,13 @@ import net.minecraft.world.WorldView;
  *       with the pitch preserved. The camera is NEVER moved with {@code setYaw}/{@code setPitch} —
  *       rotation has to go through the vanilla mouse pipeline or it is trivially detectable.</li>
  *   <li>{@code InputOverrideHandler} -&gt; {@link #clearAllKeys()} / {@link #applyInputs} over
- *       {@code MinecraftClient.getInstance().options}, including the
+ *       {@code Minecraft.getInstance().options}, including the
  *       CLICK_LEFT-cancels-CLICK_RIGHT interlock (InputOverrideHandler.java:94-96) and the
  *       {@code BlockPlaceHelper} 4-tick right-click gate (BlockPlaceHelper.java:29-57).</li>
  *   <li>{@code MovementHelper.switchToBestToolFor} -&gt; {@code TungstenModDataContainer.equipToolHook}
  *       (TungstenModDataContainer.java:30). Tungsten never touches the inventory itself; altoclef
  *       owns the hotbar, so baritone's {@code ToolSet} is not ported.</li>
- *   <li>{@code CalculationContext} -&gt; {@code (WorldView, ClientPlayerEntity)} per the spec's
+ *   <li>{@code CalculationContext} -&gt; {@code (LevelReader, LocalPlayer)} per the spec's
  *       substitution table. {@code Baritone.settings()} -&gt; hardcoded upstream defaults, each
  *       named at its use site.</li>
  *   <li>{@code PathingBehavior.pathStart()} — no equivalent; see {@link #playerInValidPosition()}.</li>
@@ -125,7 +125,7 @@ public abstract class Movement {
     /**
      * The facing in which THIS TICK's inputs are to be resolved, or {@code null} when no ported
      * movement owns the tick. Read by {@code MixinEntityMotionYaw} around
-     * {@code Entity.updateVelocity}; cleared at the RETURN of {@code ClientPlayerEntity.tick}, which
+     * {@code Entity.updateVelocity}; cleared at the RETURN of {@code LocalPlayer.tick}, which
      * is upstream's "the target is done being used for this game tick" (LookBehavior.java:126).
      *
      * <p>WHY THIS EXISTS — the mechanism, measured. Baritone's movements press a direction key in the
@@ -215,7 +215,7 @@ public abstract class Movement {
         return cost;
     }
 
-    public double getCost(WorldView world, ClientPlayerEntity player) {
+    public double getCost(LevelReader world, LocalPlayer player) {
         if (cost == null) {
             cost = calculateCost(world, player);
         }
@@ -230,11 +230,11 @@ public abstract class Movement {
      * every subclass to also carry an instance form would break compilation for no behaviour. A
      * subclass that wants the cache overrides this.
      */
-    public double calculateCost(WorldView world, ClientPlayerEntity player) {
+    public double calculateCost(LevelReader world, LocalPlayer player) {
         throw new UnsupportedOperationException(getClass().getSimpleName() + " has no instance cost — call its static cost(...) and override(double) the result");
     }
 
-    public double recalculateCost(WorldView world, ClientPlayerEntity player) {
+    public double recalculateCost(LevelReader world, LocalPlayer player) {
         cost = null;
         return getCost(world, player);
     }
@@ -268,20 +268,20 @@ public abstract class Movement {
      */
     protected BetterBlockPos pathStart() {
         BetterBlockPos feet = ctx.playerFeet();
-        ClientPlayerEntity player = ctx.player();
+        LocalPlayer player = ctx.player();
         if (player == null) {
             return feet;
         }
-        net.minecraft.world.WorldView world = player.getEntityWorld();
+        net.minecraft.world.level.LevelReader world = player.level();
         if (world == null || MovementHelperB.canWalkOn(world, feet.below())) {
             return feet;
         }
-        if (!player.isOnGround()) {
+        if (!player.onGround()) {
             // mid-jump
             return MovementHelperB.canWalkOn(world, feet.below().below()) ? feet.below() : feet;
         }
-        final double playerX = player.getEntityPos().x;
-        final double playerZ = player.getEntityPos().z;
+        final double playerX = player.position().x;
+        final double playerZ = player.position().z;
         ArrayList<BetterBlockPos> closest = new ArrayList<>();
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
@@ -322,7 +322,7 @@ public abstract class Movement {
     /** Land movements float toward their destination; a swim controls its own depth. */
     protected void updateWaterInputs(MovementState state) {
         if (MovementHelperB.isLiquid(ctx.world(), ctx.playerFeet())
-                && ctx.player().getEntityPos().y < dest.y + 0.6) {
+                && ctx.player().position().y < dest.y + 0.6) {
             state.setInput(Input.JUMP, true);
         }
     }
@@ -334,17 +334,17 @@ public abstract class Movement {
      * @return Status
      */
     public MovementStatus update() {
-        ClientPlayerEntity player = ctx.player();
+        LocalPlayer player = ctx.player();
         if (player == null) {
             // Not upstream: IPlayerContext.player() is never null while pathing, but
-            // MinecraftClient.player is (disconnect, world unload). Returning the unchanged status
+            // Minecraft.player is (disconnect, world unload). Returning the unchanged status
             // is the no-op; nothing else in this method is safe without a player.
             return currentState.getStatus();
         }
         player.getAbilities().flying = false;
         currentState = updateState(currentState);
         updateWaterInputs(currentState);
-        if (player.isInsideWall()) {
+        if (player.isInWall()) {
             ctx.getSelectedBlock().ifPresent(pos -> switchToBestToolFor(pos, ctx.world().getBlockState(pos)));
             currentState.setInput(Input.CLICK_LEFT, true);
         }
@@ -388,14 +388,14 @@ public abstract class Movement {
      * that declares no rotation at all leaves the frame unset and the body walks by the camera, as
      * before.
      */
-    private void armMotionFrame(ClientPlayerEntity player) {
+    private void armMotionFrame(LocalPlayer player) {
         Rotation rotation = currentState.getTarget().getRotation().orElse(null);
         if (rotation == null) {
             return;
         }
         motionYaw = rotation.getYaw();
         motionPitch = rotation.getPitch();
-        if (Math.abs(MathHelper.wrapDegrees(rotation.getYaw() - player.getYaw())) > STEER_REPORT_DEG) {
+        if (Math.abs(Mth.wrapDegrees(rotation.getYaw() - player.getYRot(1.0f))) > STEER_REPORT_DEG) {
             motionSteered++;
         }
     }
@@ -413,13 +413,13 @@ public abstract class Movement {
      * prints "Chat overflow, message dropped". Everything sent to chat also reaches the container's
      * stdout as a {@code [CHAT]} line, which has no such limit.
      */
-    private void logTick(ClientPlayerEntity player) {
+    private void logTick(LocalPlayer player) {
         Rotation want = currentState.getTarget().getRotation().orElse(null);
-        float yawNow = player.getYaw();
+        float yawNow = player.getYRot(1.0f);
         String yaw = want == null
                 ? String.format("yaw=%.0f/- err=-", yawNow)
                 : String.format("yaw=%.0f/%.0f err=%.0f", yawNow, want.getYaw(),
-                        MathHelper.wrapDegrees(want.getYaw() - yawNow));
+                        Mth.wrapDegrees(want.getYaw() - yawNow));
         StringBuilder keys = new StringBuilder();
         for (Map.Entry<Input, Boolean> e : currentState.getInputStates().entrySet()) {
             if (!Boolean.TRUE.equals(e.getValue())) {
@@ -438,13 +438,13 @@ public abstract class Movement {
                 default: break;
             }
         }
-        Vec3d p = player.getEntityPos();
+        Vec3 p = player.position();
         kaptainwutax.tungsten.Debug.logMessage(String.format(
                 "MV %s->%s st=%s feet=%s pos=%.2f,%.2f,%.2f %s keys=%s ground=%b pose=%b",
                 src.toString(), dest.toString(), currentState.getStatus(),
                 ctx.playerFeet().toString(), p.x, p.y, p.z, yaw,
                 keys.length() == 0 ? "-" : keys.toString(),
-                player.isOnGround(), player.isInSneakingPose()));
+                player.onGround(), player.isCrouching()));
     }
 
     /** Consecutive prepping ticks spent clicking at a block we cannot aim at. */
@@ -466,7 +466,7 @@ public abstract class Movement {
         }
         boolean somethingInTheWay = false;
         for (BetterBlockPos blockPos : positionsToBreak) {
-            if (!ctx.world().getNonSpectatingEntities(FallingBlockEntity.class, new Box(0, 0, 0, 1, 1.1, 1).offset(blockPos)).isEmpty() && PAUSE_MINING_FOR_FALLING_BLOCKS) {
+            if (!ctx.world().getEntitiesOfClass(FallingBlockEntity.class, new AABB(0, 0, 0, 1, 1.1, 1).move(blockPos)).isEmpty() && PAUSE_MINING_FOR_FALLING_BLOCKS) {
                 return false;
             }
             // ...AND YOU CANNOT BREAK A FLUID EITHER. Flowing water fails canWalkThrough, so it
@@ -586,8 +586,8 @@ public abstract class Movement {
 
     /** Movement.java:244-246. {@code bsi.worldContainsLoadedChunk(x, z)} is
      *  {@code provider.isChunkLoaded(x >> 4, z >> 4)} (BlockStateInterface.java:79-81). */
-    public void checkLoadedChunk(WorldView world) {
-        calculatedWhileLoaded = world.isChunkLoaded(dest.x >> 4, dest.z >> 4);
+    public void checkLoadedChunk(LevelReader world) {
+        calculatedWhileLoaded = world.hasChunk(dest.x >> 4, dest.z >> 4);
     }
 
     public boolean calculatedWhileLoaded() {
@@ -631,7 +631,7 @@ public abstract class Movement {
         toWalkIntoCached = null;
     }
 
-    public List<BlockPos> toBreak(WorldView bsi) {
+    public List<BlockPos> toBreak(LevelReader bsi) {
         if (toBreakCached != null) {
             return toBreakCached;
         }
@@ -645,7 +645,7 @@ public abstract class Movement {
         return result;
     }
 
-    public List<BlockPos> toPlace(WorldView bsi) {
+    public List<BlockPos> toPlace(LevelReader bsi) {
         if (toPlaceCached != null) {
             return toPlaceCached;
         }
@@ -657,7 +657,7 @@ public abstract class Movement {
         return result;
     }
 
-    public List<BlockPos> toWalkInto(WorldView bsi) { // overridden by movementdiagonal
+    public List<BlockPos> toWalkInto(LevelReader bsi) { // overridden by movementdiagonal
         if (toWalkIntoCached == null) {
             toWalkIntoCached = new ArrayList<>();
         }
@@ -697,11 +697,11 @@ public abstract class Movement {
      * WindMouseRotation feeds pixel deltas through the vanilla mouse pipeline, so the server sees a
      * mouse, not a teleport.
      */
-    private static void updateAimTarget(ClientPlayerEntity player, Rotation rotation, boolean force) {
+    private static void updateAimTarget(LocalPlayer player, Rotation rotation, boolean force) {
         if (force) {
             WindMouseRotation.INSTANCE.setTarget(rotation.getYaw(), rotation.getPitch());
         } else {
-            WindMouseRotation.INSTANCE.setTargetFast(rotation.getYaw(), player.getPitch());
+            WindMouseRotation.INSTANCE.setTargetFast(rotation.getYaw(), player.getXRot(1.0f));
         }
     }
 
@@ -717,21 +717,21 @@ public abstract class Movement {
      * that stops mid-sneak must not leave SHIFT latched.
      */
     static void clearAllKeys() {
-        GameOptions options = MinecraftClient.getInstance().options;
+        Options options = Minecraft.getInstance().options;
         if (options == null) {
             return;
         }
-        options.forwardKey.setPressed(false);
-        options.backKey.setPressed(false);
-        options.leftKey.setPressed(false);
-        options.rightKey.setPressed(false);
-        options.jumpKey.setPressed(false);
-        options.sneakKey.setPressed(false);
-        options.sprintKey.setPressed(false);
-        options.attackKey.setPressed(false);
+        options.keyUp.setDown(false);
+        options.keyDown.setDown(false);
+        options.keyLeft.setDown(false);
+        options.keyRight.setDown(false);
+        options.keyJump.setDown(false);
+        options.keyShift.setDown(false);
+        options.keySprint.setDown(false);
+        options.keyAttack.setDown(false);
         // CLICK_RIGHT is not a key here (see blockPlaceHelperTick), but release useKey anyway so
         // this stays the only owner of the inputs for the tick.
-        options.useKey.setPressed(false);
+        options.keyUse.setDown(false);
     }
 
     /**
@@ -744,8 +744,8 @@ public abstract class Movement {
      * — breaking and placing never overlap — and that has to be decided BEFORE anything is applied,
      * since the map's iteration order is not the branch order.
      */
-    private void applyInputs(ClientPlayerEntity player, Map<Input, Boolean> inputStates) {
-        GameOptions options = MinecraftClient.getInstance().options;
+    private void applyInputs(LocalPlayer player, Map<Input, Boolean> inputStates) {
+        Options options = Minecraft.getInstance().options;
         if (options == null) {
             return;
         }
@@ -757,25 +757,25 @@ public abstract class Movement {
         inputStates.forEach((input, forced) -> {
             switch (input) {
                 case MOVE_FORWARD:
-                    options.forwardKey.setPressed(forced);
+                    options.keyUp.setDown(forced);
                     break;
                 case MOVE_BACK:
-                    options.backKey.setPressed(forced);
+                    options.keyDown.setDown(forced);
                     break;
                 case MOVE_LEFT:
-                    options.leftKey.setPressed(forced);
+                    options.keyLeft.setDown(forced);
                     break;
                 case MOVE_RIGHT:
-                    options.rightKey.setPressed(forced);
+                    options.keyRight.setDown(forced);
                     break;
                 case JUMP:
-                    options.jumpKey.setPressed(forced);
+                    options.keyJump.setDown(forced);
                     break;
                 case SNEAK:
-                    options.sneakKey.setPressed(forced);
+                    options.keyShift.setDown(forced);
                     break;
                 case SPRINT:
-                    options.sprintKey.setPressed(forced);
+                    options.keySprint.setDown(forced);
                     break;
                 case CLICK_LEFT:
                 case CLICK_RIGHT:
@@ -785,7 +785,7 @@ public abstract class Movement {
                     break;
             }
         });
-        options.attackKey.setPressed(clickLeft);
+        options.keyAttack.setDown(clickLeft);
         blockPlaceHelperTick(player, clickRight);
     }
 
@@ -802,7 +802,7 @@ public abstract class Movement {
      * {@code attemptToPlaceABlock} already refused to ask for {@code CLICK_RIGHT} until the real
      * crosshair agreed (MovementHelper.java:840-851), so a second gate would only re-implement it.
      */
-    private void blockPlaceHelperTick(ClientPlayerEntity player, boolean rightClickRequested) {
+    private void blockPlaceHelperTick(LocalPlayer player, boolean rightClickRequested) {
         if (rightClickRequested) {
             placeRequested++;
         }
@@ -813,7 +813,7 @@ public abstract class Movement {
             return;
         }
         HitResult mouseOver = ctx.objectMouseOver();
-        if (!rightClickRequested || player.isRiding() || mouseOver == null || mouseOver.getType() != HitResult.Type.BLOCK) {
+        if (!rightClickRequested || player.isHandsBusy() || mouseOver == null || mouseOver.getType() != HitResult.Type.BLOCK) {
             if (rightClickRequested) {
                 placeNoHit++;
             }
@@ -832,14 +832,14 @@ public abstract class Movement {
      */
     protected static final class PlayerCtx {
 
-        public ClientPlayerEntity player() {
-            return MinecraftClient.getInstance().player;
+        public LocalPlayer player() {
+            return Minecraft.getInstance().player;
         }
 
-        /** {@code ctx.world()}. ClientWorld rather than WorldView because {@link #prepared} needs
-         *  {@code getNonSpectatingEntities}; it is still a WorldView everywhere else. */
-        public ClientWorld world() {
-            return MinecraftClient.getInstance().world;
+        /** {@code ctx.world()}. ClientLevel rather than LevelReader because {@link #prepared} needs
+         *  {@code getNonSpectatingEntities}; it is still a LevelReader everywhere else. */
+        public ClientLevel world() {
+            return Minecraft.getInstance().level;
         }
 
         /**
@@ -849,8 +849,8 @@ public abstract class Movement {
          * {@code up()} — BetterBlockPos.java:107.)
          */
         public BetterBlockPos playerFeet() {
-            ClientPlayerEntity player = player();
-            BetterBlockPos feet = new BetterBlockPos(player.getEntityPos().x, player.getEntityPos().y + 0.1251, player.getEntityPos().z);
+            LocalPlayer player = player();
+            BetterBlockPos feet = new BetterBlockPos(player.position().x, player.position().y + 0.1251, player.position().z);
             try {
                 if (world().getBlockState(feet).getBlock() instanceof SlabBlock) {
                     return feet.above();
@@ -864,26 +864,26 @@ public abstract class Movement {
          * destroys the standing-vs-sneaking eye separation (1.62 vs 1.27) the backplace pitch is
          * built on.
          */
-        public Vec3d playerHead() {
-            ClientPlayerEntity player = player();
-            return new Vec3d(player.getEntityPos().x, player.getEntityPos().y + player.getStandingEyeHeight(), player.getEntityPos().z);
+        public Vec3 playerHead() {
+            LocalPlayer player = player();
+            return new Vec3(player.position().x, player.position().y + player.getEyeHeight(), player.position().z);
         }
 
         public Rotation playerRotations() {
-            ClientPlayerEntity player = player();
-            return new Rotation(player.getYaw(), player.getPitch());
+            LocalPlayer player = player();
+            return new Rotation(player.getYRot(1.0f), player.getXRot(1.0f));
         }
 
         /**
          * BaritonePlayerContext.java:84-86 — a LIVE raytrace recomputed this tick from the real eye
          * and the real current rotations, not the per-frame {@code mc.crosshairTarget}.
-         * {@code Entity.raycast(reach, 1.0F, false)} is that raytrace exactly: it starts at
+         * {@code Entity.clip(reach, 1.0F, false)} is that raytrace exactly: it starts at
          * {@code getCameraPosVec}, aims along the current rotations, and uses
          * {@code ShapeType.OUTLINE} with {@code FluidHandling.NONE} — the same three choices as
          * RayTraceUtils.java:33-48.
          */
         public HitResult objectMouseOver() {
-            return player().raycast(blockReachDistance(), 1.0F, false);
+            return player().pick(blockReachDistance(), 1.0F, false);
         }
 
         public Optional<BlockPos> getSelectedBlock() {

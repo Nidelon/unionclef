@@ -13,20 +13,20 @@ import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Rotation;
 import kaptainwutax.tungsten.path.movements.Input;
 import kaptainwutax.tungsten.combat.TrajectorySolver;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.projectile.ProjectileEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Arrays;
 import java.util.List;
 
 import static adris.altoclef.util.helpers.ItemHelper.ARROWS;
-import static net.minecraft.item.CrossbowItem.isCharged;
+import static net.minecraft.world.item.CrossbowItem.isCharged;
 
 public class ShootArrowSimpleProjectileTask extends Task {
 
@@ -44,8 +44,8 @@ public class ShootArrowSimpleProjectileTask extends Task {
     // Self-tracked target velocity for lead: a walking remote player reports ~0
     // getVelocity() on the client, so we difference its (lerped) position across
     // ticks ourselves. Light EMA smooths lerp jitter.
-    private Vec3d _prevTargetPos = null;
-    private Vec3d _targetVel = Vec3d.ZERO;
+    private Vec3 _prevTargetPos = null;
+    private Vec3 _targetVel = Vec3.ZERO;
 
     public ShootArrowSimpleProjectileTask(Entity target) {
         this.target = target;
@@ -60,7 +60,7 @@ public class ShootArrowSimpleProjectileTask extends Task {
     // --- Static helpers (used by KillPlayerTask etc.) ---
 
     public static boolean shouldUseHighAngRanged(Entity target) {
-        return !LookHelper.cleanLineOfSight(target.getEyePos(), 100);
+        return !LookHelper.cleanLineOfSight(target.getEyePosition(), 100);
     }
 
     /**
@@ -93,17 +93,17 @@ public class ShootArrowSimpleProjectileTask extends Task {
         // position-delta fallback. Both read ~0 for a walking remote player, so a
         // caller that leads moving targets should track velocity itself and use the
         // overload below.
-        Vec3d vel = target.getVelocity();
+        Vec3 vel = target.getDeltaMovement();
         if (vel.x * vel.x + vel.z * vel.z < 0.0025) {
-            vel = new Vec3d(
-                    target.getPos().getX() - target.prevX,
-                    target.getPos().getY() - target.prevY,
-                    target.getPos().getZ() - target.prevZ);
+            vel = new Vec3(
+                    target.position().x() - target.xo,
+                    target.position().y() - target.yo,
+                    target.position().z() - target.zo);
         }
         return calculateThrowLook(mod, target, highAng, rangedItem, vel);
     }
 
-    public static Rotation calculateThrowLook(AltoClef mod, Entity target, boolean highAng, Item rangedItem, Vec3d targetVel) {
+    public static Rotation calculateThrowLook(AltoClef mod, Entity target, boolean highAng, Item rangedItem, Vec3 targetVel) {
         // Aim for the FULL-draw arc (charge 1.0), not the current partial charge.
         // Recomputing charge from useTime every tick makes the pitch target swing
         // ~18 deg over the draw, so WindMouse never settles before the timer-based
@@ -111,15 +111,15 @@ public class ShootArrowSimpleProjectileTask extends Task {
         // matches the release point (requiredChargeTime hits full charge at range).
         double charge = 1.0;
 
-        Vec3d vel = targetVel != null ? targetVel : Vec3d.ZERO;
-        if (target.isOnGround()) vel = new Vec3d(vel.x, 0, vel.z);
-        Vec3d aimPoint = target.getPos().add(0, target.getHeight() * 0.6, 0);
-        Vec3d eye = mod.getPlayer().getEyePos();
+        Vec3 vel = targetVel != null ? targetVel : Vec3.ZERO;
+        if (target.onGround()) vel = new Vec3(vel.x, 0, vel.z);
+        Vec3 aimPoint = target.position().add(0, target.getBbHeight() * 0.6, 0);
+        Vec3 eye = mod.getPlayer().getEyePosition();
 
         if (!highAng) {
             // The arrow carries the shooter's own movement (vanilla adds it on release), so a shot
             // taken while walking lands off by the drag-weighted sum of that velocity over the flight.
-            Vec3d shooterVel = TrajectorySolver.shooterVelocity(mod.getPlayer());
+            Vec3 shooterVel = TrajectorySolver.shooterVelocity(mod.getPlayer());
             TrajectorySolver.Solution sol = TrajectorySolver.solve(eye, shooterVel, aimPoint, vel, charge);
             if (sol != null) return new Rotation(sol.yaw, sol.pitch);
         }
@@ -131,7 +131,7 @@ public class ShootArrowSimpleProjectileTask extends Task {
     public static Rotation calculateThrowLookLegacy(AltoClef mod, Entity target, boolean highAng, Item rangedItem) {
         float velocity = 1;
         if (rangedItem != null && rangedItem.equals(Items.BOW)) {
-            int useTime = mod.getPlayer().getItemUseTime();
+            int useTime = mod.getPlayer().getTicksUsingItem();
             if (useTime > 5) {
                 velocity = useTime / 20f;
                 velocity = (velocity * velocity + velocity * 2) / 3;
@@ -143,16 +143,16 @@ public class ShootArrowSimpleProjectileTask extends Task {
         // Lead multiplier: direct fire = 11.4x, artillery = 100x (longer flight time)
         double velMult = highAng ? 100 : 11.4;
 
-        double velX = (target.getPos().getX() - target.prevX) * velMult;
-        double velZ = (target.getPos().getZ() - target.prevZ) * velMult;
+        double velX = (target.position().x() - target.xo) * velMult;
+        double velZ = (target.position().z() - target.zo) * velMult;
 
         // Predicted position: current + 1 tick movement + lead offset
-        double posX = target.getPos().getX() + (target.getPos().getX() - target.prevX) + velX;
-        double posY = target.getPos().getY() + (target.getPos().getY() - target.prevY);
-        double posZ = target.getPos().getZ() + (target.getPos().getZ() - target.prevZ) + velZ;
+        double posX = target.position().x() + (target.position().x() - target.xo) + velX;
+        double posY = target.position().y() + (target.position().y() - target.yo);
+        double posZ = target.position().z() + (target.position().z() - target.zo) + velZ;
 
         // Adjust for hitbox height
-        posY -= 1.9f - target.getHeight();
+        posY -= 1.9f - target.getBbHeight();
 
         double relativeX = posX - mod.getPlayer().getX();
         double relativeY = posY - mod.getPlayer().getY();
@@ -162,7 +162,7 @@ public class ShootArrowSimpleProjectileTask extends Task {
         double hDistanceSq = hDistance * hDistance;
         float g = 0.006f;
         float velocitySq = velocity * velocity;
-        float pitch = mod.getPlayer().getPitch();
+        float pitch = mod.getPlayer().getXRot(1.0f);
 
         if (highAng) {
             // Artillery mode: arrow loses ~30% speed at apex
@@ -191,19 +191,19 @@ public class ShootArrowSimpleProjectileTask extends Task {
                                 / (g * hDistance)));
             }
             if (Float.isNaN(pitch))
-                return new Rotation(mod.getPlayer().getYaw(), mod.getPlayer().getPitch());
+                return new Rotation(mod.getPlayer().getYRot(1.0f), mod.getPlayer().getXRot(1.0f));
             else
-                return new Rotation(Vec3dToYaw(mod, new Vec3d(posX, posY, posZ)), pitch);
+                return new Rotation(Vec3dToYaw(mod, new Vec3(posX, posY, posZ)), pitch);
         } else {
-            return new Rotation(Vec3dToYaw(mod, new Vec3d(posX, posY, posZ)), pitch);
+            return new Rotation(Vec3dToYaw(mod, new Vec3(posX, posY, posZ)), pitch);
         }
     }
 
-    private static float Vec3dToYaw(AltoClef mod, Vec3d vec) {
-        return (mod.getPlayer().getYaw() +
-                MathHelper.wrapDegrees((float) Math.toDegrees(
-                        Math.atan2(vec.getZ() - mod.getPlayer().getZ(),
-                                vec.getX() - mod.getPlayer().getX())) - 90f - mod.getPlayer().getYaw()));
+    private static float Vec3dToYaw(AltoClef mod, Vec3 vec) {
+        return (mod.getPlayer().getYRot(1.0f) +
+                Mth.wrapDegrees((float) Math.toDegrees(
+                        Math.atan2(vec.z() - mod.getPlayer().getZ(),
+                                vec.x() - mod.getPlayer().getX())) - 90f - mod.getPlayer().getYRot(1.0f)));
     }
 
     @Override
@@ -213,10 +213,10 @@ public class ShootArrowSimpleProjectileTask extends Task {
         // --- Track target velocity ourselves (per-tick lerped-position delta) ---
         // getVelocity() is ~0 for a walking remote player on the client, so leading
         // off it never works. Differencing the target's position each tick does.
-        Vec3d curTargetPos = target.getPos();
+        Vec3 curTargetPos = target.position();
         if (_prevTargetPos != null) {
-            Vec3d inst = curTargetPos.subtract(_prevTargetPos);
-            _targetVel = _targetVel.multiply(0.5).add(inst.multiply(0.5)); // 2-tick EMA
+            Vec3 inst = curTargetPos.subtract(_prevTargetPos);
+            _targetVel = _targetVel.scale(0.5).add(inst.scale(0.5)); // 2-tick EMA
         }
         _prevTargetPos = curTargetPos;
 
@@ -243,7 +243,7 @@ public class ShootArrowSimpleProjectileTask extends Task {
         double distanceToTarget = mod.getPlayer().distanceTo(target) / 2.0;
         _rapidFireMode = _rangedItem == Items.BOW && distanceToTarget <= RAPID_FIRE_DISTANCE;
 
-        int useTime = mod.getPlayer().getItemUseTime();
+        int useTime = mod.getPlayer().getTicksUsingItem();
 
         // --- Smooth look (WindMouse only — NO direct setYaw/setPitch!) ---
         // Only update aim direction once the bow is being drawn (useTime > 1)
@@ -266,11 +266,11 @@ public class ShootArrowSimpleProjectileTask extends Task {
             if (_rapidFireMode) {
                 // Rapid fire: charge less when close
                 if (distanceToTarget < 4) {
-                    requiredChargeTime = MathHelper.clamp(useTime * 2, 4, 6);
+                    requiredChargeTime = Mth.clamp(useTime * 2, 4, 6);
                 } else if (distanceToTarget < 7) {
-                    requiredChargeTime = MathHelper.clamp(useTime * 2, 8, 10);
+                    requiredChargeTime = Mth.clamp(useTime * 2, 8, 10);
                 } else {
-                    requiredChargeTime = MathHelper.clamp(useTime * 2, 10, 12);
+                    requiredChargeTime = Mth.clamp(useTime * 2, 10, 12);
                 }
             } else {
                 requiredChargeTime = 20;
@@ -322,12 +322,12 @@ public class ShootArrowSimpleProjectileTask extends Task {
 
         // --- Release when charged, no friendly arrow already in flight ---
         if (shooting && charged) {
-            List<ProjectileEntity> arrows = mod.getEntityTracker().getTrackedEntities(ProjectileEntity.class);
-            for (ProjectileEntity arrow : arrows) {
+            List<Projectile> arrows = mod.getEntityTracker().getTrackedEntities(Projectile.class);
+            for (Projectile arrow : arrows) {
                 if (arrow.getOwner() == mod.getPlayer()) {
-                    Vec3d velocity = arrow.getVelocity();
-                    Vec3d delta = target.getPos().subtract(arrow.getPos());
-                    boolean isMovingTowardsTarget = velocity.dotProduct(delta) > 0;
+                    Vec3 velocity = arrow.getDeltaMovement();
+                    Vec3 delta = target.position().subtract(arrow.position());
+                    boolean isMovingTowardsTarget = velocity.dot(delta) > 0;
                     if (isMovingTowardsTarget) {
                         return null; // wait for in-flight arrow to land
                     }
@@ -336,8 +336,8 @@ public class ShootArrowSimpleProjectileTask extends Task {
 
             // Increase simulation distance for far targets (prevents arrow despawn)
             if (BeatMinecraft2Task.getConfig().renderDistanceManipulation
-                    && MinecraftClient.getInstance().options.getSimulationDistance().getValue() < 32) {
-                MinecraftClient.getInstance().options.getSimulationDistance().setValue(32);
+                    && Minecraft.getInstance().options.simulationDistance().get() < 32) {
+                Minecraft.getInstance().options.simulationDistance().set(32);
             }
 
             if (isBow) {
@@ -353,7 +353,7 @@ public class ShootArrowSimpleProjectileTask extends Task {
 
         // High-angle: tilt EpicCamera to see the arc
         if (_highAng) {
-            mod.getBehaviour().setCameraRotationModifer(LookHelper.getLookRotation(mod, target.getPos()).getPitch());
+            mod.getBehaviour().setCameraRotationModifer(LookHelper.getLookRotation(mod, target.position()).getPitch());
         } else {
             mod.getBehaviour().resetCameraRotationModifer();
         }
@@ -387,13 +387,13 @@ public class ShootArrowSimpleProjectileTask extends Task {
     }
 
     public static boolean checkRangedAttackTrajectory(AltoClef mod, Entity target) {
-        Vec3d playerPos = mod.getPlayer().getEyePos();
-        Vec3d targetPos = target.getEyePos();
+        Vec3 playerPos = mod.getPlayer().getEyePosition();
+        Vec3 targetPos = target.getEyePosition();
         double distance = playerPos.distanceTo(targetPos);
         if (distance > 100) return false;
 
         // Direct LOS
-        if (LookHelper.cleanLineOfSight(target.getEyePos(), distance)) return true;
+        if (LookHelper.cleanLineOfSight(target.getEyePosition(), distance)) return true;
 
         // Check if blocks directly above both player and target are clear (high-angle path)
         for (int i = 0; i <= 10; i++) {
@@ -447,11 +447,11 @@ public class ShootArrowSimpleProjectileTask extends Task {
     @Override
     protected String toDebugString() {
         if (_rapidFireMode) {
-            return "Rapid firing at " + target.getType().getName().getString() + " using " + _rangedItem.getName().getString();
+            return "Rapid firing at " + target.getType().getDescription().getString() + " using " + _rangedItem.getName(_rangedItem.getDefaultInstance()).getString();
         } else if (_highAng) {
-            return "Shooting at " + target.getType().getName().getString() + " using " + _rangedItem.getName().getString() + " (artillery arc)";
+            return "Shooting at " + target.getType().getDescription().getString() + " using " + _rangedItem.getName(_rangedItem.getDefaultInstance()).getString() + " (artillery arc)";
         } else {
-            return "Shooting at " + target.getType().getName().getString() + " using " + _rangedItem.getName().getString();
+            return "Shooting at " + target.getType().getDescription().getString() + " using " + _rangedItem.getName(_rangedItem.getDefaultInstance()).getString();
         }
     }
 }

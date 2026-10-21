@@ -13,10 +13,10 @@ import adris.altoclef.util.helpers.KillAuraHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.ContainerInput;
 
 import java.util.Optional;
 
@@ -72,14 +72,14 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
         if (!cursorStack.isEmpty()) {
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
-            moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
+            moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
             if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             }
             Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
             // Try throwing away cursor slot if it's garbage
-            garbage.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+            garbage.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
         } else {
             StorageHelper.closeScreen();
         } // Kinda duct tape but it should be future proof ish
@@ -114,7 +114,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
 
             double playerReach = mod.getModSettings().getEntityReachRange();
 
-            double sqDist = entity.squaredDistanceTo(mod.getPlayer());
+            double sqDist = entity.distanceToSqr(mod.getPlayer());
 
             if (sqDist < combatGuardLowerRange * combatGuardLowerRange) {
                 mod.getMobDefenseChain().setForceFieldRange(combatGuardLowerFieldRadius);
@@ -153,7 +153,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             // from the outside and called it worse than a freeze, and pacing.py put four of
             // twelve trajectory returns on exactly this Approach-entity <-> Wander pair.
             if (kaptainwutax.tungsten.TungstenConfig.get().itemPickupIsDistanceNotReach
-                    && entity instanceof net.minecraft.entity.ItemEntity) {
+                    && entity instanceof net.minecraft.world.entity.item.ItemEntity) {
                 boolean near = sqDist <= PICKUP_RANGE_SQ;
                 if (near && !inRange) dteItemNearNotHittable++;
                 inRange = near;
@@ -238,7 +238,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                 // fights, where a long chase can be the right call). Measured on full49: five
                 // minutes on a rabbit on a ledge in a ravine, "no route within 500 ms" every try.
                 if (kaptainwutax.tungsten.TungstenConfig.get().entityPursuitHasBudget
-                        || entity instanceof net.minecraft.entity.passive.AnimalEntity) {
+                        || entity instanceof net.minecraft.world.entity.animal.Animal) {
                     if (entity != pursuitEntity) {
                         pursuitEntity = entity;
                         pursuitStartMs = System.currentTimeMillis();

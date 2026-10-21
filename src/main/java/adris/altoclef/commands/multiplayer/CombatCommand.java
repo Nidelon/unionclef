@@ -8,7 +8,7 @@ import adris.altoclef.commandsystem.args.StringArg;
 import adris.altoclef.commandsystem.exception.CommandException;
 import adris.altoclef.commandsystem.exception.RuntimeCommandException;
 import adris.altoclef.tasks.entity.CombatTask;
-import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.world.entity.player.Player;
 
 public class CombatCommand extends Command {
     public CombatCommand() {
@@ -34,7 +34,7 @@ public class CombatCommand extends Command {
             mod.runUserTask(new CombatTask(target, buildGraves, useGestures), this::finish);
         } else if (mode.equalsIgnoreCase("all")) {
             mod.runUserTask(new CombatTask(
-                entity -> entity instanceof PlayerEntity && !entity.equals(mod.getPlayer()),
+                entity -> entity instanceof Player && !entity.equals(mod.getPlayer()),
                 buildGraves,
                 useGestures
             ), this::finish);

@@ -10,50 +10,50 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import kaptainwutax.tungsten.TungstenModDataContainer;
-import net.minecraft.block.BlockState;
-import net.minecraft.fluid.FluidState;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.network.packet.s2c.play.ChunkData;
-import net.minecraft.registry.Registry;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.HeightLimitView;
-import net.minecraft.world.World;
-import net.minecraft.world.biome.Biome;
-import net.minecraft.world.chunk.Chunk;
-import net.minecraft.world.chunk.ChunkSection;
-import net.minecraft.world.chunk.UpgradeData;
-import net.minecraft.world.chunk.WorldChunk;
-import net.minecraft.world.gen.chunk.BlendingData;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData;
+import net.minecraft.core.Registry;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.UpgradeData;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.levelgen.blending.BlendingData;
 
-@Mixin(WorldChunk.class)
-public abstract class MixinWorldChunk extends Chunk {
+@Mixin(LevelChunk.class)
+public abstract class MixinWorldChunk extends ChunkAccess {
 
 	//#if MC < 12111
-	//$$ public MixinWorldChunk(ChunkPos pos, UpgradeData upgradeData, HeightLimitView heightLimitView, Registry<Biome> biome,
-	                       //$$ long inhabitedTime, @Nullable ChunkSection[] sectionArrayInitializer, @Nullable BlendingData blendingData) {
+	//$$ public MixinWorldChunk(ChunkPos pos, UpgradeData upgradeData, LevelHeightAccessor heightLimitView, Registry<Biome> biome,
+	                       //$$ long inhabitedTime, @Nullable LevelChunkSection[] sectionArrayInitializer, @Nullable BlendingData blendingData) {
 		//$$ super(pos, upgradeData, heightLimitView, biome, inhabitedTime, sectionArrayInitializer, blendingData);
 	//$$ }
 	//#else
-	public MixinWorldChunk(ChunkPos pos, UpgradeData upgradeData, HeightLimitView heightLimitView, net.minecraft.world.chunk.PalettesFactory palettesFactory,
-	                       long inhabitedTime, @Nullable ChunkSection[] sectionArrayInitializer, @Nullable BlendingData blendingData) {
+	public MixinWorldChunk(ChunkPos pos, UpgradeData upgradeData, LevelHeightAccessor heightLimitView, net.minecraft.world.level.chunk.PalettedContainerFactory palettesFactory,
+	                       long inhabitedTime, @Nullable LevelChunkSection[] sectionArrayInitializer, @Nullable BlendingData blendingData) {
 	    super(pos, upgradeData, heightLimitView, palettesFactory, inhabitedTime, sectionArrayInitializer, blendingData);
 	}
 	//#endif
 
-	@Shadow public abstract World getWorld();
+	@Shadow public abstract Level getLevel();
 	@Shadow public abstract BlockState getBlockState(BlockPos pos);
 	@Shadow public abstract FluidState getFluidState(BlockPos pos);
 
-	@Inject(method = "loadFromPacket", at = @At("RETURN"))
+	@Inject(method = "replaceWithPacketData", at = @At("RETURN"))
 	//#if MC < 12111
-	//$$ private void loadFromPacket(PacketByteBuf buf, NbtCompound nbt, Consumer<ChunkData.BlockEntityVisitor> consumer, CallbackInfo ci) {
+	//$$ private void loadFromPacket(FriendlyByteBuf buf, CompoundTag nbt, Consumer<net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData.BlockEntityTagOutput> consumer, CallbackInfo ci) {
 	//#else
-	private void loadFromPacket(PacketByteBuf buf, java.util.Map nbt, Consumer<ChunkData.BlockEntityVisitor> consumer, CallbackInfo ci) {
+	private void loadFromPacket(FriendlyByteBuf buf, java.util.Map nbt, Consumer<net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData.BlockEntityTagOutput> consumer, CallbackInfo ci) {
 	//#endif
-		if(this.getWorld() != TungstenModDataContainer.world) {
-			TungstenModDataContainer.world = this.getWorld();
+		if(this.getLevel() != TungstenModDataContainer.world) {
+			TungstenModDataContainer.world = this.getLevel();
 		}
 	}
 

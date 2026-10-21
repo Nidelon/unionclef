@@ -1,22 +1,22 @@
 package kaptainwutax.tungsten.agent;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.block.EntityShapeContext;
-import net.minecraft.block.ShapeContext;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.shapes.EntityCollisionContext;
+import net.minecraft.world.phys.shapes.CollisionContext;
 
-import net.minecraft.fluid.FluidState;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.CollisionView;
+import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.level.CollisionGetter;
 
 import java.util.function.Predicate;
 
-public class AgentShapeContext implements ShapeContext {
+public class AgentShapeContext implements CollisionContext {
 
-    protected static final ShapeContext ABSENT = new AgentShapeContext(false, -1.7976931348623157E308, ItemStack.EMPTY, fluidState -> false) {
+    protected static final CollisionContext ABSENT = new AgentShapeContext(false, -1.7976931348623157E308, ItemStack.EMPTY, fluidState -> false) {
         @Override
         public boolean isAbove(VoxelShape shape, BlockPos pos, boolean defaultValue) {
             return defaultValue;
@@ -40,13 +40,18 @@ public class AgentShapeContext implements ShapeContext {
     }
 
     @Override
-    public boolean isHolding(Item item) {
-        return this.heldItem.isOf(item);
+    public boolean isHoldingItem(Item item) {
+        return this.heldItem.is(item);
     }
 
     @Override
-    public boolean canWalkOnFluid(FluidState state, FluidState fluidState) {
-        return this.walkOnFluidPredicate.test(fluidState) && !state.getFluid().matchesType(fluidState.getFluid());
+    public boolean canStandOnFluid(FluidState state, FluidState fluidState) {
+        return this.walkOnFluidPredicate.test(fluidState) && !state.getType().isSame(fluidState.getType());
+    }
+
+    @Override
+    public boolean alwaysCollideWithFluid() {
+        return false;
     }
 
     @Override
@@ -56,17 +61,15 @@ public class AgentShapeContext implements ShapeContext {
 
     @Override
     public boolean isAbove(VoxelShape shape, BlockPos pos, boolean defaultValue) {
-        return this.minY > (double)pos.getY() + shape.getMax(Direction.Axis.Y) - (double)1.0E-5f;
+        return this.minY > (double)pos.getY() + shape.max(Direction.Axis.Y) - (double)1.0E-5f;
     }
 
-	// getCollisionShape not in ShapeContext interface in MC 1.21 — removed @Override
-	// public VoxelShape getCollisionShape(BlockState state, CollisionView world, BlockPos pos) { return null; }
+	// getCollisionShape not in CollisionContext interface in MC 1.21 — removed @Override
+	// public VoxelShape getCollisionShape(BlockState state, CollisionGetter world, BlockPos pos) { return null; }
 
 	@Override
-	public VoxelShape getCollisionShape(net.minecraft.block.BlockState state, net.minecraft.world.CollisionView world, BlockPos pos) {
+	public VoxelShape getCollisionShape(net.minecraft.world.level.block.state.BlockState state, net.minecraft.world.level.CollisionGetter world, BlockPos pos) {
 	    return state.getCollisionShape(world, pos);
 	}
-	@Override
-	public boolean shouldTreatFluidAsCube() { return false; }
 
 }

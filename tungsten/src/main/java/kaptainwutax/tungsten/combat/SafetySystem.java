@@ -6,11 +6,11 @@ import kaptainwutax.tungsten.render.Color;
 import kaptainwutax.tungsten.render.Cuboid;
 import kaptainwutax.tungsten.render.Line;
 import kaptainwutax.tungsten.util.WindMouseRotation;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Combat safety + stage machine + aim prediction.
@@ -40,8 +40,8 @@ public class SafetySystem {
     private static final int KB_FALL_THRESHOLD = 4;
 
     // ── state ───────────────────────────────────────────────────────────────
-    private Vec3d prevEnemyPos = null;
-    private Vec3d enemyVelocity = Vec3d.ZERO;
+    private Vec3 prevEnemyPos = null;
+    private Vec3 enemyVelocity = Vec3.ZERO;
     private Entity target = null;
 
     private final CombatPathfinder pathfinder = new CombatPathfinder();
@@ -78,9 +78,9 @@ public class SafetySystem {
     private CombatStage prevStage = null;
 
     // KB analysis
-    private Vec3d lastUsAfterKB = null;
+    private Vec3 lastUsAfterKB = null;
     private int lastFallIfHit = 0;
-    private Vec3d lastEnemyAfterKB = null;
+    private Vec3 lastEnemyAfterKB = null;
     private int lastEnemyFallIfHit = 0;
 
     // aim prediction output — read by CombatController
@@ -185,19 +185,19 @@ public class SafetySystem {
 
     // ── tick (20 TPS): enemy velocity tracking ──────────────────────────────
 
-    public void tick(ClientPlayerEntity player, Entity target, WorldView world) {
+    public void tick(LocalPlayer player, Entity target, LevelReader world) {
         this.target = target;
         active = true;
 
-        Vec3d targetPos = target.getEntityPos();
+        Vec3 targetPos = target.position();
         if (prevEnemyPos != null) {
             // The raw per-tick position delta is NOISY for a packet-moving player (position
             // packets arrive irregularly -> velocity spikes to big values then zero), which
             // jitters the lead prediction and is a root cause of the aim SHAKE. Smooth it
             // with an EMA so the lead (and therefore the aim) stays stable while tracking.
-            Vec3d rawVel = targetPos.subtract(prevEnemyPos);
+            Vec3 rawVel = targetPos.subtract(prevEnemyPos);
             double vs = kaptainwutax.tungsten.TungstenConfig.get().combatVelSmoothing;
-            enemyVelocity = enemyVelocity.multiply(1.0 - vs).add(rawVel.multiply(vs));
+            enemyVelocity = enemyVelocity.scale(1.0 - vs).add(rawVel.scale(vs));
         }
         prevEnemyPos = targetPos;
 
@@ -205,7 +205,7 @@ public class SafetySystem {
         kbEstimator.tick(target, enemyVelocity);
 
         // pathfinder updates every N ticks
-        pathfinder.tick(player.getBlockPos(), target.getBlockPos(), enemyVelocity, world);
+        pathfinder.tick(player.blockPosition(), target.blockPosition(), enemyVelocity, world);
 
         // combat executor: pre-compute jump+attack timeline
         executor.tick(player, target, world);
@@ -216,8 +216,8 @@ public class SafetySystem {
     public void renderUpdate(float tickDelta) {
         if (!active) return;
 
-        MinecraftClient mc = MinecraftClient.getInstance();
-        ClientPlayerEntity player = mc.player;
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
         if (player == null || target == null || target.isRemoved()) return;
 
         wasBrakingLastFrame = braking;
@@ -238,18 +238,18 @@ public class SafetySystem {
         if (logCooldown > 0) logCooldown--;
 
         // tick-accurate positions for logic (block grid checks)
-        Vec3d playerVel = player.getVelocity();
-        Vec3d playerPosTick = player.getEntityPos();
-        Vec3d targetPosTick = target.getEntityPos();
+        Vec3 playerVel = player.getDeltaMovement();
+        Vec3 playerPosTick = player.position();
+        Vec3 targetPosTick = target.position();
         double horizSpeed = Math.sqrt(playerVel.x * playerVel.x + playerVel.z * playerVel.z);
 
         // interpolated positions for smooth visualization
-        Vec3d playerPos = playerPosTick.add(playerVel.multiply(tickDelta));
-        Vec3d targetPos = targetPosTick.add(enemyVelocity.multiply(tickDelta));
+        Vec3 playerPos = playerPosTick.add(playerVel.scale(tickDelta));
+        Vec3 targetPos = targetPosTick.add(enemyVelocity.scale(tickDelta));
 
         // predicted positions (from interpolated for smooth viz)
-        Vec3d playerPredicted = playerPos.add(playerVel.multiply(PREDICT_TICKS));
-        Vec3d enemyPredicted = targetPos.add(enemyVelocity.multiply(PREDICT_TICKS));
+        Vec3 playerPredicted = playerPos.add(playerVel.scale(PREDICT_TICKS));
+        Vec3 enemyPredicted = targetPos.add(enemyVelocity.scale(PREDICT_TICKS));
 
         // terrain checks use tick positions (block grid)
         // ⛔ THIS EXTRAPOLATED THE BOT THROUGH THE FLOOR AND CALLED IT A CLIFF.
@@ -265,18 +265,18 @@ public class SafetySystem {
         // The question this look-ahead exists to answer is "if I keep going this way, is there floor
         // ahead of me" — that is the GROUND TRACK, so take the horizontal velocity only. The vertical
         // guess was never meaningful anyway without gravity or collision.
-        Vec3d playerPredictedTick = playerPosTick.add(
+        Vec3 playerPredictedTick = playerPosTick.add(
                 playerVel.x * PREDICT_TICKS, 0, playerVel.z * PREDICT_TICKS);
-        int fallAtPredicted = VoidDetector.fallHeight(playerPredictedTick, player.getEntityWorld());
-        int fallAtCurrent = VoidDetector.fallHeight(playerPosTick, player.getEntityWorld());
+        int fallAtPredicted = VoidDetector.fallHeight(playerPredictedTick, player.level());
+        int fallAtCurrent = VoidDetector.fallHeight(playerPosTick, player.level());
         DangerLevel dangerPredicted = DangerLevel.fromFallHeight(fallAtPredicted);
         DangerLevel dangerCurrent = DangerLevel.fromFallHeight(fallAtCurrent);
 
         // edge score: how surrounded by dangerous drops (5+ blocks) we are
-        double currentEdgeScore = VoidDetector.edgeScoreWithFallThreshold(playerPosTick, player.getEntityWorld(), 5);
+        double currentEdgeScore = VoidDetector.edgeScoreWithFallThreshold(playerPosTick, player.level(), 5);
 
         // KB analysis uses tick positions
-        analyzeKnockback(playerPosTick, playerVel, targetPosTick, player.getEntityWorld());
+        analyzeKnockback(playerPosTick, playerVel, targetPosTick, player.level());
 
         // ── evaluate stage ───────────────────────────────────────────────
         CombatStage newStage = evaluateStage(player, playerVel, horizSpeed,
@@ -307,7 +307,7 @@ public class SafetySystem {
 
                     // use strafe-based braking relative to look direction
                     // (safe on bridges — won't walk sideways off edge)
-                    float lookYaw = player.getYaw();
+                    float lookYaw = player.getYRot(1.0f);
                     float deltaYaw = brakeYaw - lookYaw;
                     deltaYaw = ((deltaYaw % 360) + 540) % 360 - 180;
 
@@ -316,7 +316,7 @@ public class SafetySystem {
                     boolean a = deltaYaw > 20 && deltaYaw < 160;
                     boolean d = deltaYaw < -20 && deltaYaw > -160;
 
-                    if (horizSpeed > 0.05 && player.isOnGround() && currentEdgeScore < 0.5) {
+                    if (horizSpeed > 0.05 && player.onGround() && currentEdgeScore < 0.5) {
                         // only jump to brake if not on narrow terrain
                         wantsJump = true;
                     }
@@ -325,10 +325,10 @@ public class SafetySystem {
                 case NARROW_BATTLE -> {
                     // bridge/narrow: face along path, W only. NO STRAFE (instant death on 1-wide).
                     // camera faces path direction, triggerbot clicks when target crosses crosshair.
-                    java.util.List<net.minecraft.util.math.BlockPos> atkPath = pathfinder.getAttackPath();
+                    java.util.List<net.minecraft.core.BlockPos> atkPath = pathfinder.getAttackPath();
                     if (atkPath.size() >= 2) {
-                        net.minecraft.util.math.BlockPos nextWp = atkPath.get(Math.min(1, atkPath.size() - 1));
-                        movementYaw = AttackTiming.yawTo(playerPosTick, Vec3d.ofBottomCenter(nextWp));
+                        net.minecraft.core.BlockPos nextWp = atkPath.get(Math.min(1, atkPath.size() - 1));
+                        movementYaw = AttackTiming.yawTo(playerPosTick, Vec3.atBottomCenterOf(nextWp));
                         movementActive = true;
                         // override aim to path direction (NOT target) — safety first
                         brakeYaw = movementYaw;
@@ -357,7 +357,7 @@ public class SafetySystem {
                         // the target crosses the crosshair. The bot holds its ground and fights
                         // instead of walking onto the lip.
                         int narrowWpFall = VoidDetector.fallHeight(
-                                Vec3d.ofBottomCenter(nextWp), player.getEntityWorld());
+                                Vec3.atBottomCenterOf(nextWp), player.level());
                         boolean narrowWpLethal = DangerLevel.fromFallHeight(narrowWpFall).isSerious();
                         if (narrowWpLethal) rpNarrowLethalWp++;
 
@@ -367,7 +367,7 @@ public class SafetySystem {
                 case DANGER_BATTLE -> {
                     // reposition toward retreat path if KB fall is serious
                     DangerLevel kbDanger = DangerLevel.fromFallHeight(lastFallIfHit);
-                    java.util.List<net.minecraft.util.math.BlockPos> retreat = pathfinder.getRetreatPath();
+                    java.util.List<net.minecraft.core.BlockPos> retreat = pathfinder.getRetreatPath();
                     if (kbDanger.isSerious() && retreat.size() >= 2) {
                         repositioning = true;
                         rpDanger++;
@@ -387,7 +387,7 @@ public class SafetySystem {
                         // the bot not repositioning is the correct behaviour, not the defect.
                         try {
                             double trueDrop = kaptainwutax.tungsten.combat.VoidDetector.fallHeight(
-                                    playerPosTick, player.getEntityWorld());
+                                    playerPosTick, player.level());
                             rpDangerPredSum += lastFallIfHit;
                             rpDangerTrueSum += trueDrop;
                             if (trueDrop < 1.0) rpDangerOnFlat++;
@@ -401,12 +401,12 @@ public class SafetySystem {
                             // middle, and DANGER_BATTLE then fires wherever the fight stands.
                             // This says whether that is what happens, instead of inferring it.
                             rpDangerFlySum += Math.sqrt(
-                                    lastUsAfterKB.squaredDistanceTo(playerPosTick));
+                                    lastUsAfterKB.distanceToSqr(playerPosTick));
                         } catch (Exception ignored) {
                             // an instrument never breaks the combat tick
                         }
-                        net.minecraft.util.math.BlockPos waypoint = retreat.get(Math.min(2, retreat.size() - 1));
-                        Vec3d wpPos = Vec3d.ofBottomCenter(waypoint);
+                        net.minecraft.core.BlockPos waypoint = retreat.get(Math.min(2, retreat.size() - 1));
+                        Vec3 wpPos = Vec3.atBottomCenterOf(waypoint);
                         brakeYaw = AttackTiming.yawTo(playerPosTick, wpPos);
 
                         // THE GAZE USED TO BE THE STEERING, AND THAT IS WHY THE BOT COULD NOT FIGHT
@@ -424,8 +424,8 @@ public class SafetySystem {
                         // right, so a positive difference puts the waypoint to the player's right.
                         // The bot can now back away and strafe while its crosshair stays on the enemy,
                         // which is what a fighting retreat actually is.
-                        float rel = net.minecraft.util.math.MathHelper.wrapDegrees(
-                                brakeYaw - player.getYaw());
+                        float rel = net.minecraft.util.Mth.wrapDegrees(
+                                brakeYaw - player.getYRot(1.0f));
                         float a = Math.abs(rel);
                         boolean goFwd   = a <= 67.5f;
                         boolean goBack  = a >= 112.5f;
@@ -433,16 +433,16 @@ public class SafetySystem {
                         boolean goLeft  = rel < -22.5f && rel > -157.5f;
 
                         // walk, no jump, allow jump ONLY if stuck (below waypoint Y)
-                        boolean needJumpUp = waypoint.getY() > playerPosTick.y + 0.5 && player.isOnGround();
+                        boolean needJumpUp = waypoint.getY() > playerPosTick.y + 0.5 && player.onGround();
                         intent.set(goFwd, goBack, goLeft, goRight, true, needJumpUp, false);
                     }
                 }
                 case ESCAPE -> {
                     // disengage: run along retreat path, sprint-jump away
-                    java.util.List<net.minecraft.util.math.BlockPos> retreatEsc = pathfinder.getRetreatPath();
+                    java.util.List<net.minecraft.core.BlockPos> retreatEsc = pathfinder.getRetreatPath();
                     if (retreatEsc.size() >= 2) {
-                        net.minecraft.util.math.BlockPos wp = retreatEsc.get(Math.min(2, retreatEsc.size() - 1));
-                        movementYaw = AttackTiming.yawTo(playerPosTick, Vec3d.ofBottomCenter(wp));
+                        net.minecraft.core.BlockPos wp = retreatEsc.get(Math.min(2, retreatEsc.size() - 1));
+                        movementYaw = AttackTiming.yawTo(playerPosTick, Vec3.atBottomCenterOf(wp));
                         movementActive = true;
                         repositioning = true; // use movementYaw for camera via brakeYaw
                         rpEscape++;
@@ -450,7 +450,7 @@ public class SafetySystem {
 
                         // jump if on ground and not on narrow terrain
                         intent.set(true, false, false, false, true,
-                                player.isOnGround() && currentEdgeScore < 0.4, false);
+                                player.onGround() && currentEdgeScore < 0.4, false);
                     }
                 }
                 case PURSUE, DELICATE_BATTLE -> {
@@ -460,7 +460,7 @@ public class SafetySystem {
         }
 
         // ── edge sneak: hold sneak when on block edge with momentum ──────
-        if (player.isOnGround() && horizSpeed > 0.03 && currentEdgeScore > 0.2) {
+        if (player.onGround() && horizSpeed > 0.03 && currentEdgeScore > 0.2) {
             // check sub-block position: how close to edge of current block
             double fracX = playerPosTick.x - Math.floor(playerPosTick.x);
             double fracZ = playerPosTick.z - Math.floor(playerPosTick.z);
@@ -486,13 +486,13 @@ public class SafetySystem {
             // any sprint could carry us off before we stop — walk instead so the
             // clamp/sneak plant us on solid ground. (On this void map fallHeight
             // bottoms out ~4 blocks down, so the radius-3 scan is cheap.)
-            boolean nearEdge = VoidDetector.voidWithin(playerPosTick, player.getEntityWorld(), 3, 3);
-            java.util.List<net.minecraft.util.math.BlockPos> attackPath = pathfinder.getAttackPath();
+            boolean nearEdge = VoidDetector.voidWithin(playerPosTick, player.level(), 3, 3);
+            java.util.List<net.minecraft.core.BlockPos> attackPath = pathfinder.getAttackPath();
             if (attackPath.size() >= 2) {
                 // find next waypoint we haven't reached yet
-                net.minecraft.util.math.BlockPos nextWp = null;
+                net.minecraft.core.BlockPos nextWp = null;
                 for (int i = 1; i < attackPath.size(); i++) {
-                    if (playerPosTick.squaredDistanceTo(Vec3d.ofBottomCenter(attackPath.get(i))) > 1.5) {
+                    if (playerPosTick.distanceToSqr(Vec3.atBottomCenterOf(attackPath.get(i))) > 1.5) {
                         nextWp = attackPath.get(i);
                         break;
                     }
@@ -500,18 +500,18 @@ public class SafetySystem {
                 if (nextWp == null) nextWp = attackPath.get(attackPath.size() - 1);
 
                 // check if next waypoint is safe — block itself AND surroundings
-                int wpFall = VoidDetector.fallHeight(Vec3d.ofBottomCenter(nextWp), player.getEntityWorld());
+                int wpFall = VoidDetector.fallHeight(Vec3.atBottomCenterOf(nextWp), player.level());
                 DangerLevel wpDanger = DangerLevel.fromFallHeight(wpFall);
 
                 if (!wpDanger.isSerious()) {
-                    movementYaw = AttackTiming.yawTo(playerPosTick, Vec3d.ofBottomCenter(nextWp));
+                    movementYaw = AttackTiming.yawTo(playerPosTick, Vec3.atBottomCenterOf(nextWp));
                     movementActive = true;
 
                     // jump only if landing zone is safe AND we're not on the rim
                     // check 3-4 blocks ahead in velocity direction for drops
-                    boolean safeToJump = isJumpLandingSafe(playerPosTick, playerVel, player.getEntityWorld());
+                    boolean safeToJump = isJumpLandingSafe(playerPosTick, playerVel, player.level());
                     intent.set(true, false, false, false, !nearEdge,
-                            player.isOnGround() && safeToJump && !nearEdge, false);
+                            player.onGround() && safeToJump && !nearEdge, false);
                 }
                 // if waypoint is dangerous, don't move — stay and fight
             }
@@ -520,14 +520,14 @@ public class SafetySystem {
             // leaves the bot hovering just outside the 3.0 attack reach
             // (observed 3.06 — staring at the enemy, never swinging).
             if (!movementActive && !braking && !repositioning) {
-                net.minecraft.util.math.Box tb = target.getBoundingBox();
-                Vec3d eye = player.getEyePos();
-                Vec3d closest = new Vec3d(
-                        net.minecraft.util.math.MathHelper.clamp(eye.x, tb.minX, tb.maxX),
-                        net.minecraft.util.math.MathHelper.clamp(eye.y, tb.minY, tb.maxY),
-                        net.minecraft.util.math.MathHelper.clamp(eye.z, tb.minZ, tb.maxZ));
+                net.minecraft.world.phys.AABB tb = target.getBoundingBox();
+                Vec3 eye = player.getEyePosition();
+                Vec3 closest = new Vec3(
+                        net.minecraft.util.Mth.clamp(eye.x, tb.minX, tb.maxX),
+                        net.minecraft.util.Mth.clamp(eye.y, tb.minY, tb.maxY),
+                        net.minecraft.util.Mth.clamp(eye.z, tb.minZ, tb.maxZ));
                 if (eye.distanceTo(closest) > CombatController.STRIKE_DISTANCE) {
-                    movementYaw = AttackTiming.yawTo(playerPosTick, target.getEntityPos());
+                    movementYaw = AttackTiming.yawTo(playerPosTick, target.position());
                     movementActive = true;
                     intent.set(true, false, false, false, !nearEdge, false, false);
                 }
@@ -551,10 +551,10 @@ public class SafetySystem {
         if (dangerPredicted != DangerLevel.NONE) {
             Color dangerCol = dangerPredicted.isSerious() ? COL_VOID : COL_DANGER;
             TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Cuboid(
-                    playerPredicted.subtract(0.4, 0, 0.4), new Vec3d(0.8, 0.1, 0.8), dangerCol));
+                    playerPredicted.subtract(0.4, 0, 0.4), new Vec3(0.8, 0.1, 0.8), dangerCol));
         } else {
             TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Cuboid(
-                    playerPredicted.subtract(0.2, 0, 0.2), new Vec3d(0.4, 0.1, 0.4), COL_SAFE));
+                    playerPredicted.subtract(0.2, 0, 0.2), new Vec3(0.4, 0.1, 0.4), COL_SAFE));
         }
 
         // KB viz
@@ -562,20 +562,20 @@ public class SafetySystem {
             TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Line(
                     playerPos.add(0, 1, 0), lastUsAfterKB.add(0, 1, 0), COL_KB_DANGER));
             TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Cuboid(
-                    lastUsAfterKB.subtract(0.3, 0, 0.3), new Vec3d(0.6, 0.1, 0.6), COL_KB_DANGER));
+                    lastUsAfterKB.subtract(0.3, 0, 0.3), new Vec3(0.6, 0.1, 0.6), COL_KB_DANGER));
         }
         if (lastEnemyAfterKB != null && lastEnemyFallIfHit >= KB_FALL_THRESHOLD) {
             TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Line(
                     targetPos.add(0, 1, 0), lastEnemyAfterKB.add(0, 1, 0), COL_KB_OPPORTUNITY));
             TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Cuboid(
-                    lastEnemyAfterKB.subtract(0.3, 0, 0.3), new Vec3d(0.6, 0.1, 0.6), COL_KB_OPPORTUNITY));
+                    lastEnemyAfterKB.subtract(0.3, 0, 0.3), new Vec3(0.6, 0.1, 0.6), COL_KB_OPPORTUNITY));
         }
 
         // aim prediction marker
-        Vec3d aimTarget = targetPos.add(0, target.getHeight() * 0.5, 0)
-                .add(enemyVelocity.multiply(getAimLeadTicks()));
+        Vec3 aimTarget = targetPos.add(0, target.getBbHeight() * 0.5, 0)
+                .add(enemyVelocity.scale(getAimLeadTicks()));
         TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Cuboid(
-                aimTarget.subtract(0.1, 0.1, 0.1), new Vec3d(0.2, 0.2, 0.2), COL_AIM_PREDICT));
+                aimTarget.subtract(0.1, 0.1, 0.1), new Vec3(0.2, 0.2, 0.2), COL_AIM_PREDICT));
 
         intentFresh = true;
 
@@ -588,10 +588,10 @@ public class SafetySystem {
 
     // ── stage evaluation ─────────────────────────────────────────────────────
 
-    private CombatStage evaluateStage(ClientPlayerEntity player, Vec3d playerVel,
+    private CombatStage evaluateStage(LocalPlayer player, Vec3 playerVel,
                                        double horizSpeed, DangerLevel dangerPredicted,
                                        DangerLevel dangerCurrent, double edgeScore) {
-        boolean onNarrowTerrain = edgeScore >= 0.4 && player.isOnGround();
+        boolean onNarrowTerrain = edgeScore >= 0.4 && player.onGround();
 
         // forced NARROW from imminent spam
         if (System.currentTimeMillis() < forcedNarrowUntil) {
@@ -611,7 +611,7 @@ public class SafetySystem {
                     rpForcedNarrow++;
                     imminentCount = 0;
                     if (logCooldown <= 0) {
-                        MinecraftClient.getInstance().execute(() -> Debug.logMessage("§9COMBAT: imminent spam → forced NARROW_BATTLE"));
+                        Minecraft.getInstance().execute(() -> Debug.logMessage("§9COMBAT: imminent spam → forced NARROW_BATTLE"));
                         logCooldown = 120;
                     }
                     return CombatStage.NARROW_BATTLE;
@@ -620,7 +620,7 @@ public class SafetySystem {
             }
         }
         // always: already falling hard into serious danger
-        if (dangerCurrent.isSerious() && !player.isOnGround() && playerVel.y < -0.3) {
+        if (dangerCurrent.isSerious() && !player.onGround() && playerVel.y < -0.3) {
             return CombatStage.DANGER_IMMINENT;
         }
 
@@ -637,7 +637,7 @@ public class SafetySystem {
         // No progress: no hits for 5 seconds
         if (CombatController.triggerBot.hasNoProgress(100)) {
             if (logCooldown <= 0) {
-                MinecraftClient.getInstance().execute(() -> Debug.logMessage("§eCOMBAT: no hits — need closer approach"));
+                Minecraft.getInstance().execute(() -> Debug.logMessage("§eCOMBAT: no hits — need closer approach"));
                 logCooldown = 120;
             }
         }
@@ -666,36 +666,36 @@ public class SafetySystem {
      * 4. Raycast to that point — if blocked, sample hitbox corners for any visible point
      * 5. Aim at the best visible point, or predicted center as fallback
      */
-    private void computeAimPrediction(ClientPlayerEntity player, Vec3d targetPos) {
+    private void computeAimPrediction(LocalPlayer player, Vec3 targetPos) {
         int leadTicks = getAimLeadTicks();
-        Vec3d eyePos = player.getEyePos();
+        Vec3 eyePos = player.getEyePosition();
 
         // predicted target position
-        Vec3d predictedPos = targetPos.add(enemyVelocity.multiply(leadTicks));
+        Vec3 predictedPos = targetPos.add(enemyVelocity.scale(leadTicks));
         // build predicted bounding box
-        double hw = target.getWidth() / 2.0;
-        double h = target.getHeight();
-        net.minecraft.util.math.Box predictedBox = new net.minecraft.util.math.Box(
+        double hw = target.getBbWidth() / 2.0;
+        double h = target.getBbHeight();
+        net.minecraft.world.phys.AABB predictedBox = new net.minecraft.world.phys.AABB(
                 predictedPos.x - hw, predictedPos.y, predictedPos.z - hw,
                 predictedPos.x + hw, predictedPos.y + h, predictedPos.z + hw);
 
         // find best aim point on hitbox
-        Vec3d aimPoint = findBestAimPoint(player, eyePos, predictedBox, predictedPos, h);
+        Vec3 aimPoint = findBestAimPoint(player, eyePos, predictedBox, predictedPos, h);
 
-        float rawYaw   = AttackTiming.yawTo(player.getEntityPos(), aimPoint);
+        float rawYaw   = AttackTiming.yawTo(player.position(), aimPoint);
         float rawPitch = AttackTiming.pitchTo(eyePos, aimPoint);
         // LOW-PASS the aim target so a packet-jittery enemy (velocity/lead noise, flipping
         // best-aim-point) doesn't make the camera SHAKE (user: "the aim shakes like crazy")
         // and stay outside the trigger's 40deg window -> never hits. Snap on a big jump (first
         // aim / target teleport / target switch), else blend halfway toward the raw aim — kills
         // the high-frequency jitter while still tracking a moving target so the angle gate holds.
-        float dYaw = net.minecraft.util.math.MathHelper.wrapDegrees(rawYaw - aimYaw);
+        float dYaw = net.minecraft.util.Mth.wrapDegrees(rawYaw - aimYaw);
         float aimS = (float) kaptainwutax.tungsten.TungstenConfig.get().combatAimSmoothing;
         if (Math.abs(dYaw) > 55f) {
             aimYaw = rawYaw;
             aimPitch = rawPitch;
         } else {
-            aimYaw = net.minecraft.util.math.MathHelper.wrapDegrees(aimYaw + dYaw * aimS);
+            aimYaw = net.minecraft.util.Mth.wrapDegrees(aimYaw + dYaw * aimS);
             aimPitch = aimPitch + (rawPitch - aimPitch) * aimS;
         }
     }
@@ -705,21 +705,21 @@ public class SafetySystem {
      * Scans blocks 1-4 ahead in velocity direction for serious drops.
      * If any landing spot has fall 4+, don't jump.
      */
-    private static final net.minecraft.util.math.BlockPos.Mutable scratch = new net.minecraft.util.math.BlockPos.Mutable();
+    private static final net.minecraft.core.BlockPos.MutableBlockPos scratch = new net.minecraft.core.BlockPos.MutableBlockPos();
 
-    public static boolean isJumpLandingSafe(Vec3d pos, Vec3d vel, net.minecraft.world.WorldView world) {
+    public static boolean isJumpLandingSafe(Vec3 pos, Vec3 vel, net.minecraft.world.level.LevelReader world) {
         double horizSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
         if (horizSpeed < 0.01) return true; // standing still, jump is safe
 
         double nx = vel.x / horizSpeed;
         double nz = vel.z / horizSpeed;
-        int y = net.minecraft.util.math.MathHelper.floor(pos.y);
+        int y = net.minecraft.util.Mth.floor(pos.y);
 
         // check blocks 1, 2, 3, 4 ahead in velocity direction
         for (int dist = 1; dist <= 4; dist++) {
-            int x = net.minecraft.util.math.MathHelper.floor(pos.x + nx * dist);
-            int z = net.minecraft.util.math.MathHelper.floor(pos.z + nz * dist);
-            int fall = VoidDetector.fallHeight(new Vec3d(x + 0.5, y, z + 0.5), world);
+            int x = net.minecraft.util.Mth.floor(pos.x + nx * dist);
+            int z = net.minecraft.util.Mth.floor(pos.z + nz * dist);
+            int fall = VoidDetector.fallHeight(new Vec3(x + 0.5, y, z + 0.5), world);
             if (fall >= 4) return false;
             // ⛔ A SHALLOW LAVA POOL IS NOT A SAFE LANDING. fallHeight measures to the first solid
             // block, and lava has no collision: over a pool with stone a block or two under it the
@@ -732,23 +732,23 @@ public class SafetySystem {
     }
 
     /** Check if there are holes (fall 3+ blocks) on the straight line between player and waypoint. */
-    public static boolean hasHolesOnPath(Vec3d from, net.minecraft.util.math.BlockPos to, net.minecraft.world.WorldView world) {
+    public static boolean hasHolesOnPath(Vec3 from, net.minecraft.core.BlockPos to, net.minecraft.world.level.LevelReader world) {
         double dx = to.getX() + 0.5 - from.x;
         double dz = to.getZ() + 0.5 - from.z;
         double dist = Math.sqrt(dx * dx + dz * dz);
         int steps = (int) Math.ceil(dist * 2);
         if (steps <= 0) return false;
 
-        int fromY = net.minecraft.util.math.MathHelper.floor(from.y);
+        int fromY = net.minecraft.util.Mth.floor(from.y);
         for (int s = 1; s < steps; s++) {
             double t = (double) s / steps;
-            int x = net.minecraft.util.math.MathHelper.floor(from.x + dx * t);
-            int z = net.minecraft.util.math.MathHelper.floor(from.z + dz * t);
+            int x = net.minecraft.util.Mth.floor(from.x + dx * t);
+            int z = net.minecraft.util.Mth.floor(from.z + dz * t);
             // check if block below feet is air (hole)
-            net.minecraft.util.math.BlockPos below = new net.minecraft.util.math.BlockPos(x, fromY - 1, z);
+            net.minecraft.core.BlockPos below = new net.minecraft.core.BlockPos(x, fromY - 1, z);
             if (world.getBlockState(below).getCollisionShape(world, below).isEmpty()) {
                 // no solid below → check fall depth
-                int fall = VoidDetector.fallHeight(new Vec3d(x + 0.5, fromY, z + 0.5), world);
+                int fall = VoidDetector.fallHeight(new Vec3(x + 0.5, fromY, z + 0.5), world);
                 if (fall >= 3) return true;
             }
         }
@@ -759,11 +759,11 @@ public class SafetySystem {
      * Find best visible point on target hitbox.
      * Priority: closest point on box → if blocked, try hitbox sample points.
      */
-    private Vec3d findBestAimPoint(ClientPlayerEntity player, Vec3d eyePos,
-                                    net.minecraft.util.math.Box box, Vec3d targetPos, double height) {
+    private Vec3 findBestAimPoint(LocalPlayer player, Vec3 eyePos,
+                                    net.minecraft.world.phys.AABB box, Vec3 targetPos, double height) {
         // closest point on bounding box to our eyes
         losCalls++;
-        Vec3d closest = closestPointOnBox(eyePos, box);
+        Vec3 closest = closestPointOnBox(eyePos, box);
 
         if (hasCleanLOS(player, eyePos, closest)) {
             losClosest++;
@@ -772,9 +772,9 @@ public class SafetySystem {
         }
 
         // sample hitbox points: center, top, bottom, corners
-        Vec3d center = targetPos.add(0, height * 0.5, 0);
+        Vec3 center = targetPos.add(0, height * 0.5, 0);
         double hw = (box.maxX - box.minX) / 2.0;
-        Vec3d[] samples = {
+        Vec3[] samples = {
             center,
             targetPos.add(0, height * 0.85, 0),   // head
             targetPos.add(0, height * 0.15, 0),    // feet
@@ -784,11 +784,11 @@ public class SafetySystem {
             targetPos.add(0, height * 0.5, -hw),
         };
 
-        Vec3d bestVisible = null;
+        Vec3 bestVisible = null;
         double bestDist = Double.MAX_VALUE;
-        for (Vec3d sample : samples) {
+        for (Vec3 sample : samples) {
             if (hasCleanLOS(player, eyePos, sample)) {
-                double dist = eyePos.squaredDistanceTo(sample);
+                double dist = eyePos.distanceToSqr(sample);
                 if (dist < bestDist) {
                     bestDist = dist;
                     bestVisible = sample;
@@ -808,21 +808,21 @@ public class SafetySystem {
         return center;
     }
 
-    private static Vec3d closestPointOnBox(Vec3d point, net.minecraft.util.math.Box box) {
-        return new Vec3d(
+    private static Vec3 closestPointOnBox(Vec3 point, net.minecraft.world.phys.AABB box) {
+        return new Vec3(
                 Math.max(box.minX, Math.min(box.maxX, point.x)),
                 Math.max(box.minY, Math.min(box.maxY, point.y)),
                 Math.max(box.minZ, Math.min(box.maxZ, point.z))
         );
     }
 
-    private static boolean hasCleanLOS(ClientPlayerEntity player, Vec3d from, Vec3d to) {
-        net.minecraft.util.hit.HitResult hit = player.getEntityWorld().raycast(
-                new net.minecraft.world.RaycastContext(from, to,
-                        net.minecraft.world.RaycastContext.ShapeType.COLLIDER,
-                        net.minecraft.world.RaycastContext.FluidHandling.NONE, player));
-        return hit.getType() == net.minecraft.util.hit.HitResult.Type.MISS
-                || from.squaredDistanceTo(hit.getPos()) >= from.squaredDistanceTo(to) * 0.95;
+    private static boolean hasCleanLOS(LocalPlayer player, Vec3 from, Vec3 to) {
+        net.minecraft.world.phys.HitResult hit = player.level().clip(
+                new net.minecraft.world.level.ClipContext(from, to,
+                        net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                        net.minecraft.world.level.ClipContext.Fluid.NONE, player));
+        return hit.getType() == net.minecraft.world.phys.HitResult.Type.MISS
+                || from.distanceToSqr(hit.getLocation()) >= from.distanceToSqr(to) * 0.95;
     }
 
     /**
@@ -831,7 +831,7 @@ public class SafetySystem {
      * Clamped to [1, 5] — we don't predict further than 5 ticks for aiming.
      */
     private int getAimLeadTicks() {
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return 2;
 
         double angDist = WindMouseRotation.INSTANCE.distanceToTarget(mc.player);
@@ -848,8 +848,8 @@ public class SafetySystem {
      * or fixed base values for us hitting enemy.
      * @param asEnemy true = simulate enemy hitting victim (use estimator), false = us hitting
      */
-    private Vec3d simulateKnockback(Vec3d victimPos, Vec3d victimVel,
-                                     Vec3d attackerPos, boolean asEnemy, WorldView world) {
+    private Vec3 simulateKnockback(Vec3 victimPos, Vec3 victimVel,
+                                     Vec3 attackerPos, boolean asEnemy, LevelReader world) {
         double dx = victimPos.x - attackerPos.x;
         double dz = victimPos.z - attackerPos.z;
         double len = Math.sqrt(dx * dx + dz * dz);
@@ -905,24 +905,24 @@ public class SafetySystem {
             // harmful twice: deaths 16->23 and 15->19) -- the caution given a number it can act on.
             if (kaptainwutax.tungsten.TungstenConfig.get().kbLandsOnSurface
                     && vy < 0 && py <= startY && world != null
-                    && VoidDetector.fallHeight(new Vec3d(px, startY, pz), world) <= 1) {
+                    && VoidDetector.fallHeight(new Vec3(px, startY, pz), world) <= 1) {
                 py = startY;
                 kbLandedOnSurface++;
                 break;
             }
             if (vy < 0 && world != null
-                    && VoidDetector.fallHeight(new Vec3d(px, py, pz), world) <= 1) {
+                    && VoidDetector.fallHeight(new Vec3(px, py, pz), world) <= 1) {
                 break;
             }
             vx *= 0.91;
             vy = (vy - 0.08) * 0.98;
             vz *= 0.91;
         }
-        return new Vec3d(px, py, pz);
+        return new Vec3(px, py, pz);
     }
 
-    private void analyzeKnockback(Vec3d playerPos, Vec3d playerVel,
-                                   Vec3d targetPos, WorldView world) {
+    private void analyzeKnockback(Vec3 playerPos, Vec3 playerVel,
+                                   Vec3 targetPos, LevelReader world) {
         lastUsAfterKB = simulateKnockback(playerPos, playerVel, targetPos, true, world);
         lastFallIfHit = VoidDetector.fallHeight(lastUsAfterKB, world);
 
@@ -932,12 +932,12 @@ public class SafetySystem {
 
     // ── render helpers ───────────────────────────────────────────────────────
 
-    private void renderVelocity(Vec3d pos, Vec3d vel, Vec3d predicted, Color col) {
-        Vec3d velEnd = pos.add(vel.multiply(5));
+    private void renderVelocity(Vec3 pos, Vec3 vel, Vec3 predicted, Color col) {
+        Vec3 velEnd = pos.add(vel.scale(5));
         TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Line(
                 pos.add(0, 0.5, 0), velEnd.add(0, 0.5, 0), col));
         TungstenModRenderContainer.COMBAT_TRAJECTORY.add(new Cuboid(
-                predicted.subtract(0.15, 0, 0.15), new Vec3d(0.3, 1.8, 0.3), col));
+                predicted.subtract(0.15, 0, 0.15), new Vec3(0.3, 1.8, 0.3), col));
     }
 
     // ── getters ──────────────────────────────────────────────────────────────
@@ -954,7 +954,7 @@ public class SafetySystem {
 
     public void reset() {
         prevEnemyPos = null;
-        enemyVelocity = Vec3d.ZERO;
+        enemyVelocity = Vec3.ZERO;
         target = null;
         active = false;
         stage = CombatStage.PURSUE;

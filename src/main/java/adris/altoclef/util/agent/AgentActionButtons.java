@@ -4,8 +4,8 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.multiversion.entity.PlayerVer;
 
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.KeyMapping;
 
 import java.util.Map;
 
@@ -93,15 +93,15 @@ public class AgentActionButtons {
                         // They also using SENS = camera scaler like 360.0 / 2400.0
                         double yawDelta = toDouble(cameraList.get(1)) * agentSensivity;
                         double pitchDelta = toDouble(cameraList.get(0)) * agentSensivity;
-                        //long windowHandle = MinecraftClient.getInstance().getWindow().getHandle();
+                        //long windowHandle = Minecraft.getInstance().getWindow().getHandle();
 
                         // x and y are screen coordinates (pixels), typically from top-left
                         // GLFW.glfwSetCursorPos(windowHandle, yawDelta, pitchDelta);
                         // works bad, just only in invertory PLACES items on center
 
                         // AgentInputBridge.addDelta(yawDelta, pitchDelta);
-                        MinecraftClient.getInstance().player.changeLookDirection(yawDelta, pitchDelta);
-                        //MinecraftClient.getInstance().mouse.onCursorPos(window, yawDelta, pitchDelta);  // window, dx, dy
+                        Minecraft.getInstance().player.turn(yawDelta, pitchDelta);
+                        //Minecraft.getInstance().mouse.onCursorPos(window, yawDelta, pitchDelta);  // window, dx, dy
                         // mod.getInputControls().forceLook((float)yawDelta, (float)pitchDelta);
                     } catch (Exception ignored) {}
                 }
@@ -109,15 +109,15 @@ public class AgentActionButtons {
         }
         // UNTESTED SECTION
         // looks like not working :(
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         // "drop" -> defaults to Q
-        handleNativeKey(controlDict, "drop", client.options.dropKey);
+        handleNativeKey(controlDict, "drop", client.options.keyDrop);
 
         // "inventory" -> defaults to E
-        handleNativeKey(controlDict, "inventory", client.options.inventoryKey);
+        handleNativeKey(controlDict, "inventory", client.options.keyInventory);
 
         // "swapHands" -> defaults to F (useful to add)
-        handleNativeKey(controlDict, "swapHands", client.options.swapHandsKey);
+        handleNativeKey(controlDict, "swapHands", client.options.keySwapOffhand);
         // Other controls (BAD APPROACH, KEYS WILL BE SET TO 0 WHEN OTHER KEYS 1!!!)
         // handleButton(mod, controlDict, "drop", Input.CLICK_LEFT); // Can be remapped as needed
         // handleButton(mod, controlDict, "inventory", Input.CLICK_RIGHT); // Can be remapped as needed
@@ -125,7 +125,7 @@ public class AgentActionButtons {
         // ESC key - open pause menu
         // if (controlDict.containsKey("ESC") && isPressed(controlDict.get("ESC"))) {
         //     mod.getInputControls().tryPress(Input.);
-        //     MinecraftClient.getInstance().setScreen(new net.minecraft.client.gui.screen.PauseScreen(false));
+        //     Minecraft.getInstance().setScreen(new net.minecraft.client.gui.screen.PauseScreen(false));
         // }
     }
 
@@ -145,29 +145,29 @@ public class AgentActionButtons {
 
     public static void handleNativeKeyDropTest(AltoClef mod) {
         // Drops the currently selected item
-        MinecraftClient client = MinecraftClient.getInstance();
-        KeyBinding keyBinding = client.options.dropKey;
+        Minecraft client = Minecraft.getInstance();
+        KeyMapping keyBinding = client.options.keyDrop;
         boolean pressed = true;
-        keyBinding.setPressed(pressed);
+        keyBinding.setDown(pressed);
     }
 
     /**
      * Handles Native Minecraft KeyBindings.
      * This bypasses Baritone and speaks directly to the game options.
      */
-    public static void handleNativeKey(Map<String, Object> controlDict, String key, KeyBinding keyBinding) {
+    public static void handleNativeKey(Map<String, Object> controlDict, String key, KeyMapping keyBinding) {
         if (!controlDict.containsKey(key)) return;
 
         boolean pressed = isPressed(controlDict.get(key));
 
         // setPressed updates the state explicitly.
         // This allows holding (e.g., holding Q to drop a stack) or tapping.
-        keyBinding.setPressed(pressed);
+        keyBinding.setDown(pressed);
 
         // OPTIONAL: If the key isn't triggering on a single frame "1" signal,
         // you might need to artificially increment the press times for one-shot actions,
         // but setPressed(true) usually works for standard input emulation.
-        // if (pressed) { KeyBinding.onKeyPressed(keyBinding.getDefaultKey()); }
+        // if (pressed) { KeyMapping.onKeyPressed(keyBinding.getDefaultKey()); }
     }
 
     /**

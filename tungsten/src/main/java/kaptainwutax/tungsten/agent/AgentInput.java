@@ -2,15 +2,15 @@ package kaptainwutax.tungsten.agent;
 
 import kaptainwutax.tungsten.path.PathInput;
 import kaptainwutax.tungsten.agent.TungstenPlayerInput;
-import net.minecraft.util.math.Vec2f;
+import net.minecraft.world.phys.Vec2;
 
 public class AgentInput {
 	
 
 	public TungstenPlayerInput playerInput = TungstenPlayerInput.DEFAULT;
-	protected Vec2f movementVector = Vec2f.ZERO;
+	protected Vec2 movementVector = Vec2.ZERO;
 
-	public Vec2f getMovementInput() {
+	public Vec2 getMovementInput() {
 		return this.movementVector;
 	}
 
@@ -61,7 +61,7 @@ public class AgentInput {
 		// when magnitude > 1.0. Normalizing here causes ~29% diagonal speed
 		// difference (0.693 vs 0.707) because the 0.98 multiply in
 		// applyMovementSpeedFactors interacts differently.
-		this.movementVector = new Vec2f(g, f);
+		this.movementVector = new Vec2(g, f);
 	}
 	
 	public PathInput toPathInput() {

@@ -2,16 +2,16 @@ package adris.altoclef.multiversion.item;
 
 import adris.altoclef.multiversion.FoodComponentWrapper;
 import adris.altoclef.multiversion.Pattern;
-import net.minecraft.block.BlockState;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 public class ItemVer {
 
     public static FoodComponentWrapper getFoodComponent(Item item) {
         //#if MC >=12005
-        return FoodComponentWrapper.of(item.getComponents().get(net.minecraft.component.DataComponentTypes.FOOD));
+        return FoodComponentWrapper.of(item.components().get(net.minecraft.core.component.DataComponents.FOOD));
         //#else
         //$$ return FoodComponentWrapper.of(item.getFoodComponent());
         //#endif
@@ -23,7 +23,7 @@ public class ItemVer {
 
     public static boolean hasCustomName(ItemStack stack) {
         //#if MC >= 12005
-        return stack.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME);
+        return stack.has(net.minecraft.core.component.DataComponents.CUSTOM_NAME);
         //#else
         //$$ return stack.hasCustomName();
         //#endif
@@ -31,7 +31,7 @@ public class ItemVer {
 
     public static boolean isFood(Item item) {
         //#if MC >=12005
-        return item.getComponents().contains(net.minecraft.component.DataComponentTypes.FOOD);
+        return item.components().has(net.minecraft.core.component.DataComponents.FOOD);
         //#else
         //$$ return item.isFood();
         //#endif
@@ -40,7 +40,7 @@ public class ItemVer {
     @Pattern
     private static boolean isSuitableFor(Item item, BlockState state) {
         //#if MC >= 11701
-        return item.getDefaultStack().isSuitableFor(state);
+        return item.getDefaultInstance().isCorrectToolForDrops(state);
         //#else
         //$$ return adris.altoclef.multiversion.item.ItemHelper.isSuitableFor(item, state);
         //#endif

@@ -7,8 +7,8 @@ import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -145,7 +145,7 @@ public class GetFreeSignItemsTask extends Task {
 
     /** Returns the nearest sign pos among all unmet item targets, or empty. */
     private Optional<BlockPos> findBestSign(AltoClef mod) {
-        Vec3d playerPos = mod.getPlayer().getPos();
+        Vec3 playerPos = mod.getPlayer().position();
         BlockPos best = null;
         double bestDist = Double.MAX_VALUE;
 
@@ -154,7 +154,7 @@ public class GetFreeSignItemsTask extends Task {
 
             Optional<BlockPos> sign = SignShopTask.findNearestFreeSign(mod, entry.getKey());
             if (sign.isPresent()) {
-                double dist = sign.get().toCenterPos().squaredDistanceTo(playerPos);
+                double dist = net.minecraft.world.phys.Vec3.atCenterOf(sign.get()).distanceToSqr(playerPos);
                 if (dist < bestDist) {
                     bestDist = dist;
                     best = sign.get();

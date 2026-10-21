@@ -1,8 +1,8 @@
 package kaptainwutax.tungsten.combat;
 
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Arrow ballistics on vanilla physics: per tick pos += vel; vel *= 0.99;
@@ -27,12 +27,12 @@ public final class TrajectorySolver {
         public final float pitch;
         public final int flightTicks;
         /** Where the TARGET is expected to be at impact — the point to draw a marker on. */
-        public final Vec3d predictedTarget;
+        public final Vec3 predictedTarget;
         /** The VIRTUAL point the barrel points at: {@link #predictedTarget} shifted back by the
          *  shooter's inherited velocity. Not a place anything will ever be — see {@link #solve}. */
-        public final Vec3d aimPoint;
+        public final Vec3 aimPoint;
 
-        Solution(float yaw, float pitch, int flightTicks, Vec3d predictedTarget, Vec3d aimPoint) {
+        Solution(float yaw, float pitch, int flightTicks, Vec3 predictedTarget, Vec3 aimPoint) {
             this.yaw = yaw;
             this.pitch = pitch;
             this.flightTicks = flightTicks;
@@ -47,13 +47,13 @@ public final class TrajectorySolver {
      *
      * <p>Takes the SHOOTER as an entity rather than a bare eye position because the shot depends on
      * the shooter's own movement, and that term is too easy to forget — it was missing here for the
-     * whole life of this class. See {@link #solve(Vec3d, Vec3d, Vec3d, Vec3d, double)}.
+     * whole life of this class. See {@link #solve(Vec3, Vec3, Vec3, Vec3, double)}.
      */
     public static Solution solve(Entity shooter, Entity target, double charge) {
-        Vec3d aimPoint = target.getEntityPos().add(0, target.getHeight() * 0.6, 0);
-        Vec3d vel = target.getVelocity();
-        if (target.isOnGround()) vel = new Vec3d(vel.x, 0, vel.z);
-        return solve(shooter.getEyePos(), shooterVelocity(shooter), aimPoint, vel, charge);
+        Vec3 aimPoint = target.position().add(0, target.getBbHeight() * 0.6, 0);
+        Vec3 vel = target.getDeltaMovement();
+        if (target.onGround()) vel = new Vec3(vel.x, 0, vel.z);
+        return solve(shooter.getEyePosition(), shooterVelocity(shooter), aimPoint, vel, charge);
     }
 
     /**
@@ -61,9 +61,9 @@ public final class TrajectorySolver {
      * {@code ProjectileEntity.setVelocity(Entity, ...)}: horizontal always, vertical only while
      * airborne ({@code shooter.isOnGround() ? 0.0 : movement.y}).
      */
-    public static Vec3d shooterVelocity(Entity shooter) {
-        Vec3d mov = shooter.getMovement();
-        return shooter.isOnGround() ? new Vec3d(mov.x, 0, mov.z) : mov;
+    public static Vec3 shooterVelocity(Entity shooter) {
+        Vec3 mov = shooter.getKnownMovement();
+        return shooter.onGround() ? new Vec3(mov.x, 0, mov.z) : mov;
     }
 
     /**
@@ -138,16 +138,16 @@ public final class TrajectorySolver {
      * @param shooterVel what vanilla will add to the arrow — use {@link #shooterVelocity} rather
      *                   than a raw velocity, so the on-ground vertical rule is not lost.
      */
-    public static Solution solve(Vec3d shooterEye, Vec3d shooterVel,
-                                 Vec3d targetPos, Vec3d targetVel, double charge) {
+    public static Solution solve(Vec3 shooterEye, Vec3 shooterVel,
+                                 Vec3 targetPos, Vec3 targetVel, double charge) {
         double v0 = Math.max(0.1, charge) * FULL_CHARGE_SPEED;
-        Vec3d predicted = targetPos;
-        Vec3d aim = targetPos;
+        Vec3 predicted = targetPos;
+        Vec3 aim = targetPos;
         double flight = 0;
 
         for (int round = 0; round < 3; round++) {
-            predicted = targetPos.add(targetVel.multiply(flight + LATENCY_TICKS));
-            aim = predicted.subtract(shooterVel.multiply(dragSum(flight)));
+            predicted = targetPos.add(targetVel.scale(flight + LATENCY_TICKS));
+            aim = predicted.subtract(shooterVel.scale(dragSum(flight)));
             double dx = Math.hypot(aim.x - shooterEye.x, aim.z - shooterEye.z);
             double dy = aim.y - shooterEye.y;
             double[] sol = solvePitch(v0, dx, dy);
@@ -176,32 +176,32 @@ public final class TrajectorySolver {
      * arrow covers about 2.5 blocks per tick and vanilla raycasts that whole span, so sampling only
      * the endpoints invents up to a tick of travel of imaginary miss.
      */
-    public static double predictedMiss(Vec3d shooterEye, Vec3d shooterVel,
-                                       float yaw, float pitch, double charge, Vec3d targetPoint) {
+    public static double predictedMiss(Vec3 shooterEye, Vec3 shooterVel,
+                                       float yaw, float pitch, double charge, Vec3 targetPoint) {
         double v0 = Math.max(0.1, charge) * FULL_CHARGE_SPEED;
         double yawRad = Math.toRadians(yaw), pitchRad = Math.toRadians(pitch);
         double horiz = v0 * Math.cos(pitchRad);
-        Vec3d vel = new Vec3d(-Math.sin(yawRad) * horiz,
+        Vec3 vel = new Vec3(-Math.sin(yawRad) * horiz,
                               -v0 * Math.sin(pitchRad),
                                Math.cos(yawRad) * horiz).add(shooterVel);
-        Vec3d pos = shooterEye;
+        Vec3 pos = shooterEye;
         double best = Double.MAX_VALUE;
         for (int t = 0; t < MAX_FLIGHT_TICKS; t++) {
-            Vec3d next = pos.add(vel);
+            Vec3 next = pos.add(vel);
             best = Math.min(best, distanceToSegment(pos, next, targetPoint));
             pos = next;
-            vel = new Vec3d(vel.x * DRAG, vel.y * DRAG - GRAVITY, vel.z * DRAG);
+            vel = new Vec3(vel.x * DRAG, vel.y * DRAG - GRAVITY, vel.z * DRAG);
             if (pos.y < shooterEye.y - 40) break;
         }
         return best;
     }
 
-    private static double distanceToSegment(Vec3d a, Vec3d b, Vec3d p) {
-        Vec3d ab = b.subtract(a);
-        double denom = ab.lengthSquared();
+    private static double distanceToSegment(Vec3 a, Vec3 b, Vec3 p) {
+        Vec3 ab = b.subtract(a);
+        double denom = ab.lengthSqr();
         if (denom < 1.0E-9) return p.distanceTo(a);
-        double t = MathHelper.clamp(p.subtract(a).dotProduct(ab) / denom, 0.0, 1.0);
-        return p.distanceTo(a.add(ab.multiply(t)));
+        double t = Mth.clamp(p.subtract(a).dot(ab) / denom, 0.0, 1.0);
+        return p.distanceTo(a.add(ab.scale(t)));
     }
 
     /** {@code A(t) = sum(DRAG^k, k &lt; t)} — the multiplier vanilla applies to the WHOLE initial
@@ -217,7 +217,7 @@ public final class TrajectorySolver {
         if (dx < 0.5) {
             // (nearly) straight up/down — direct angle
             double pitch = Math.toDegrees(-Math.atan2(dy, dx));
-            return new double[]{MathHelper.clamp(pitch, -89, 89), Math.abs(dy) / Math.max(0.5, v0)};
+            return new double[]{Mth.clamp(pitch, -89, 89), Math.abs(dy) / Math.max(0.5, v0)};
         }
         // heightAt grows monotonically as aim rises through the flat branch
         double lo = -89, hi = 89, bestPitch = Double.NaN, bestTicks = 0;

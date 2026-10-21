@@ -4,7 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.util.goals.AltoGoal;
 import adris.altoclef.util.projectiles.CachedProjectile;
 import adris.altoclef.util.helpers.ProjectileHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 import adris.altoclef.tasksystem.Task;
 
 public class DodgeProjectilesTask extends CustomBaritoneGoalTask {
@@ -76,9 +76,9 @@ public class DodgeProjectilesTask extends CustomBaritoneGoalTask {
      */
     @Override
     protected AltoGoal newAltoGoal(AltoClef mod) {
-        net.minecraft.util.math.BlockPos origin = mod.getPlayer() == null
-                ? net.minecraft.util.math.BlockPos.ORIGIN
-                : mod.getPlayer().getBlockPos();
+        net.minecraft.core.BlockPos origin = mod.getPlayer() == null
+                ? net.minecraft.core.BlockPos.ZERO
+                : mod.getPlayer().blockPosition();
         return new AltoGoal.NearestSatisfying(pos -> isClear(mod, pos), origin, DODGE_SEARCH_RADIUS);
     }
 
@@ -86,15 +86,15 @@ public class DodgeProjectilesTask extends CustomBaritoneGoalTask {
     private static final int DODGE_SEARCH_RADIUS = 8;
 
     /** Is this cell off every tracked arrow's closest approach? The old goal's isInGoal, intact. */
-    private boolean isClear(AltoClef mod, net.minecraft.util.math.BlockPos cell) {
-        Vec3d p = new Vec3d(cell.getX(), cell.getY(), cell.getZ());
+    private boolean isClear(AltoClef mod, net.minecraft.core.BlockPos cell) {
+        Vec3 p = new Vec3(cell.getX(), cell.getY(), cell.getZ());
         for (CachedProjectile projectile : mod.getEntityTracker().getProjectiles()) {
             if (projectile == null) continue;
             try {
                 if (projectile.needsToRecache()) {
                     projectile.setCacheHit(ProjectileHelper.calculateArrowClosestApproach(projectile, p));
                 }
-                Vec3d delta = p.subtract(projectile.getCachedHit());
+                Vec3 delta = p.subtract(projectile.getCachedHit());
                 double horizontalSq = delta.x * delta.x + delta.z * delta.z;
                 if (horizontalSq < _distanceHorizontal * _distanceHorizontal
                         && Math.abs(delta.y) < _distanceVertical) {

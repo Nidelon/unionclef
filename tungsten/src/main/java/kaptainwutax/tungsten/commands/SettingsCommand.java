@@ -9,7 +9,7 @@ import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.TungstenModDataContainer;
 import kaptainwutax.tungsten.commandsystem.Command;
-import net.minecraft.command.CommandSource;
+import net.minecraft.commands.SharedSuggestionProvider;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -36,7 +36,7 @@ public class SettingsCommand extends Command {
     }
 
     @Override
-    public void build(LiteralArgumentBuilder<CommandSource> builder) {
+    public void build(LiteralArgumentBuilder<SharedSuggestionProvider> builder) {
         List<Field> fields = getConfigFields();
 
         // ;settings — the groups, and where the rest lives
@@ -104,7 +104,7 @@ public class SettingsCommand extends Command {
         }
     }
 
-    private void registerField(LiteralArgumentBuilder<CommandSource> builder, Field field) {
+    private void registerField(LiteralArgumentBuilder<SharedSuggestionProvider> builder, Field field) {
         String name = field.getName();
         Class<?> type = field.getType();
 
@@ -119,7 +119,7 @@ public class SettingsCommand extends Command {
         });
 
         // ;settings <name> <value> — set value
-        RequiredArgumentBuilder<CommandSource, ?> arg = createArgument(type);
+        RequiredArgumentBuilder<SharedSuggestionProvider, ?> arg = createArgument(type);
         if (arg != null) {
             sub.then(arg.executes(context -> {
                 try {
@@ -159,7 +159,7 @@ public class SettingsCommand extends Command {
         return state + " §f" + g.name() + " §8— §7" + g.desc();
     }
 
-    private void registerGroup(LiteralArgumentBuilder<CommandSource> builder, String groupName, List<Field> fields) {
+    private void registerGroup(LiteralArgumentBuilder<SharedSuggestionProvider> builder, String groupName, List<Field> fields) {
         var groupNode = literal(groupName).executes(context -> {
             Debug.logMessage("§e--- " + groupName + " §7(;settings " + groupName + " <name> <0|1>) §e---");
             for (Field f : fields) {
@@ -208,7 +208,7 @@ public class SettingsCommand extends Command {
         throw new IllegalArgumentException(raw);
     }
 
-    private static RequiredArgumentBuilder<CommandSource, ?> createArgument(Class<?> type) {
+    private static RequiredArgumentBuilder<SharedSuggestionProvider, ?> createArgument(Class<?> type) {
         if (type == boolean.class) {
             return argument("value", BoolArgumentType.bool());
         } else if (type == double.class) {
@@ -222,7 +222,7 @@ public class SettingsCommand extends Command {
     }
 
     private static Object getArgumentValue(
-            com.mojang.brigadier.context.CommandContext<CommandSource> context,
+            com.mojang.brigadier.context.CommandContext<SharedSuggestionProvider> context,
             String name, Class<?> type) {
         if (type == boolean.class) return BoolArgumentType.getBool(context, name);
         if (type == double.class) return DoubleArgumentType.getDouble(context, name);

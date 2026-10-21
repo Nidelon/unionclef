@@ -63,13 +63,13 @@ public final class BreakResetTrace {
 
     /** One raw break event: what vanilla's break state looked like when it happened. */
     public static synchronized void event(String what, Object pos, boolean breaking, float progress, int cooldown) {
-        net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
-        long t = mc.world != null ? mc.world.getTime() : -1;
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        long t = mc.level != null ? mc.level.getGameTime() : -1;
         String body = "";
         if (mc.player != null) {
-            var e = mc.player.getEyePos();
+            var e = mc.player.getEyePosition();
             body = String.format(" eye=(%.2f,%.2f,%.2f) ground=%b vy=%.2f", e.x, e.y, e.z,
-                    mc.player.isOnGround(), mc.player.getVelocity().y);
+                    mc.player.onGround(), mc.player.getDeltaMovement().y);
         }
         RING[ringPos++ % RING.length] = t + " " + what + " " + pos + " brk=" + breaking
                 + String.format(" p=%.2f cd=%d", progress, cooldown) + body;

@@ -9,9 +9,9 @@ import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.commandsystem.Command;
 import kaptainwutax.tungsten.commandsystem.CommandException;
 import kaptainwutax.tungsten.task.RunAwayTask;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.command.CommandSource;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.commands.SharedSuggestionProvider;
 
 /** {@code ;runAwayPlayer <name> [distance]} — flee a player, keeping distance. */
 public class RunAwayCommand extends Command {
@@ -21,12 +21,12 @@ public class RunAwayCommand extends Command {
     }
 
     @Override
-    public void build(LiteralArgumentBuilder<CommandSource> builder) {
-        SuggestionProvider<CommandSource> playerSuggestions = (ctx, sb) -> {
-            MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc.getNetworkHandler() != null) {
+    public void build(LiteralArgumentBuilder<SharedSuggestionProvider> builder) {
+        SuggestionProvider<SharedSuggestionProvider> playerSuggestions = (ctx, sb) -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.getConnection() != null) {
                 String input = sb.getRemaining().toLowerCase();
-                for (PlayerListEntry entry : mc.getNetworkHandler().getPlayerList()) {
+                for (PlayerInfo entry : mc.getConnection().getOnlinePlayers()) {
                     //#if MC < 12111
                     //$$ String name = entry.getProfile().getName();
                     //#else

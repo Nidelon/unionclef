@@ -1,7 +1,7 @@
 package adris.altoclef;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 
 // TODO: Debug library or use Minecraft's built in debugger
 public class Debug {
@@ -34,16 +34,16 @@ public class Debug {
     // died on its own log line before reaching connectToServer, pon4ikyt ticket 1783254983).
     // client.execute runs inline when already on the render thread, else queues for next tick.
     private static void sendChatOnClientThread(String msg) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         client.execute(() -> {
             if (client.player != null) {
-                client.player.sendMessage(Text.of(msg), false);
+                client.player.sendSystemMessage(Component.literal(msg));
             }
         });
     }
 
     public static void logMessage(String message, boolean prefix) {
-        if (MinecraftClient.getInstance() != null && MinecraftClient.getInstance().player != null) {
+        if (Minecraft.getInstance() != null && Minecraft.getInstance().player != null) {
             if (prefix) {
                 message = "\u00A72\u00A7l\u00A7o" + getLogPrefix() + "\u00A7r" + message;
             }
@@ -69,7 +69,7 @@ public class Debug {
 
         AltoClef altoClef = AltoClef.getInstance();
         if (altoClef != null && !altoClef.getModSettings().shouldHideAllWarningLogs()) {
-            if (MinecraftClient.getInstance() != null && MinecraftClient.getInstance().player != null) {
+            if (Minecraft.getInstance() != null && Minecraft.getInstance().player != null) {
                 String msg = "\u00A72\u00A7l\u00A7o" + getLogPrefix() + "\u00A7c" + message + "\u00A7r";
                 sendChatOnClientThread(msg);
 
@@ -90,7 +90,7 @@ public class Debug {
             System.err.println(stacktrace);
         }
 
-        if (MinecraftClient.getInstance() != null && MinecraftClient.getInstance().player != null) {
+        if (Minecraft.getInstance() != null && Minecraft.getInstance().player != null) {
             String msg = "\u00A72\u00A7l\u00A7c" + getLogPrefix() + "[ERROR] " + message + "\nat:\n" + stacktrace + "\u00A7r";
             sendChatOnClientThread(msg);
         }

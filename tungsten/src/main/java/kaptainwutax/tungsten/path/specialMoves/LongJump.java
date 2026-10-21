@@ -15,15 +15,15 @@ import kaptainwutax.tungsten.path.Node;
 import kaptainwutax.tungsten.path.PathInput;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode;
 import kaptainwutax.tungsten.render.Color;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.level.LevelReader;
 
 public class LongJump {
 
 	public static Node generateMove(Node parent, BlockNode nextBlockNode) {
 		double cost = 0.2;
-		WorldView world = TungstenModDataContainer.world;
+		LevelReader world = TungstenModDataContainer.world;
 		Agent agent = parent.agent;
 		float desiredYaw = (float) DirectionHelper.calcYawFromVec3d(agent.getPos(), nextBlockNode.getPos(true));
 		double distance = DistanceCalculator.getHorizontalEuclideanDistance(agent.getPos(), nextBlockNode.getPos(true));
@@ -33,7 +33,7 @@ public class LongJump {
 	    if (distance > 4 && DistanceCalculator.getDistanceToEdge(newNode.agent) < 0.8 && AgentChecker.isAgentStationary(newNode.agent, 0.07)) {
 	        for (int j = 0; j < 6; j++) {
 	        	if (newNode.agent.horizontalCollision) break;
-	            Box adjustedBox = newNode.agent.box.offset(0, -0.5, 0).expand(-0.45, 0, -0.45);
+	            AABB adjustedBox = newNode.agent.box.move(0, -0.5, 0).inflate(-0.45, 0, -0.45);
 	        	// ⛔ FIXED 2026-09-05: both this collision query and the desiredYaw recompute below
 	        	// used the STALE `agent` (= parent.agent, fixed before this loop/method) instead of
 	        	// `newNode.agent` -- same bug class found elsewhere this session (SprintJumpMove,
@@ -59,7 +59,7 @@ public class LongJump {
 	        // Go forward to edge and jump
 	        while (limit < 10) {
 	        	if (newNode.agent.horizontalCollision) break;
-	            Box adjustedBox = newNode.agent.box.offset(0, -0.5, 0).expand(boxExpension, 0, boxExpension);
+	            AABB adjustedBox = newNode.agent.box.move(0, -0.5, 0).inflate(boxExpension, 0, boxExpension);
 	        	limit++;
 	        	if (distance > 3) {
 		        	Stream<VoxelShape> blockCollisions = Streams.stream(newNode.agent.getBlockCollisions(TungstenModDataContainer.world, adjustedBox));

@@ -4,7 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.goals.AltoGoal;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
-import net.minecraft.util.math.ChunkPos;
+import net.minecraft.world.level.ChunkPos;
 
 public class GetToChunkTask extends CustomBaritoneGoalTask {
 
@@ -21,7 +21,7 @@ public class GetToChunkTask extends CustomBaritoneGoalTask {
         // G-0: GoalChunk existed only to implement baritone's Goal interface around two lines of
         // arithmetic -- head for the middle, count anywhere in the sixteen-by-sixteen as arrived.
         // AltoGoal.Chunk answers both without a pathfinder in the type.
-        return AltoGoal.chunk(_pos.getStartX(), _pos.getStartZ());
+        return AltoGoal.chunk(_pos.getMinBlockX(), _pos.getMinBlockZ());
     }
 
     @Override

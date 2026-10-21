@@ -1,15 +1,15 @@
 package kaptainwutax.tungsten.task;
 
 import kaptainwutax.tungsten.Debug;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Epic sneak-bridge across a gap (TODO 7.2, first directed form). Extends a
@@ -52,9 +52,9 @@ public class BridgeTask {
         };
         if (d == null) {
             // infer from the player's facing (nearest horizontal cardinal)
-            ClientPlayerEntity p = MinecraftClient.getInstance().player;
+            LocalPlayer p = Minecraft.getInstance().player;
             if (p == null) return false;
-            float yaw = MathHelper.wrapDegrees(p.getYaw());
+            float yaw = Mth.wrapDegrees(p.getYRot(1.0f));
             if (yaw >= -45 && yaw < 45) d = Direction.SOUTH;      // +z
             else if (yaw >= 45 && yaw < 135) d = Direction.WEST;  // -x
             else if (yaw >= -135 && yaw < -45) d = Direction.EAST; // +x
@@ -80,7 +80,7 @@ public class BridgeTask {
      *  and bridges until the along-axis position reaches the target (for
      *  bedwars: bridge to the enemy island/bed). */
     public static boolean startTo(int tx, int ty, int tz) {
-        ClientPlayerEntity p = MinecraftClient.getInstance().player;
+        LocalPlayer p = Minecraft.getInstance().player;
         if (p == null) return false;
         double dx = tx + 0.5 - p.getX(), dz = tz + 0.5 - p.getZ();
         if (Math.abs(dx) >= Math.abs(dz)) {
@@ -94,22 +94,22 @@ public class BridgeTask {
 
     public static void stop() {
         active = false;
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc.options != null) {
-            mc.options.sneakKey.setPressed(false);
-            mc.options.forwardKey.setPressed(false);
-            mc.options.useKey.setPressed(false);
-            mc.options.sprintKey.setPressed(false);
+            mc.options.keyShift.setDown(false);
+            mc.options.keyUp.setDown(false);
+            mc.options.keyUse.setDown(false);
+            mc.options.keySprint.setDown(false);
         }
         kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.clearTarget();
         kaptainwutax.tungsten.TungstenModRenderContainer.TEST.clear();
     }
 
     /** Called every game tick from MixinClientPlayerEntity. */
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         if (!active) return;
-        MinecraftClient mc = MinecraftClient.getInstance();
-        var world = player.getEntityWorld();
+        Minecraft mc = Minecraft.getInstance();
+        var world = player.level();
         var opts = mc.options;
 
         // PER-TICK TRACE, because three hypotheses about this abort have now been wrong. It prints
@@ -119,20 +119,20 @@ public class BridgeTask {
             System.out.println(String.format(
                     "BRIDGETRACE pos=(%.2f,%.2f,%.2f) vel=%.3f ground=%b sneakPose=%b placed=%d",
                     player.getX(), player.getY(), player.getZ(),
-                    player.getVelocity().y, player.isOnGround(), player.isInSneakingPose(), placed));
+                    player.getDeltaMovement().y, player.onGround(), player.isCrouching(), placed));
         }
-        if (player.getVelocity().y < -0.5) { // falling — paving fell behind
+        if (player.getDeltaMovement().y < -0.5) { // falling — paving fell behind
             Debug.logMessage("Bridge aborted (falling) after " + placed
                     + String.format(" at (%.2f,%.2f,%.2f) vel=%.3f ground=%b sneak=%b",
                     player.getX(), player.getY(), player.getZ(),
-                    player.getVelocity().y, player.isOnGround(), player.isInSneakingPose()));
+                    player.getDeltaMovement().y, player.onGround(), player.isCrouching()));
             stop();
             return;
         }
         // stop once we've advanced the requested number of blocks
         double along = dir.getAxis() == Direction.Axis.X ? player.getX() : player.getZ();
         if (Double.isNaN(startAlong)) startAlong = along;
-        double advanced = dir.getDirection() == Direction.AxisDirection.POSITIVE
+        double advanced = dir.getAxisDirection() == Direction.AxisDirection.POSITIVE
                 ? along - startAlong : startAlong - along;
         if (advanced >= blocksRequested) {
             Debug.logMessage("Bridge done: " + (int) advanced + " blocks");
@@ -164,16 +164,16 @@ public class BridgeTask {
         //
         // Walk the support back along the bridge until it is solid, which is what "the block the
         // player stands on" means when the player is sneaking over a ledge.
-        BlockPos support = BlockPos.ofFloored(player.getX(), player.getY() - 0.1, player.getZ());
+        BlockPos support = BlockPos.containing(player.getX(), player.getY() - 0.1, player.getZ());
         for (int back = 0; back < 2 && isAir(world, support); back++) {
-            support = support.offset(dir.getOpposite());
+            support = support.relative(dir.getOpposite());
         }
         // Continuous godbridge model: NO sneak, walk forward, and PAVE the floor
         // ahead every tick so a flat block always exists before our feet reach
         // the edge — targetCell is at the SAME level as support, so it's flat
         // ground: nothing to fall off. Pace vs place-rate keeps us supported.
-        BlockPos targetCell = support.offset(dir);
-        Vec3d eye = player.getEyePos();
+        BlockPos targetCell = support.relative(dir);
+        Vec3 eye = player.getEyePosition();
 
         // DO NOT OUTRUN THE FLOOR. The godbridge model above — sprint and pave on the move,
         // never sneak — only holds while the placement is INSTANT, and it was: the old code
@@ -196,7 +196,7 @@ public class BridgeTask {
         // (centre = edge + 0.3, the 0.6-wide box keeping support), which is the only place from
         // which the block's side face can be seen at all.
         boolean floorAhead = !isAir(world, targetCell);
-        boolean floorTwoAhead = !isAir(world, targetCell.offset(dir));
+        boolean floorTwoAhead = !isAir(world, targetCell.relative(dir));
         boolean lipNear = !floorAhead || !floorTwoAhead;
         // WALK ALONG THE BRIDGE, NOT ALONG THE CAMERA. forwardKey moves the body wherever the
         // camera happens to point, and this task points the camera at the FACE it is placing
@@ -209,13 +209,13 @@ public class BridgeTask {
         // resolve a tick's inputs in a DECLARED facing while the camera is still travelling, and
         // that mechanism's own javadoc cites a fall into the void as the trace it was built from.
         // BridgeTask never declared a frame, so it fell into the void the mechanism was written
-        // for. The frame is cleared globally at the end of ClientPlayerEntity.tick, so declaring
+        // for. The frame is cleared globally at the end of LocalPlayer.tick, so declaring
         // it here owns this tick only.
         kaptainwutax.tungsten.path.movements.Movement.motionYaw =
                 dir.getAxis() == Direction.Axis.X
-                        ? (dir.getOffsetX() > 0 ? -90.0f : 90.0f)
-                        : (dir.getOffsetZ() > 0 ? 0.0f : 180.0f);
-        kaptainwutax.tungsten.path.movements.Movement.motionPitch = player.getPitch();
+                        ? (dir.getStepX() > 0 ? -90.0f : 90.0f)
+                        : (dir.getStepZ() > 0 ? 0.0f : 180.0f);
+        kaptainwutax.tungsten.path.movements.Movement.motionPitch = player.getXRot(1.0f);
         // AT THE LIP, TURN ROUND — the backplace, which this task never had. Walking forward and
         // LOOKING forward cannot work at the edge, and the trace said so exactly: parked at the
         // sneak limit, "101 ticks at (1.29,-60.00,0.50), the face never came into view". The eye
@@ -227,10 +227,10 @@ public class BridgeTask {
         // you are standing on, press MOVE_BACK — which carries the body FORWARD in the world while
         // the camera keeps looking at the face — and sneak so stepping over the empty cell is not
         // a fall. The new block appears beneath you. That is why a bot bridges walking backwards.
-        opts.sneakKey.setPressed(lipNear);
-        opts.forwardKey.setPressed(!lipNear);
-        opts.backKey.setPressed(lipNear);
-        opts.sprintKey.setPressed(!lipNear);
+        opts.keyShift.setDown(lipNear);
+        opts.keyUp.setDown(!lipNear);
+        opts.keyDown.setDown(lipNear);
+        opts.keySprint.setDown(!lipNear);
         player.setSprinting(!lipNear);
 
         // aim: prefer paving the cell 2 ahead as well so a fast walk never
@@ -240,8 +240,8 @@ public class BridgeTask {
         Direction side = dir;
         if (isAir(world, targetCell)) {
             toPlace = targetCell; against = support;           // side face of the block we're on
-        } else if (isAir(world, targetCell.offset(dir))) {
-            toPlace = targetCell.offset(dir); against = targetCell; // extend one more ahead
+        } else if (isAir(world, targetCell.relative(dir))) {
+            toPlace = targetCell.relative(dir); against = targetCell; // extend one more ahead
         }
 
         // Visualize the WHOLE remaining bridge (green), not just the next cell — a single-cell
@@ -253,11 +253,11 @@ public class BridgeTask {
         for (int i = 0; i < remaining; i++) {
             boolean current = i == 0;
             kaptainwutax.tungsten.TungstenModRenderContainer.PLACE_PLAN.add(new kaptainwutax.tungsten.render.Cuboid(
-                    new Vec3d(cell.getX() + 0.1, cell.getY() + (current ? 0.1 : 0.4), cell.getZ() + 0.1),
-                    new Vec3d(0.8, current ? 0.3 : 0.2, 0.8),
+                    new Vec3(cell.getX() + 0.1, cell.getY() + (current ? 0.1 : 0.4), cell.getZ() + 0.1),
+                    new Vec3(0.8, current ? 0.3 : 0.2, 0.8),
                     current ? new kaptainwutax.tungsten.render.Color(60, 255, 120)
                             : new kaptainwutax.tungsten.render.Color(60, 200, 110)));
-            cell = cell.offset(dir);
+            cell = cell.relative(dir);
         }
 
         aimingToPlace = false;
@@ -269,8 +269,8 @@ public class BridgeTask {
         }
 
         if (toPlace != null) {
-            Vec3d faceCenter = Vec3d.ofCenter(against).add(Vec3d.of(dir.getVector()).multiply(0.5));
-            Vec3d dv = faceCenter.subtract(eye);
+            Vec3 faceCenter = net.minecraft.world.phys.Vec3.atCenterOf(against).add(Vec3.atLowerCornerOf(dir.getUnitVec3i()).scale(0.5));
+            Vec3 dv = faceCenter.subtract(eye);
             // Humanized aim: never setYaw/setPitch (anti-cheat flags it instantly)
             // — feed the target to WindMouse, which rotates via the vanilla mouse
             // pipeline so the server sees physical-mouse steps. The placement then WAITS for
@@ -283,7 +283,7 @@ public class BridgeTask {
                 // PathExecutor.tickPlacing:650-656 verbatim in intent: the yaw runs FROM the cell
                 // being paved TOWARDS the head, which is "facing back up the bridge". The pitch
                 // stays on the face — it is the same face, seen from the other side.
-                Vec3d back = eye.subtract(Vec3d.ofCenter(toPlace));
+                Vec3 back = eye.subtract(net.minecraft.world.phys.Vec3.atCenterOf(toPlace));
                 wantYaw = (float) Math.toDegrees(-Math.atan2(back.x, back.z));
             }
             kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.setTarget(wantYaw, wantPitch);
@@ -291,7 +291,7 @@ public class BridgeTask {
             // motion frame is the reverse of the bridge axis so "back" resolves to forward along it.
             if (lipNear) {
                 kaptainwutax.tungsten.path.movements.Movement.motionYaw = wantYaw;
-                kaptainwutax.tungsten.path.movements.Movement.motionPitch = player.getPitch();
+                kaptainwutax.tungsten.path.movements.Movement.motionPitch = player.getXRot(1.0f);
             }
             aimingToPlace = true;   // standing still to aim is work, not a stall
             BlockHitResult hit =
@@ -303,16 +303,16 @@ public class BridgeTask {
                 var live = kaptainwutax.tungsten.path.movements.RotationHelper.liveHit(player);
                 String what = "null";
                 if (live instanceof BlockHitResult lb
-                        && live.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK) {
-                    what = lb.getBlockPos().toShortString() + " side=" + lb.getSide()
-                            + " -> fills " + lb.getBlockPos().offset(lb.getSide()).toShortString();
+                        && live.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                    what = lb.getBlockPos().toShortString() + " side=" + lb.getDirection()
+                            + " -> fills " + lb.getBlockPos().relative(lb.getDirection()).toShortString();
                 } else if (live != null) {
                     what = String.valueOf(live.getType());
                 }
                 System.out.println(String.format(
                         "BRIDGEAIM want=%s against=%s wantYaw=%.1f/%.1f wantPitch=%.1f/%.1f hit=%s",
                         toPlace.toShortString(), against.toShortString(),
-                        wantYaw, player.getYaw(), wantPitch, player.getPitch(), what));
+                        wantYaw, player.getYRot(1.0f), wantPitch, player.getXRot(1.0f), what));
             }
             // Rate through the shared gate (helpers/BlockPlaceHelper): this ticks once per client
             // tick, and a bridge is the exact case where placing every tick looks inhuman.
@@ -364,7 +364,7 @@ public class BridgeTask {
         }
     }
 
-    private static boolean isAir(net.minecraft.world.WorldView w, BlockPos p) {
+    private static boolean isAir(net.minecraft.world.level.LevelReader w, BlockPos p) {
         return w.getBlockState(p).getCollisionShape(w, p).isEmpty();
     }
 }

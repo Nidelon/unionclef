@@ -12,10 +12,10 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 
 import java.util.Optional;
 
@@ -90,7 +90,7 @@ public class SelfCareTask extends Task {
         boolean hasDiamondArmorSet = StorageHelper.isArmorEquippedAll(diamondArmorSet);
         boolean hasNetheriteToolSet = mod.getItemStorage().hasItem(netheriteToolSet);
         boolean hasNetheriteArmorSet = StorageHelper.isArmorEquippedAll(netheriteArmorSet);
-        Optional<Entity> player = mod.getEntityTracker().getClosestEntity(PlayerEntity.class);
+        Optional<Entity> player = mod.getEntityTracker().getClosestEntity(Player.class);
         if (hasBed && WorldHelper.canSleep()) {
             setDebugState("Sleeping through night");
             return sleepThroughNight;

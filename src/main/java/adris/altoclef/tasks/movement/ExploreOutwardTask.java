@@ -2,7 +2,7 @@ package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Walk away from here in a straight line, leg after leg, turning only when a leg stops making
@@ -43,7 +43,7 @@ public class ExploreOutwardTask extends Task {
      *  a bed, a fight or a meal took in between. */
     private static long activeMs, legProgressMs, lastTickMs;
     /** Where the body was when the current leg started, and whether the build engine has had a go. */
-    private static Vec3d legStartPos;
+    private static Vec3 legStartPos;
     private static boolean legEscapeTried;
     public static volatile int legsStarted, legsTurned, escapes;
 
@@ -54,7 +54,7 @@ public class ExploreOutwardTask extends Task {
     @Override
     protected Task onTick() {
         AltoClef mod = AltoClef.getInstance();
-        Vec3d pos = mod.getPlayer().getPos();
+        Vec3 pos = mod.getPlayer().position();
         long now = System.currentTimeMillis();
         if (now - lastTickMs > SEARCH_FORGET_MS) {
             heading = Double.NaN;
@@ -76,7 +76,7 @@ public class ExploreOutwardTask extends Task {
             return null;
         }
         if (Double.isNaN(heading)) {
-            heading = Math.toRadians(mod.getPlayer().getYaw() + 90);   // where it faces
+            heading = Math.toRadians(mod.getPlayer().getYRot(1.0f) + 90);   // where it faces
         }
         if (hasLeg) {
             double d = Math.hypot(legX + 0.5 - pos.x, legZ + 0.5 - pos.z);

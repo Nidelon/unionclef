@@ -13,15 +13,15 @@ import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Rotation;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ChatScreen;
-import net.minecraft.client.gui.screen.DeathScreen;
-import net.minecraft.client.gui.screen.GameMenuScreen;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.ContainerInput;
 
 import java.util.Optional;
 
@@ -117,8 +117,8 @@ public class PlayerInteractionFixChain extends TaskChain {
                                         "Found better tool in inventory, equipping: hand=%s -> %s (slot %s, hand slot %s, screen=%s, swaps=%d)",
                                         StorageHelper.getItemStackInSlot(currentEquipped).getItem(), bestToolItem,
                                         bestToolSlot.get(), currentEquipped,
-                                        mod.getPlayer().currentScreenHandler == null ? "-"
-                                                : mod.getPlayer().currentScreenHandler.getClass().getSimpleName(),
+                                        mod.getPlayer().containerMenu == null ? "-"
+                                                : mod.getPlayer().containerMenu.getClass().getSimpleName(),
                                         fixToolSwaps));
                             }
                             mod.getSlotHandler().forceEquipItem(bestToolItem);
@@ -151,7 +151,7 @@ public class PlayerInteractionFixChain extends TaskChain {
 
         if (currentStack != null && !currentStack.isEmpty()) {
             //noinspection PointlessNullCheck
-            if (lastHandStack == null || !ItemStack.areEqual(currentStack, lastHandStack)) {
+            if (lastHandStack == null || !ItemStack.matches(currentStack, lastHandStack)) {
                 // We're holding a new item in our stack!
                 stackHeldTimeout.reset();
                 lastHandStack = currentStack.copy();
@@ -165,17 +165,17 @@ public class PlayerInteractionFixChain extends TaskChain {
         if (lastHandStack != null && stackHeldTimeout.elapsed()) {
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(lastHandStack, false);
             if (moveTo.isPresent()) {
-                mod.getSlotHandler().clickSlot(moveTo.get(), 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                 return Float.NEGATIVE_INFINITY;
             }
             if (ItemHelper.canThrowAwayStack(mod, StorageHelper.getItemStackInCursorSlot())) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 return Float.NEGATIVE_INFINITY;
             }
             Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
             // Try throwing away cursor slot if it's garbage
             if (garbage.isPresent()) {
-                mod.getSlotHandler().clickSlot(garbage.get(), 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                 return Float.NEGATIVE_INFINITY;
             }
             // ⛔ THIS ASKS "MAY I THROW THIS AWAY", IS TOLD NO, AND THROWS IT AWAY.
@@ -198,7 +198,7 @@ public class PlayerInteractionFixChain extends TaskChain {
                 fixKeptCursor++;
                 return Float.NEGATIVE_INFINITY;
             }
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             return Float.NEGATIVE_INFINITY;
         }
 
@@ -208,20 +208,20 @@ public class PlayerInteractionFixChain extends TaskChain {
             if (!cursorStack.isEmpty()) {
                 Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
                 if (moveTo.isPresent()) {
-                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                     return Float.NEGATIVE_INFINITY;
                 }
                 if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                     return Float.NEGATIVE_INFINITY;
                 }
                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
                 // Try throwing away cursor slot if it's garbage
                 if (garbage.isPresent()) {
-                    mod.getSlotHandler().clickSlot(garbage.get(), 0, SlotActionType.PICKUP);
+                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                     return Float.NEGATIVE_INFINITY;
                 }
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             } else {
                 StorageHelper.closeScreen();
             }
@@ -236,12 +236,12 @@ public class PlayerInteractionFixChain extends TaskChain {
             return false;
 
         // Only check look if we've had the same screen open for a while
-        Screen openScreen = MinecraftClient.getInstance().currentScreen;
+        Screen openScreen = Minecraft.getInstance().gui.screen();
         if (openScreen != lastScreen) {
             mouseMovingButScreenOpenTimeout.reset();
         }
         // We're in the player screen/a screen we DON'T want to cancel out of
-        if (openScreen == null || openScreen instanceof ChatScreen || openScreen instanceof GameMenuScreen || openScreen instanceof DeathScreen) {
+        if (openScreen == null || openScreen instanceof ChatScreen || openScreen instanceof PauseScreen || openScreen instanceof DeathScreen) {
             mouseMovingButScreenOpenTimeout.reset();
             return false;
         }

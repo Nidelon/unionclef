@@ -8,8 +8,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import kaptainwutax.tungsten.path.movements.Movement;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
 
 /**
  * Resolve a ported {@link Movement}'s direction keys in the facing that movement ASKED for, not in
@@ -42,10 +42,10 @@ import net.minecraft.entity.Entity;
 public class MixinEntityMotionYaw {
 
     @Shadow
-    private float yaw;
+    private float yRot;
 
     @Shadow
-    private float pitch;
+    private float xRot;
 
     @Unique
     private float tungsten$savedYaw;
@@ -56,10 +56,10 @@ public class MixinEntityMotionYaw {
     @Unique
     private boolean tungsten$swapped;
 
-    @Inject(method = "updateVelocity", at = @At("HEAD"))
+    @Inject(method = "moveRelative", at = @At("HEAD"))
     private void tungsten$motionFrameHead(CallbackInfo ci) {
         tungsten$swapped = false;
-        if (!(((Object) this) instanceof ClientPlayerEntity)) {
+        if (!(((Object) this) instanceof LocalPlayer)) {
             return;
         }
         Float wantYaw = Movement.motionYaw;
@@ -67,20 +67,20 @@ public class MixinEntityMotionYaw {
             return;
         }
         Float wantPitch = Movement.motionPitch;
-        tungsten$savedYaw = this.yaw;
-        tungsten$savedPitch = this.pitch;
-        this.yaw = wantYaw;
+        tungsten$savedYaw = this.yRot;
+        tungsten$savedPitch = this.xRot;
+        this.yRot = wantYaw;
         if (wantPitch != null) {
-            this.pitch = wantPitch;
+            this.xRot = wantPitch;
         }
         tungsten$swapped = true;
     }
 
-    @Inject(method = "updateVelocity", at = @At("RETURN"))
+    @Inject(method = "moveRelative", at = @At("RETURN"))
     private void tungsten$motionFrameReturn(CallbackInfo ci) {
         if (tungsten$swapped) {
-            this.yaw = tungsten$savedYaw;
-            this.pitch = tungsten$savedPitch;
+            this.yRot = tungsten$savedYaw;
+            this.xRot = tungsten$savedPitch;
             tungsten$swapped = false;
         }
     }

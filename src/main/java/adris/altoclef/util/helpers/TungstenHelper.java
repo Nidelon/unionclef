@@ -6,8 +6,8 @@ import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.TungstenModDataContainer;
 import kaptainwutax.tungsten.path.PathExecutor;
 import kaptainwutax.tungsten.path.PathFinder;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Tungsten pathfinder integration.
@@ -95,7 +95,7 @@ public class TungstenHelper {
      * Nine minutes of a 30-minute run went into exactly this case and the trace could not
      * say which it was.
      */
-    private static net.minecraft.util.math.Vec3d lockStartTargetPos;
+    private static net.minecraft.world.phys.Vec3 lockStartTargetPos;
 
     /**
      * Barren-lock streaks kept PER TARGET, because one shared streak is wiped by alternation.
@@ -155,14 +155,14 @@ public class TungstenHelper {
     /**
      * Walk to a coordinate. NOT an entity pursuit -- see the barren gate below.
      */
-    public static boolean tryPathTo(Vec3d target) {
+    public static boolean tryPathTo(Vec3 target) {
         return tryPathTo(target, false);
     }
 
     /** Ticks the barren gate was skipped because the caller is not chasing an entity. */
     public static volatile int tpBarrenBypassed;
 
-    private static boolean tryPathTo(Vec3d target, boolean isEntityLock) {
+    private static boolean tryPathTo(Vec3 target, boolean isEntityLock) {
         if (!isTungstenLoaded()) { tpNotLoaded++; return false; }
         if (failCount >= MAX_FAIL_COUNT) { tpFailCount++; return false; }
         // Refuse to take a fresh 30-second window when the last two got nowhere. Without this the
@@ -218,7 +218,7 @@ public class TungstenHelper {
                     // Retargeting is for a target that MOVES. If it has not, keep the route.
                     lockRetargetDone++;
                     boolean targetStands = lastRetargetTarget != null
-                            && lastRetargetTarget.squaredDistanceTo(target)
+                            && lastRetargetTarget.distanceToSqr(target)
                                < kaptainwutax.tungsten.TungstenConfig.get().lockRetargetMoveBlocks
                                  * kaptainwutax.tungsten.TungstenConfig.get().lockRetargetMoveBlocks;
                     // KIND, NOT DISTANCE. A settled drop is a fixed point for ever, so replanning to it
@@ -226,9 +226,9 @@ public class TungstenHelper {
                     // which the lock anatomy showed is the twitching itself. Anything ALIVE may sit inside
                     // a small radius while never standing still, which is exactly how the 1.5-block
                     // threshold version stranded chase_terrain while a 0.35 one returned nothing.
-                    boolean settledDrop = lockedEntity instanceof net.minecraft.entity.ItemEntity
-                            && lockedEntity.isOnGround()
-                            && lockedEntity.getVelocity().horizontalLengthSquared() < 0.0025;
+                    boolean settledDrop = lockedEntity instanceof net.minecraft.world.entity.item.ItemEntity
+                            && lockedEntity.onGround()
+                            && lockedEntity.getDeltaMovement().horizontalDistanceSqr() < 0.0025;
                     boolean skipReplan =
                             (kaptainwutax.tungsten.TungstenConfig.get().lockSkipsReplanForSettledDrops
                              && settledDrop)
@@ -315,10 +315,10 @@ public class TungstenHelper {
             // than silently renewed. See isLocked().
             try {
                 lockStartDist = lockedEntity != null && !lockedEntity.isRemoved()
-                        ? player.getPos().distanceTo(lockedEntity.getPos()) : -1;
-                lockStartPlayerPos = player.getPos();
+                        ? player.position().distanceTo(lockedEntity.position()) : -1;
+                lockStartPlayerPos = player.position();
                 lockStartTargetPos = lockedEntity != null && !lockedEntity.isRemoved()
-                        ? lockedEntity.getPos() : null;
+                        ? lockedEntity.position() : null;
             } catch (Exception ignored) {
                 lockStartDist = -1;
                 lockStartPlayerPos = null;
@@ -350,7 +350,7 @@ public class TungstenHelper {
             barrenStreak = 0;
         }
         lockedEntity = entity;
-        return tryPathTo(entity.getPos(), true);
+        return tryPathTo(entity.position(), true);
     }
 
     /**
@@ -360,7 +360,7 @@ public class TungstenHelper {
     public static boolean tickLock() {
         if (!isLocked()) return false;
         if (lockedEntity != null && !lockedEntity.isRemoved()) {
-            tryPathTo(lockedEntity.getPos());
+            tryPathTo(lockedEntity.position());
         }
         return true;
     }
@@ -385,7 +385,7 @@ public class TungstenHelper {
      * behaviour change: {@code type:startDist>endDist,body-moved}. Three entries is enough to see
      * whether the barren locks are one target refusing repeatedly or a different one each time.
      */
-    private static net.minecraft.util.math.Vec3d lockStartPlayerPos = null;
+    private static net.minecraft.world.phys.Vec3 lockStartPlayerPos = null;
     private static final java.util.Deque<String> barrenGeom = new java.util.ArrayDeque<>();
     /** Locks that expired without the bot getting closer, and locks that made progress. */
     public static volatile int lockBarren, lockProductive;
@@ -421,7 +421,7 @@ public class TungstenHelper {
      */
     /** Replans inside a lock: actually done, and skipped because the target stood still. */
     public static volatile int lockRetargetDone, lockRetargetSkipped;
-    private static net.minecraft.util.math.Vec3d lastRetargetTarget;
+    private static net.minecraft.world.phys.Vec3 lastRetargetTarget;
 
     public static volatile int lockTicks, lockSearching, lockExecuting, lockWalking,
             lockQueue, lockIdle, lockMoved;
@@ -433,7 +433,7 @@ public class TungstenHelper {
     /** Consecutive ticks this lock has sat with no search, executor, queue or walker behind it. */
     private static int idleStreak;
 
-    private static net.minecraft.util.math.Vec3d lockLastPos;
+    private static net.minecraft.world.phys.Vec3 lockLastPos;
 
     /** Called once per client tick from AltoClef.onClientTick. Reads only; presses nothing. */
     public static void tickLockAnatomy() {
@@ -476,10 +476,10 @@ public class TungstenHelper {
             // as no driver at all in every counter above, and they need different fixes.
             var self = AltoClef.getInstance().getPlayer();
             if (self != null) {
-                if (lockLastPos != null && self.getPos().squaredDistanceTo(lockLastPos) > 0.0004) {
+                if (lockLastPos != null && self.position().distanceToSqr(lockLastPos) > 0.0004) {
                     lockMoved++;
                 }
-                lockLastPos = self.getPos();
+                lockLastPos = self.position();
             }
         } catch (Throwable ignored) {
             // an instrument must never be the thing that breaks a tick
@@ -537,7 +537,7 @@ public class TungstenHelper {
             }
             var player = AltoClef.getInstance().getPlayer();
             if (player == null) return;
-            double now = player.getPos().distanceTo(lockedEntity.getPos());
+            double now = player.position().distanceTo(lockedEntity.position());
             if (lockStartDist - now < LOCK_PROGRESS_BLOCKS) {
                 lockBarren++;
                 recordBarrenGeometry(player, now);
@@ -563,16 +563,16 @@ public class TungstenHelper {
     }
 
     /** What did this barren lock reach for, and did the body move? Never throws; an instrument. */
-    private static void recordBarrenGeometry(net.minecraft.entity.player.PlayerEntity player, double endDist) {
+    private static void recordBarrenGeometry(net.minecraft.world.entity.player.Player player, double endDist) {
         try {
-            double moved = lockStartPlayerPos == null ? -1 : player.getPos().distanceTo(lockStartPlayerPos);
+            double moved = lockStartPlayerPos == null ? -1 : player.position().distanceTo(lockStartPlayerPos);
             // DID THE TARGET MOVE? Without this, 'it ran away' and 'we could not reach it'
             // are the same reading, and they need opposite fixes.
             double tMoved = (lockStartTargetPos == null || lockedEntity == null
                     || lockedEntity.isRemoved())
-                    ? -1 : lockedEntity.getPos().distanceTo(lockStartTargetPos);
-            String what = lockedEntity instanceof net.minecraft.entity.ItemEntity item
-                    ? item.getStack().getItem().toString() : lockedEntity.getType().toString();
+                    ? -1 : lockedEntity.position().distanceTo(lockStartTargetPos);
+            String what = lockedEntity instanceof net.minecraft.world.entity.item.ItemEntity item
+                    ? item.getItem().getItem().toString() : lockedEntity.getType().toString();
             // Trim the namespace so a course line stays readable next to twenty other counters.
             int dot = what.lastIndexOf('.');
             if (dot >= 0) what = what.substring(dot + 1);
@@ -585,9 +585,9 @@ public class TungstenHelper {
             // target nearly underfoot the horizontal bearing is ill-conditioned, and a fifth of a
             // block of drift swings the wanted yaw by ninety degrees. Measured: aimed on 88 of 241
             // ticks, closer on 9.
-            var lp = lockedEntity.getPos();
-            double dy = lp.y - player.getPos().y;
-            double horiz = Math.hypot(lp.x - player.getPos().x, lp.z - player.getPos().z);
+            var lp = lockedEntity.position();
+            double dy = lp.y - player.position().y;
+            double horiz = Math.hypot(lp.x - player.position().x, lp.z - player.position().z);
             // ⛔ AND NAME THE TASK THAT OWNED THE BOT. dy=-1.0 in all twenty-one barren locks made
             // the geometry look like the answer, and then the control refused it: pickup_pit is the
             // SAME drop-one-block-down geometry and reads lock=0/0/0 over four runs -- not a barren
@@ -679,13 +679,13 @@ public class TungstenHelper {
      */
     public static void holdStill() {
         try {
-            var opts = net.minecraft.client.MinecraftClient.getInstance().options;
+            var opts = net.minecraft.client.Minecraft.getInstance().options;
             if (opts == null) return;
-            opts.forwardKey.setPressed(false);
-            opts.backKey.setPressed(false);
-            opts.leftKey.setPressed(false);
-            opts.rightKey.setPressed(false);
-            opts.jumpKey.setPressed(false);
+            opts.keyUp.setDown(false);
+            opts.keyDown.setDown(false);
+            opts.keyLeft.setDown(false);
+            opts.keyRight.setDown(false);
+            opts.keyJump.setDown(false);
         } catch (Exception ignored) {
             // never let a hold be the thing that breaks a tick
         }
@@ -771,7 +771,7 @@ public class TungstenHelper {
         barrenStreak = 0;
     }
 
-    private static String formatVec(Vec3d v) {
+    private static String formatVec(Vec3 v) {
         return String.format("(%.0f, %.0f, %.0f)", v.x, v.y, v.z);
     }
 }

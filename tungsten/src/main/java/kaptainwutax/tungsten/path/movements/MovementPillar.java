@@ -7,22 +7,22 @@ import kaptainwutax.tungsten.TungstenModDataContainer;
 import kaptainwutax.tungsten.path.PlaceRules;
 import kaptainwutax.tungsten.path.calculators.ActionCosts;
 import kaptainwutax.tungsten.world.BetterBlockPos;
-import net.minecraft.block.AirBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.CarpetBlock;
-import net.minecraft.block.FallingBlock;
-import net.minecraft.block.FenceGateBlock;
-import net.minecraft.block.LadderBlock;
-import net.minecraft.block.SlabBlock;
-import net.minecraft.block.enums.SlabType;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.BlockItem;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.AirBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CarpetBlock;
+import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.LadderBlock;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 import java.util.Set;
 
@@ -75,9 +75,9 @@ import java.util.Set;
  *       {@code ctx.playerFeet()} / {@code ctx.playerHead()} / {@code ctx.playerRotations()} /
  *       {@code ctx.isLookingAt(pos)} / {@code ctx.blockReachDistance()} below is upstream's own line.
  *   <li>{@code BlockStateInterface.get(ctx, pos)} → {@code ctx.world().getBlockState(pos)};
- *       {@code context.get(x, y, z)} → {@link #stateAt} with a per-call {@link BlockPos.Mutable} so
+ *       {@code context.get(x, y, z)} → {@link #stateAt} with a per-call {@link net.minecraft.core.BlockPos.MutableBlockPos} so
  *       the planner's hot loop does not allocate a position per read.
- *   <li>{@code CalculationContext} → {@code (WorldView world, PlayerEntity player)}, the signature
+ *   <li>{@code CalculationContext} → {@code (LevelReader world, Player player)}, the signature
  *       unit 3 of the spec specifies, matching {@code MovementTraverse.cost}.
  *   <li>{@code InventoryBehavior.selectThrowawayForLocation(true, x, y, z)} → {@link #equipThrowaway}
  *       (altoclef owns the inventory; tungsten only has the hook and the main hand).
@@ -93,7 +93,7 @@ import java.util.Set;
  *       than a magic 3.1633.
  *   <li>tungsten's {@link BetterBlockPos} is the mojmap-named port: upstream's
  *       {@code up()/down()/offset(dir)} are spelled {@code above()/below()/relative(dir)} here.
- *       Calling the inherited yarn {@code BlockPos.up()} would compile and return the wrong TYPE, so
+ *       Calling the inherited yarn {@code BlockPos.above()} would compile and return the wrong TYPE, so
  *       these renames are mandatory, not cosmetic.
  *   <li>{@code logDirect} → {@code Debug.logMessage}.
  * </ul>
@@ -134,7 +134,7 @@ public class MovementPillar extends Movement {
     }
 
     @Override
-    public double calculateCost(WorldView world, ClientPlayerEntity player) {
+    public double calculateCost(LevelReader world, LocalPlayer player) {
         return cost(world, player, src.x, src.y, src.z);
     }
 
@@ -143,8 +143,8 @@ public class MovementPillar extends Movement {
         return ImmutableSet.of(src, dest);
     }
 
-    public static double cost(WorldView world, PlayerEntity player, int x, int y, int z) {
-        BlockPos.Mutable scratch = new BlockPos.Mutable();
+    public static double cost(LevelReader world, Player player, int x, int y, int z) {
+        net.minecraft.core.BlockPos.MutableBlockPos scratch = new net.minecraft.core.BlockPos.MutableBlockPos();
         BlockState fromState = stateAt(world, scratch, x, y, z);
         Block from = fromState.getBlock();
         boolean ladder = from == Blocks.LADDER || from == Blocks.VINE;
@@ -153,7 +153,7 @@ public class MovementPillar extends Movement {
             if (fromDown.getBlock() == Blocks.LADDER || fromDown.getBlock() == Blocks.VINE) {
                 return COST_INF; // can't pillar from a ladder or vine onto something that isn't also climbable
             }
-            if (fromDown.getBlock() instanceof SlabBlock && fromDown.get(SlabBlock.TYPE) == SlabType.BOTTOM) {
+            if (fromDown.getBlock() instanceof SlabBlock && fromDown.getValue(SlabBlock.TYPE) == SlabType.BOTTOM) {
                 return COST_INF; // can't pillar up from a bottom slab onto a non ladder
             }
         }
@@ -227,15 +227,15 @@ public class MovementPillar extends Movement {
         }
     }
 
-    public static boolean hasAgainst(WorldView world, int x, int y, int z) {
-        BlockPos.Mutable scratch = new BlockPos.Mutable();
+    public static boolean hasAgainst(LevelReader world, int x, int y, int z) {
+        net.minecraft.core.BlockPos.MutableBlockPos scratch = new net.minecraft.core.BlockPos.MutableBlockPos();
         return MovementHelperB.isBlockNormalCube(stateAt(world, scratch, x + 1, y, z)) ||
                 MovementHelperB.isBlockNormalCube(stateAt(world, scratch, x - 1, y, z)) ||
                 MovementHelperB.isBlockNormalCube(stateAt(world, scratch, x, y, z + 1)) ||
                 MovementHelperB.isBlockNormalCube(stateAt(world, scratch, x, y, z - 1));
     }
 
-    public static BlockPos getAgainst(WorldView world, BetterBlockPos vine) {
+    public static BlockPos getAgainst(LevelReader world, BetterBlockPos vine) {
         if (MovementHelperB.isBlockNormalCube(world.getBlockState(vine.north()))) {
             return vine.north();
         }
@@ -263,13 +263,13 @@ public class MovementPillar extends Movement {
             return state.setStatus(MovementStatus.UNREACHABLE);
         }
 
-        ClientPlayerEntity player = ctx.player();
+        LocalPlayer player = ctx.player();
         BlockState fromDown = ctx.world().getBlockState(src); // NB: reads src, not src.below(); upstream's name is off by one, the value is right
         if (MovementHelperB.isWater(fromDown) && MovementHelperB.isWater(ctx.world().getBlockState(dest))) {
             // stay centered while swimming up a water column
             state.setTarget(new MovementState.MovementTarget(RotationHelper.calcRotationFromVec3d(ctx.playerHead(), RotationHelper.getBlockPosCenter(dest), ctx.playerRotations()), false));
-            Vec3d destCenter = RotationHelper.getBlockPosCenter(dest);
-            if (Math.abs(player.getEntityPos().x - destCenter.x) > 0.2 || Math.abs(player.getEntityPos().z - destCenter.z) > 0.2) {
+            Vec3 destCenter = RotationHelper.getBlockPosCenter(dest);
+            if (Math.abs(player.position().x - destCenter.x) > 0.2 || Math.abs(player.position().z - destCenter.z) > 0.2) {
                 state.setInput(Input.MOVE_FORWARD, true);
             }
             if (ctx.playerFeet().equals(dest)) {
@@ -291,13 +291,13 @@ public class MovementPillar extends Movement {
 
         boolean blockIsThere = MovementHelperB.canWalkOn(ctx.world(), src) || ladder;
         if (ladder) {
-            BlockPos against = vine ? getAgainst(ctx.world(), src) : src.relative(fromDown.get(LadderBlock.FACING).getOpposite());
+            BlockPos against = vine ? getAgainst(ctx.world(), src) : src.relative(fromDown.getValue(LadderBlock.FACING).getOpposite());
             if (against == null) {
                 Debug.logMessage("Unable to climb vines. Consider disabling allowVines.");
                 return state.setStatus(MovementStatus.UNREACHABLE);
             }
 
-            if (ctx.playerFeet().equals(against.up()) || ctx.playerFeet().equals(dest)) {
+            if (ctx.playerFeet().equals(against.above()) || ctx.playerFeet().equals(dest)) {
                 return state.setStatus(MovementStatus.SUCCESS);
             }
             if (MovementHelperB.isBottomSlab(ctx.world().getBlockState(src.below()))) {
@@ -320,13 +320,13 @@ public class MovementPillar extends Movement {
             }
 
 
-            state.setInput(Input.SNEAK, player.getEntityPos().y > dest.getY() || player.getEntityPos().y < src.getY() + 0.2D); // delay placement by 1 tick for ncp compatibility
+            state.setInput(Input.SNEAK, player.position().y > dest.getY() || player.position().y < src.getY() + 0.2D); // delay placement by 1 tick for ncp compatibility
             // since (lower down) we only right click once player.isSneaking, and that happens the tick after we request to sneak
 
-            double diffX = player.getEntityPos().x - (dest.getX() + 0.5);
-            double diffZ = player.getEntityPos().z - (dest.getZ() + 0.5);
+            double diffX = player.position().x - (dest.getX() + 0.5);
+            double diffZ = player.position().z - (dest.getZ() + 0.5);
             double dist = Math.sqrt(diffX * diffX + diffZ * diffZ);
-            double flatMotion = Math.sqrt(player.getVelocity().x * player.getVelocity().x + player.getVelocity().z * player.getVelocity().z);
+            double flatMotion = Math.sqrt(player.getDeltaMovement().x * player.getDeltaMovement().x + player.getDeltaMovement().z * player.getDeltaMovement().z);
             if (dist > 0.17) {//why 0.17? because it seemed like a good number, that's why
                 //[explanation added after baritone port lol] also because it needs to be less than 0.2 because of the 0.3 sneak limit
                 //and 0.17 is reasonably less than 0.2
@@ -338,7 +338,7 @@ public class MovementPillar extends Movement {
                 state.setTarget(new MovementState.MovementTarget(rotation, true));
             } else if (flatMotion < 0.05) {
                 // If our Y coordinate is above our goal, stop jumping
-                state.setInput(Input.JUMP, player.getEntityPos().y < dest.getY());
+                state.setInput(Input.JUMP, player.position().y < dest.getY());
             }
 
 
@@ -346,14 +346,14 @@ public class MovementPillar extends Movement {
                 BlockState frState = ctx.world().getBlockState(src);
                 Block fr = frState.getBlock();
                 // TODO: Evaluate usage of getMaterial().isReplaceable()
-                if (!(fr instanceof AirBlock || frState.isReplaceable())) {
+                if (!(fr instanceof AirBlock || frState.canBeReplaced())) {
                     RotationHelper.reachable(player, src, ctx.blockReachDistance())
                             .map(rot -> new MovementState.MovementTarget(rot, true))
                             .ifPresent(state::setTarget);
                     state.setInput(Input.JUMP, false); // breaking is like 5x slower when you're jumping
                     state.setInput(Input.CLICK_LEFT, true);
                     blockIsThere = false;
-                } else if (player.isInSneakingPose() && (ctx.isLookingAt(src.below()) || ctx.isLookingAt(src)) && player.getEntityPos().y > dest.getY() + 0.1) {
+                } else if (player.isCrouching() && (ctx.isLookingAt(src.below()) || ctx.isLookingAt(src)) && player.position().y > dest.getY() + 0.1) {
                     // The sneaking POSE, not the sneak key: the pose lags the key by a tick and only
                     // then does the eye sit at 1.27 instead of 1.62, which is what the crosshair test
                     // above is raytraced from. And +0.1 above dest is the body having left the cell —
@@ -396,7 +396,7 @@ public class MovementPillar extends Movement {
      * {@code context.get(x, y, z)}. The scratch position is caller-owned and reused within a single
      * call; only BlockStates escape, never the position itself.
      */
-    private static BlockState stateAt(WorldView world, BlockPos.Mutable scratch, int x, int y, int z) {
+    private static BlockState stateAt(LevelReader world, net.minecraft.core.BlockPos.MutableBlockPos scratch, int x, int y, int z) {
         return world.getBlockState(scratch.set(x, y, z));
     }
 
@@ -414,7 +414,7 @@ public class MovementPillar extends Movement {
      * UNREACHABLE (MovementPillar.java:227-229) and the queue replans. No timeout is involved in
      * that, and adding one would hide a case {@link #costOfPlacingAt} already prices as COST_INF.
      */
-    private static boolean equipThrowaway(ClientPlayerEntity player, int x, int y, int z) {
+    private static boolean equipThrowaway(LocalPlayer player, int x, int y, int z) {
         Runnable hook = TungstenModDataContainer.equipBlockHook;
         if (hook != null) {
             try {
@@ -429,7 +429,7 @@ public class MovementPillar extends Movement {
         // so a pillar with a pickaxe in hand (i.e. straight after mining, the common case) went
         // UNREACHABLE on its first tick while a bridging traverse paved happily, because
         // attemptToPlaceABlock calls this same selector for free.
-        if (!kaptainwutax.tungsten.helpers.BlockPlaceHelper.isScaffold(player.getMainHandStack())) {
+        if (!kaptainwutax.tungsten.helpers.BlockPlaceHelper.isScaffold(player.getMainHandItem())) {
             MovementHelperB.selectThrowaway(player, true);
         }
         return hasThrowaway(player);
@@ -442,9 +442,9 @@ public class MovementPillar extends Movement {
      * altoclef's side of the hook. That is narrower than upstream and never wider: it can refuse a
      * pillar upstream would have planned, and cannot plan one it could not execute.
      */
-    private static boolean hasThrowaway(PlayerEntity player) {
+    private static boolean hasThrowaway(Player player) {
         return TungstenConfig.get().allowPlace
-                && kaptainwutax.tungsten.helpers.BlockPlaceHelper.isScaffold(player.getMainHandStack());
+                && kaptainwutax.tungsten.helpers.BlockPlaceHelper.isScaffold(player.getMainHandItem());
     }
 
     /**
@@ -457,7 +457,7 @@ public class MovementPillar extends Movement {
      * which upstream leaves to the caller. For a pillar the cell is the one our feet are in, so the
      * two agree in practice — noted because it is one refusal upstream does not have.
      */
-    private static double costOfPlacingAt(WorldView world, PlayerEntity player, int x, int y, int z, BlockState current) {
+    private static double costOfPlacingAt(LevelReader world, Player player, int x, int y, int z, BlockState current) {
         if (!hasThrowaway(player)) { // only true if allowPlace is true, see hasThrowaway
             return COST_INF;
         }

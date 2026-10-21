@@ -13,16 +13,16 @@ import kaptainwutax.tungsten.path.Node;
 import kaptainwutax.tungsten.path.PathInput;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode;
 import kaptainwutax.tungsten.render.Color;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.level.LevelReader;
 
 public class CornerJump {
 	
 	public static Node generateMove(Node parent, BlockNode nextBlockNode, boolean reverse) {
-		WorldView world = TungstenModDataContainer.world;
+		LevelReader world = TungstenModDataContainer.world;
 		Agent agent = parent.agent;
 
 		float desiredYaw = (float) DirectionHelper.calcYawFromVec3d(agent.getPos(), nextBlockNode.getPos(true));
@@ -32,7 +32,7 @@ public class CornerJump {
 	    // Go back
 //        for (int j = 0; j < 5; j++) {
 //            RenderHelper.renderNode(newNode);
-//            Box adjustedBox = newNode.agent.box.offset(0, -0.5, 0).expand(-0.45, 0, -0.45);
+//            AABB adjustedBox = newNode.agent.box.offset(0, -0.5, 0).expand(-0.45, 0, -0.45);
 //        	Stream<VoxelShape> blockCollisions = Streams.stream(agent.getBlockCollisions(TungstenMod.mc.world, adjustedBox));
 //        	if (blockCollisions.findAny().isEmpty()) break;
 //            newNode = new Node(newNode, world, new PathInput(false, true, false, false, false, false, false, agent.pitch, desiredYaw),
@@ -44,7 +44,7 @@ public class CornerJump {
         int limit = 0;
         desiredYaw += reverse ? -90f : 90f;
         while (limit < 18 && jump == false && newNode.agent.getPos().y > nextBlockNode.getBlockPos().getY()-2) {
-            Box adjustedBox = newNode.agent.box.offset(0, -0.5, 0).expand(-0.04, 0, -0.04);
+            AABB adjustedBox = newNode.agent.box.move(0, -0.5, 0).inflate(-0.04, 0, -0.04);
         	limit++;
         	Stream<VoxelShape> blockCollisions = Streams.stream(newNode.agent.getBlockCollisions(TungstenModDataContainer.world, adjustedBox));
 //        	RenderHelper.renderNode(newNode, TungstenMod.TEST);
@@ -68,9 +68,9 @@ public class CornerJump {
         limit = 0;
         if (nextBlockNode.previous == null) return null;
         Direction dir = DirectionHelper.getHorizontalDirectionFromPos(nextBlockNode.previous.getPos(), nextBlockNode.getPos());
-        Vec3d offsetVec = new Vec3d(0, 0, 0).offset(dir, 0.5);
+        Vec3 offsetVec = new Vec3(0, 0, 0).relative(dir, 0.5);
         while (limit < 40 && newNode.agent.getPos().y > nextBlockNode.getBlockPos().getY()-1) {
-            Box adjustedBox = newNode.agent.box.offset(offsetVec).expand(-0.001, 0, -0.001);
+            AABB adjustedBox = newNode.agent.box.move(offsetVec).inflate(-0.001, 0, -0.001);
         	limit++;
         	// ⛔ FIXED 2026-09-05: queried collisions via the STALE `agent` (= parent.agent, fixed
         	// before this loop) instead of `newNode.agent` (the current simulated tick), matching
@@ -97,7 +97,7 @@ public class CornerJump {
             newNode = new Node(newNode, world, new PathInput(true, false, false, false, false, false, true, agent.pitch, desiredYaw),
             		new Color(0, 255, 150), newNode.cost + 5);
         	limit++;
-        	if (newNode.agent.getPos().isWithinRangeOf(nextBlockNode.getPos(true), 0.7, 0.8)) break;
+        	if (newNode.agent.getPos().closerThan(nextBlockNode.getPos(true), 0.7, 0.8)) break;
         }
             
         return newNode;

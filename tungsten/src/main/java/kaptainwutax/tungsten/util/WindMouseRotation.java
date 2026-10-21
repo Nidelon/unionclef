@@ -1,7 +1,7 @@
 package kaptainwutax.tungsten.util;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 
 import java.util.Random;
 
@@ -122,7 +122,7 @@ public class WindMouseRotation {
      * Called per render frame from MixinInGameHud.
      * MixinMouse will inject these into cursorDeltaX/Y on next updateMouse().
      */
-    public void applyRenderStep(ClientPlayerEntity player) {
+    public void applyRenderStep(LocalPlayer player) {
         if (!hasTarget || player == null) return;
 
         // TODOS.md C6.11: this accumulated pixel deltas every frame regardless of screen state,
@@ -134,7 +134,7 @@ public class WindMouseRotation {
         // applied yet. lastStepMs is deliberately left unadvanced by this early return -- the
         // resuming frame sees one large frameMs, which the existing MAX_CATCHUP clamp below
         // already handles the same way it handles an ordinary hitch.
-        if (MinecraftClient.getInstance().currentScreen != null) return;
+        if (Minecraft.getInstance().gui.screen() != null) return;
 
         // Auto-release a stale target: an active consumer refreshes setTarget every
         // game tick, so anything older than STALE_MS means the driving task is gone.
@@ -163,8 +163,8 @@ public class WindMouseRotation {
         lastStepMs = nowMs;
         double rate = Math.max(1.0, Math.min(MAX_CATCHUP, frameMs / REF_FRAME_MS));
 
-        float currentYaw   = player.getYaw();
-        float currentPitch = player.getPitch();
+        float currentYaw   = player.getYRot(1.0f);
+        float currentPitch = player.getXRot(1.0f);
 
         double dYaw   = wrapDelta(targetYaw - currentYaw);
         double dPitch = targetPitch - currentPitch;
@@ -281,7 +281,7 @@ public class WindMouseRotation {
     }
 
     private static double getSensitivityScale() {
-        double sens = MinecraftClient.getInstance().options.getMouseSensitivity().getValue();
+        double sens = Minecraft.getInstance().options.sensitivity().get();
         double f = sens * 0.6 + 0.2;
         return f * f * f * 8.0;
     }
@@ -295,10 +295,10 @@ public class WindMouseRotation {
 
     public boolean hasTarget() { return hasTarget; }
 
-    public double distanceToTarget(ClientPlayerEntity player) {
+    public double distanceToTarget(LocalPlayer player) {
         if (!hasTarget || player == null) return 999;
-        double dYaw   = wrapDelta(targetYaw - player.getYaw());
-        double dPitch = targetPitch - player.getPitch();
+        double dYaw   = wrapDelta(targetYaw - player.getYRot(1.0f));
+        double dPitch = targetPitch - player.getXRot(1.0f);
         return Math.sqrt(dYaw * dYaw + dPitch * dPitch);
     }
 

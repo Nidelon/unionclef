@@ -1,6 +1,6 @@
 package adris.altoclef.eventbus.events.multiplayer;
 
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 
 public class ItemUseEvent {
     public Entity entity;

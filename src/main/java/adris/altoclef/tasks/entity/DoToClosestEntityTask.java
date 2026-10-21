@@ -3,8 +3,8 @@ package adris.altoclef.tasks.entity;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.AbstractDoToClosestObjectTask;
 import adris.altoclef.tasksystem.Task;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Arrays;
 import java.util.Optional;
@@ -20,20 +20,20 @@ public class DoToClosestEntityTask extends AbstractDoToClosestObjectTask<Entity>
 
     private final Class[] targetEntities;
 
-    private final Supplier<Vec3d> getOriginPos;
+    private final Supplier<Vec3> getOriginPos;
 
     private final Function<Entity, Task> getTargetTask;
 
     private final Predicate<Entity> shouldInteractWith;
 
-    public DoToClosestEntityTask(Supplier<Vec3d> getOriginSupplier, Function<Entity, Task> getTargetTask, Predicate<Entity> shouldInteractWith, Class... entities) {
+    public DoToClosestEntityTask(Supplier<Vec3> getOriginSupplier, Function<Entity, Task> getTargetTask, Predicate<Entity> shouldInteractWith, Class... entities) {
         getOriginPos = getOriginSupplier;
         this.getTargetTask = getTargetTask;
         this.shouldInteractWith = shouldInteractWith;
         targetEntities = entities;
     }
 
-    public DoToClosestEntityTask(Supplier<Vec3d> getOriginSupplier, Function<Entity, Task> getTargetTask, Class... entities) {
+    public DoToClosestEntityTask(Supplier<Vec3> getOriginSupplier, Function<Entity, Task> getTargetTask, Class... entities) {
         this(getOriginSupplier, getTargetTask, entity -> true, entities);
     }
 
@@ -46,22 +46,22 @@ public class DoToClosestEntityTask extends AbstractDoToClosestObjectTask<Entity>
     }
 
     @Override
-    protected Vec3d getPos(AltoClef mod, Entity obj) {
-        return obj.getPos();
+    protected Vec3 getPos(AltoClef mod, Entity obj) {
+        return obj.position();
     }
 
     @Override
-    protected Optional<Entity> getClosestTo(AltoClef mod, Vec3d pos) {
+    protected Optional<Entity> getClosestTo(AltoClef mod, Vec3 pos) {
         if (!mod.getEntityTracker().entityFound(targetEntities)) return Optional.empty();
         return mod.getEntityTracker().getClosestEntity(pos, shouldInteractWith, targetEntities);
     }
 
     @Override
-    protected Vec3d getOriginPos(AltoClef mod) {
+    protected Vec3 getOriginPos(AltoClef mod) {
         if (getOriginPos != null) {
             return getOriginPos.get();
         }
-        return mod.getPlayer().getPos();
+        return mod.getPlayer().position();
     }
 
     @Override

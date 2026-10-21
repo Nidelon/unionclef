@@ -1,17 +1,17 @@
 package kaptainwutax.tungsten.task;
 
 import kaptainwutax.tungsten.agent.Agent;
-import net.minecraft.block.AbstractFireBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.registry.tag.FluidTags;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.BaseFireBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Sidestep-an-incoming-arrow execution primitive: drive the movement keys along a world-space
@@ -102,21 +102,21 @@ public class ProjectileDodge {
      * small next to what the planner simulates per search, so it runs every tick an arrow is close.
      */
     public static synchronized void plan(double x, double z, int ticks,
-                                         Vec3d arrowPos, Vec3d arrowVel, double gravity) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        ClientPlayerEntity player = mc.player;
-        if (player == null || mc.world == null) return;
-        WorldView world = mc.world;
+                                         Vec3 arrowPos, Vec3 arrowVel, double gravity) {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null || mc.level == null) return;
+        LevelReader world = mc.level;
         searches++;
 
-        double yaw = Math.toRadians(player.getYaw());
+        double yaw = Math.toRadians(player.getYRot(1.0f));
         double fx = -Math.sin(yaw), fz = Math.cos(yaw);
         double rx = -fz, rz = fx;
         double pref = Math.hypot(x, z);
         double px = pref > 1e-6 ? x / pref : 0, pz = pref > 1e-6 ? z / pref : 0;
         // Already in water: every candidate touches it, and refusing them all would pin the body in
         // the arrow's path.
-        boolean startWet = player.isTouchingWater();
+        boolean startWet = player.isInWater();
 
         double bestScore = Double.NEGATIVE_INFINITY;
         int bestF = 0, bestS = 0;
@@ -126,7 +126,7 @@ public class ProjectileDodge {
             for (int s = -1; s <= 1; s++) {
                 boolean jump = j == 1;
                 // A jump only starts from the ground; in the air the candidate is the same as j=0.
-                if (jump && !player.isOnGround()) continue;
+                if (jump && !player.onGround()) continue;
                 double clear = simulate(player, world, f, s, jump, ticks, arrowPos, arrowVel, gravity, startWet);
                 if (Double.isNaN(clear)) {
                     searchRejected++;
@@ -171,17 +171,17 @@ public class ProjectileDodge {
      * The closest the arrow comes to the body under these keys, or NaN when the keys are unsafe.
      * {@code f}: +1 forward, -1 back; {@code s}: +1 right, -1 left (the frame {@link #tick} uses).
      */
-    private static double simulate(ClientPlayerEntity player, WorldView world, int f, int s, boolean jump, int ticks,
-                                   Vec3d arrowPos, Vec3d arrowVel, double gravity, boolean startWet) {
+    private static double simulate(LocalPlayer player, LevelReader world, int f, int s, boolean jump, int ticks,
+                                   Vec3 arrowPos, Vec3 arrowVel, double gravity, boolean startWet) {
         Agent sim = Agent.of(player);
-        sim.yaw = player.getYaw();
-        sim.pitch = player.getPitch();
+        sim.yaw = player.getYRot(1.0f);
+        sim.pitch = player.getXRot(1.0f);
         double startY = sim.posY;
         double ax = arrowPos.x, ay = arrowPos.y, az = arrowPos.z;
         double vx = arrowVel.x, vy = arrowVel.y, vz = arrowVel.z;
         double best = Double.POSITIVE_INFINITY;
         double prevX = sim.posX, prevY = sim.posY, prevZ = sim.posZ;
-        BlockPos.Mutable m = new BlockPos.Mutable();
+        net.minecraft.core.BlockPos.MutableBlockPos m = new net.minecraft.core.BlockPos.MutableBlockPos();
         for (int t = 0; t < ticks + SETTLE_TICKS; t++) {
             boolean keys = t < ticks;
             sim.keyForward = keys && f > 0;
@@ -193,7 +193,7 @@ public class ProjectileDodge {
             sim.keySneak = false;
             sim.tick(world);
             if (sim.isInLava() || (!startWet && sim.touchingWater)) return Double.NaN;
-            int bx = MathHelper.floor(sim.posX), by = MathHelper.floor(sim.posY + 0.01), bz = MathHelper.floor(sim.posZ);
+            int bx = Mth.floor(sim.posX), by = Mth.floor(sim.posY + 0.01), bz = Mth.floor(sim.posZ);
             for (int dy = -1; dy <= 1; dy++) {
                 BlockState st = world.getBlockState(m.set(bx, by + dy, bz));
                 if (avoidWalkingInto(st, startWet || dy < 0)) return Double.NaN;
@@ -239,13 +239,13 @@ public class ProjectileDodge {
     private static boolean avoidWalkingInto(BlockState state, boolean waterOk) {
         Block block = state.getBlock();
         if (!state.getFluidState().isEmpty()) {
-            if (state.getFluidState().isIn(FluidTags.LAVA)) return true;
+            if (state.getFluidState().is(FluidTags.LAVA)) return true;
             if (!waterOk) return true;
         }
         return block == Blocks.MAGMA_BLOCK
                 || block == Blocks.CACTUS
                 || block == Blocks.SWEET_BERRY_BUSH
-                || block instanceof AbstractFireBlock
+                || block instanceof BaseFireBlock
                 || block == Blocks.COBWEB
                 || block == Blocks.BUBBLE_COLUMN;
     }
@@ -260,15 +260,15 @@ public class ProjectileDodge {
     }
 
     private static void clearKeys() {
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc.options == null) return;
-        mc.options.forwardKey.setPressed(false);
-        mc.options.backKey.setPressed(false);
-        mc.options.leftKey.setPressed(false);
-        mc.options.rightKey.setPressed(false);
-        mc.options.sprintKey.setPressed(false);
+        mc.options.keyUp.setDown(false);
+        mc.options.keyDown.setDown(false);
+        mc.options.keyLeft.setDown(false);
+        mc.options.keyRight.setDown(false);
+        mc.options.keySprint.setDown(false);
         if (jumpHeld) {
-            mc.options.jumpKey.setPressed(false);
+            mc.options.keyJump.setDown(false);
             jumpHeld = false;
         }
     }
@@ -282,9 +282,9 @@ public class ProjectileDodge {
      * air. The queue's own timeout absorbs the interruption -- what it cannot absorb is the bot
      * walking a straight line into the shot.
      */
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         if (holdTicks <= 0) return;
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (player == null || mc.options == null) {
             // ⛔ RELEASE BEFORE ABANDONING THE HOLD. This used to drop holdTicks and return with
             // the keys still PRESSED -- a violation of checklist rule 4l in the very primitive
@@ -305,7 +305,7 @@ public class ProjectileDodge {
         holdTicks--;
 
         // The player's own frame. MC yaw 0 faces +Z, and the right hand points -X from there.
-        double yaw = Math.toRadians(player.getYaw());
+        double yaw = Math.toRadians(player.getYRot(1.0f));
         double fx = -Math.sin(yaw), fz = Math.cos(yaw);
         double rx = -fz, rz = fx;
 
@@ -316,21 +316,21 @@ public class ProjectileDodge {
         // between two opposite presses on consecutive ticks.
         final double DEADZONE = 0.25;
         boolean kF = planned ? pFwd : fwd > DEADZONE;
-        mc.options.forwardKey.setPressed(kF);
-        mc.options.backKey.setPressed(planned ? pBack : fwd < -DEADZONE);
-        mc.options.rightKey.setPressed(planned ? pRight : side > DEADZONE);
-        mc.options.leftKey.setPressed(planned ? pLeft : side < -DEADZONE);
+        mc.options.keyUp.setDown(kF);
+        mc.options.keyDown.setDown(planned ? pBack : fwd < -DEADZONE);
+        mc.options.keyRight.setDown(planned ? pRight : side > DEADZONE);
+        mc.options.keyLeft.setDown(planned ? pLeft : side < -DEADZONE);
         // Sprint only earns its speed going forwards, and a backwards sprint is not a thing.
-        mc.options.sprintKey.setPressed(kF);
+        mc.options.keySprint.setDown(kF);
         // The jump is one tap: pressed on the first tick of the hold, released on the next, so it
         // is not left held for whoever writes the keys after the dodge.
         if (jumpHeld) {
-            mc.options.jumpKey.setPressed(false);
+            mc.options.keyJump.setDown(false);
             jumpHeld = false;
         }
         if (planned && pJump) {
-            jumpHeld = player.isOnGround();
-            mc.options.jumpKey.setPressed(jumpHeld);
+            jumpHeld = player.onGround();
+            mc.options.keyJump.setDown(jumpHeld);
             pJump = false;
         }
         driveTicks++;

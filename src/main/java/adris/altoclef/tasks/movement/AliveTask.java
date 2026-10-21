@@ -4,9 +4,9 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.LookHelper;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.HashSet;
 import java.util.List;
@@ -34,16 +34,16 @@ public class AliveTask extends Task {
 
     private int _ticks;
     private int _phaseTicksLeft;
-    private Vec3d _lookTarget;
+    private Vec3 _lookTarget;
     private Input _heldMove;
     private Input _pendingReturn;
-    private Vec3d _start;
-    private Vec3d _roamWaypoint;
+    private Vec3 _start;
+    private Vec3 _roamWaypoint;
 
     // event/state tracking
     private final Set<String> _seenTargets = new HashSet<>();   // targets we've observed present
     private final Set<String> _lostEmitted = new HashSet<>();   // target_lost already emitted (debounce)
-    private Vec3d _lastPos;
+    private Vec3 _lastPos;
     private int _noProgressTicks;
     private boolean _stuckEmitted;
     private final Set<String> _arrivedEmitted = new HashSet<>();
@@ -66,7 +66,7 @@ public class AliveTask extends Task {
         _stuckEmitted = false;
         _noProgressTicks = 0;
         AltoClef mod = AltoClef.getInstance();
-        _start = (mod.getPlayer() != null) ? mod.getPlayer().getPos() : null;
+        _start = (mod.getPlayer() != null) ? mod.getPlayer().position() : null;
         _lastPos = _start;
     }
 
@@ -75,7 +75,7 @@ public class AliveTask extends Task {
         AltoClef mod = AltoClef.getInstance();
         if (mod.getPlayer() == null) return null;
         _ticks++;
-        if (_start == null) _start = mod.getPlayer().getPos();
+        if (_start == null) _start = mod.getPlayer().position();
 
         // keep the head moving smoothly toward whatever we're looking at this phase
         if (_lookTarget != null) LookHelper.smoothLookAt(mod, _lookTarget, 2.5f);
@@ -93,17 +93,17 @@ public class AliveTask extends Task {
     private void tickIdle(AltoClef mod) {
         if (_phaseTicksLeft-- > 0) return;
         releaseMoves(mod);
-        Vec3d me = mod.getPlayer().getPos();
+        Vec3 me = mod.getPlayer().position();
         if (_pendingReturn != null) { holdMove(mod, _pendingReturn); _phaseTicksLeft = 4 + _rng.nextInt(4); _pendingReturn = null; return; }
         int r = _rng.nextInt(100);
         if (r < 40) {
             Optional<Entity> p = nearestOtherPlayer(mod, 24);
-            if (p.isPresent()) { _lookTarget = p.get().getPos().add(0, 1.3, 0); _phaseTicksLeft = 20 + _rng.nextInt(30); return; }
+            if (p.isPresent()) { _lookTarget = p.get().position().add(0, 1.3, 0); _phaseTicksLeft = 20 + _rng.nextInt(30); return; }
             r = 60 + _rng.nextInt(40);
         }
         if (r < 65) {
             double ang = _rng.nextDouble() * Math.PI * 2;
-            _lookTarget = new Vec3d(me.x + Math.cos(ang) * 6, me.y + 1.3 + (_rng.nextDouble() * 2 - 1), me.z + Math.sin(ang) * 6);
+            _lookTarget = new Vec3(me.x + Math.cos(ang) * 6, me.y + 1.3 + (_rng.nextDouble() * 2 - 1), me.z + Math.sin(ang) * 6);
             _phaseTicksLeft = 15 + _rng.nextInt(25);
         } else if (r < 82) {
             Input dir; int d = _rng.nextInt(4);
@@ -119,9 +119,9 @@ public class AliveTask extends Task {
     // ───────────────────────────── WATCH ────────────────────────────
     private void tickWatch(AltoClef mod) {
         trackLost(mod);
-        Optional<PlayerEntity> t = nearestConfiguredTarget(mod);
+        Optional<Player> t = nearestConfiguredTarget(mod);
         if (t.isPresent()) {
-            _lookTarget = t.get().getPos().add(0, 1.3, 0);     // stare at them
+            _lookTarget = t.get().position().add(0, 1.3, 0);     // stare at them
             // light fidget so we're not a statue while watching
             if (_phaseTicksLeft-- <= 0) {
                 releaseMoves(mod);
@@ -136,11 +136,11 @@ public class AliveTask extends Task {
     // ───────────────────────────── NEAR ─────────────────────────────
     private void tickNear(AltoClef mod) {
         trackLost(mod);
-        Optional<PlayerEntity> t = nearestConfiguredTarget(mod);
+        Optional<Player> t = nearestConfiguredTarget(mod);
         if (t.isEmpty()) { releaseMoves(mod); tickIdle(mod); return; }
-        PlayerEntity target = t.get();
-        Vec3d tp = target.getPos();
-        Vec3d me = mod.getPlayer().getPos();
+        Player target = t.get();
+        Vec3 tp = target.position();
+        Vec3 me = mod.getPlayer().position();
         double horiz = Math.hypot(tp.x - me.x, tp.z - me.z);
         _lookTarget = tp.add(0, 1.3, 0);
         if (horiz > AliveConfig.radius()) {
@@ -161,18 +161,18 @@ public class AliveTask extends Task {
 
     // ───────────────────────────── ROAM ─────────────────────────────
     private void tickRoam(AltoClef mod) {
-        Vec3d me = mod.getPlayer().getPos();
+        Vec3 me = mod.getPlayer().position();
         if (_roamWaypoint == null || Math.hypot(_roamWaypoint.x - me.x, _roamWaypoint.z - me.z) < 1.5 || _ticks % 120 == 0) {
             double ang = _rng.nextDouble() * Math.PI * 2, dist = 4 + _rng.nextDouble() * 6;
-            _roamWaypoint = new Vec3d(_start.x + Math.cos(ang) * dist, me.y, _start.z + Math.sin(ang) * dist);
+            _roamWaypoint = new Vec3(_start.x + Math.cos(ang) * dist, me.y, _start.z + Math.sin(ang) * dist);
             _noProgressTicks = 0; _stuckEmitted = false;
         }
-        _lookTarget = new Vec3d(_roamWaypoint.x, me.y + 1.4, _roamWaypoint.z);
+        _lookTarget = new Vec3(_roamWaypoint.x, me.y + 1.4, _roamWaypoint.z);
         holdMove(mod, Input.MOVE_FORWARD);
         // occasional glance around / at a player so it doesn't look robotic
         if (_ticks % 60 == 0) {
             Optional<Entity> p = nearestOtherPlayer(mod, 18);
-            if (p.isPresent()) _lookTarget = p.get().getPos().add(0, 1.3, 0);
+            if (p.isPresent()) _lookTarget = p.get().position().add(0, 1.3, 0);
         }
         detectStuck(mod);
     }
@@ -186,13 +186,13 @@ public class AliveTask extends Task {
         }
     }
 
-    private Optional<PlayerEntity> nearestConfiguredTarget(AltoClef mod) {
-        Vec3d me = mod.getPlayer().getPos();
-        PlayerEntity best = null; double bd = Double.MAX_VALUE;
+    private Optional<Player> nearestConfiguredTarget(AltoClef mod) {
+        Vec3 me = mod.getPlayer().position();
+        Player best = null; double bd = Double.MAX_VALUE;
         for (String nick : AliveConfig.targets()) {
-            Optional<PlayerEntity> p = mod.getEntityTracker().getPlayerEntity(nick);
+            Optional<Player> p = mod.getEntityTracker().getPlayerEntity(nick);
             if (p.isPresent()) {
-                double d = p.get().squaredDistanceTo(me);
+                double d = p.get().distanceToSqr(me);
                 if (d < bd) { bd = d; best = p.get(); }
             }
         }
@@ -202,11 +202,11 @@ public class AliveTask extends Task {
     private Optional<Entity> nearestOtherPlayer(AltoClef mod, double range) {
         Entity self = mod.getPlayer();
         return mod.getEntityTracker().getClosestEntity(
-                e -> e != self && e.isAlive() && e.squaredDistanceTo(self) < range * range, PlayerEntity.class);
+                e -> e != self && e.isAlive() && e.distanceToSqr(self) < range * range, Player.class);
     }
 
     private void detectStuck(AltoClef mod) {
-        Vec3d me = mod.getPlayer().getPos();
+        Vec3 me = mod.getPlayer().position();
         if (_lastPos != null && Math.hypot(me.x - _lastPos.x, me.z - _lastPos.z) < 0.05) {
             if (++_noProgressTicks > 50 && !_stuckEmitted) {   // ~2.5s of trying to move, no progress
                 _stuckEmitted = true;

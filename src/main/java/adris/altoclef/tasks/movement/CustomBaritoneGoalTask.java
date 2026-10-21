@@ -12,8 +12,12 @@ import adris.altoclef.util.helpers.TungstenHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.*;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.FlowerBlock;
+import net.minecraft.core.BlockPos;
 
 /**
  * Turns a baritone goal into a task.
@@ -36,7 +40,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
      *  that state. The yardstick for PLAN_GIVE_UP_MS. */
     private long twPlanSinceMs = 0L;
     /** Where the body was when that clock started, so ANY real movement restarts it. */
-    private net.minecraft.util.math.BlockPos twPlanFeet = null;
+    private net.minecraft.core.BlockPos twPlanFeet = null;
     /** How long the drive may claim the tick while producing no route and no movement. Eight
      *  seconds is far longer than a healthy plan (which becomes a chain within a tick or two)
      *  and far shorter than the ninety seconds of standing still the bench calls a stall. */
@@ -100,11 +104,11 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
      * <p>Set every tick the drive runs, because the snap depends on the world and on where the bot
      * is standing; caching it across ticks would be a stale answer to a question that moves.
      */
-    private net.minecraft.util.math.BlockPos snappedGoalCell = null;
+    private net.minecraft.core.BlockPos snappedGoalCell = null;
     // Anti-permanent-stuck (tungsten-primary): if the bot hasn't moved for a while,
     // the tungsten nav is trapped (unreachable sub-goal / stale-rooted reject loop) —
     // reset its state so it re-plans fresh, then yield to wander if it stays stuck.
-    private net.minecraft.util.math.Vec3d twStuckPos = null;
+    private net.minecraft.world.phys.Vec3 twStuckPos = null;
     private long twStuckSinceMs = 0L;
     private int twStuckResets = 0;
     // The walker can't parkour (gap jumps / wall climbs). When it stalls we hand the
@@ -139,7 +143,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     // pillar/bridge/break/staircase via FastPlanner and executes through the physics executor.
     private long twNoRouteSinceMs = 0L;      // ms since grid BFS first returned no usable route (0 = has one)
     private long twFnCooldownUntilMs = 0L;   // don't (re)start the build engine before this ms
-    private net.minecraft.util.math.BlockPos twFnGoal = null;  // the goal cell FastNavigator was handed
+    private net.minecraft.core.BlockPos twFnGoal = null;  // the goal cell FastNavigator was handed
     public static int pdFnBuild = 0;         // times the drive escalated to FastNavigator to build
     Block[] annoyingBlocks = new Block[]{
             Blocks.VINE,
@@ -171,14 +175,14 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
 
     private static BlockPos[] generateSides(BlockPos pos) {
         return new BlockPos[]{
-                pos.add(1,0,0),
-                pos.add(-1,0,0),
-                pos.add(0,0,1),
-                pos.add(0,0,-1),
-                pos.add(1,0,-1),
-                pos.add(1,0,1),
-                pos.add(-1,0,-1),
-                pos.add(-1,0,1)
+                pos.offset(1,0,0),
+                pos.offset(-1,0,0),
+                pos.offset(0,0,1),
+                pos.offset(0,0,-1),
+                pos.offset(1,0,-1),
+                pos.offset(1,0,1),
+                pos.offset(-1,0,-1),
+                pos.offset(-1,0,1)
         };
     }
 
@@ -195,16 +199,16 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     }
 
     private BlockPos stuckInBlock(AltoClef mod) {
-        BlockPos p = mod.getPlayer().getBlockPos();
+        BlockPos p = mod.getPlayer().blockPosition();
         if (isAnnoying(mod, p)) return p;
-        if (isAnnoying(mod, p.up())) return p.up();
+        if (isAnnoying(mod, p.above())) return p.above();
         BlockPos[] toCheck = generateSides(p);
         for (BlockPos check : toCheck) {
             if (isAnnoying(mod, check)) {
                 return check;
             }
         }
-        BlockPos[] toCheckHigh = generateSides(p.up());
+        BlockPos[] toCheckHigh = generateSides(p.above());
         for (BlockPos check : toCheckHigh) {
             if (isAnnoying(mod, check)) {
                 return check;
@@ -317,7 +321,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                     // Baritone failed — try Tungsten before wandering
                     if (cachedAlto != null) {
                         var player = mod.getPlayer();
-                        var goalPos = new net.minecraft.util.math.Vec3d(
+                        var goalPos = new net.minecraft.world.phys.Vec3(
                                 player.getX(), player.getY(), player.getZ());
                         // G-0: AltoGoal.target() IS the point, so the instanceof ladder over legacy
                         // goal classes that used to recover it is gone -- which is the whole reason
@@ -374,7 +378,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             // do nothing and let the task ask again next tick -- a tick spent waiting for the
             // engine we are keeping beats a tick spent moving on the engine we are deleting.
             if (kaptainwutax.tungsten.TungstenConfig.get().neverHandOffToLegacy) {
-                net.minecraft.util.math.Vec3d legacyPos = cachedAlto == null ? null : cachedAlto.target();
+                net.minecraft.world.phys.Vec3 legacyPos = cachedAlto == null ? null : cachedAlto.target();
                 if (legacyPos != null && TungstenHelper.tryPathTo(legacyPos)) {
                     pdLegacyToTungsten++;
                 } else {
@@ -409,7 +413,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
         }
         // G55: the feet cell with baritone's +0.1251 (a chest top is 7/8 high: the naive block
         // position reads the cell below the one the body stands in).
-        net.minecraft.util.math.BlockPos at =
+        net.minecraft.core.BlockPos at =
                 kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(AltoClef.getInstance().getPlayer());
         boolean done = reachedAt(AltoClef.getInstance(), g, at, true);
         // ⛔ PASSING THROUGH THE GOAL IN MID-AIR IS NOT ARRIVING. baritone reports AT_GOAL only when
@@ -421,7 +425,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
         // the course never saw the goal. Arrive only when something holds the body.
         if (done) {
             var p = AltoClef.getInstance().getPlayer();
-            if (!p.isOnGround() && !p.isTouchingWater() && !p.isClimbing() && !p.getAbilities().flying) {
+            if (!p.onGround() && !p.isInWater() && !p.onClimbable() && !p.getAbilities().flying) {
                 airborneAtGoal++;
                 done = false;
             }
@@ -443,7 +447,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
      *
      * @param count true from isFinished only, so the diagnostic counters see one ask a tick
      */
-    protected boolean reachedAt(AltoClef mod, AltoGoal g, net.minecraft.util.math.BlockPos at, boolean count) {
+    protected boolean reachedAt(AltoClef mod, AltoGoal g, net.minecraft.core.BlockPos at, boolean count) {
         boolean done = g != null && g.reached(at);
         // ⛔ A SOLID GOAL THAT MAY NOT BE DUG IS REACHED BY STANDING ON IT (G55, 2026-09-11).
         // buried_goal phase two: the sand had just been re-placed by the bench where the bot had
@@ -454,8 +458,8 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
         // neither be entered nor dug, on top of it is as far as any engine can go; say so.
         if (!done && g instanceof adris.altoclef.util.goals.AltoGoal.Block bg
                 && kaptainwutax.tungsten.TungstenConfig.get().blockGoalDigsIntoSolid
-                && at.equals(bg.pos().up())) {
-            net.minecraft.world.World w = mod == null ? null : mod.getWorld();
+                && at.equals(bg.pos().above())) {
+            net.minecraft.world.level.Level w = mod == null ? null : mod.getWorld();
             if (w != null && isSolidAt(w, bg.pos().getX(), bg.pos().getY(), bg.pos().getZ())
                     && !diggableGoalCell(mod, bg.pos())) {
                 if (count) pdDigOnTop++;
@@ -627,16 +631,16 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     /** Equip a throwaway building block for pillaring (#46). True if a BlockItem is
      *  (now) in hand. Tries common cheap blocks the bot carries. Agent-provided
      *  blocks in hand already count — this is the mod's autonomous fallback. */
-    private static final net.minecraft.item.Item[] BUILD_BLOCKS = {
-        net.minecraft.item.Items.COBBLESTONE, net.minecraft.item.Items.DIRT,
-        net.minecraft.item.Items.STONE, net.minecraft.item.Items.NETHERRACK,
-        net.minecraft.item.Items.COBBLED_DEEPSLATE, net.minecraft.item.Items.OAK_PLANKS,
-        net.minecraft.item.Items.DEEPSLATE, net.minecraft.item.Items.ANDESITE
+    private static final net.minecraft.world.item.Item[] BUILD_BLOCKS = {
+        net.minecraft.world.item.Items.COBBLESTONE, net.minecraft.world.item.Items.DIRT,
+        net.minecraft.world.item.Items.STONE, net.minecraft.world.item.Items.NETHERRACK,
+        net.minecraft.world.item.Items.COBBLED_DEEPSLATE, net.minecraft.world.item.Items.OAK_PLANKS,
+        net.minecraft.world.item.Items.DEEPSLATE, net.minecraft.world.item.Items.ANDESITE
     };
 
     private boolean equipBuildBlock(AltoClef mod) {
-        if (mod.getPlayer().getMainHandStack().getItem() instanceof net.minecraft.item.BlockItem) return true;
-        for (net.minecraft.item.Item b : BUILD_BLOCKS) {
+        if (mod.getPlayer().getMainHandItem().getItem() instanceof net.minecraft.world.item.BlockItem) return true;
+        for (net.minecraft.world.item.Item b : BUILD_BLOCKS) {
             if (mod.getItemStorage().hasItemInventoryOnly(b)) {
                 mod.getSlotHandler().forceEquipItem(b);
                 return true;
@@ -648,8 +652,8 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     /** The bot has a placeable block (does NOT equip). Gates the pathfinder's plan-bridging
      *  so parkour/walk routing without blocks is unaffected. */
     private boolean hasBuildBlock(AltoClef mod) {
-        if (mod.getPlayer().getMainHandStack().getItem() instanceof net.minecraft.item.BlockItem) return true;
-        for (net.minecraft.item.Item b : BUILD_BLOCKS)
+        if (mod.getPlayer().getMainHandItem().getItem() instanceof net.minecraft.world.item.BlockItem) return true;
+        for (net.minecraft.world.item.Item b : BUILD_BLOCKS)
             if (mod.getItemStorage().hasItemInventoryOnly(b)) return true;
         return false;
     }
@@ -658,17 +662,17 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
      *  horizontal direction — a "bridge here" signal, distinct from a wall (cell
      *  ahead solid) or a step-down. Cell ahead toward the goal must be clear (not a
      *  wall) with no floor for 2+ blocks below (a genuine gap a jump can't close). */
-    private boolean gapTowardGoal(AltoClef mod, net.minecraft.util.math.Vec3d gp) {
+    private boolean gapTowardGoal(AltoClef mod, net.minecraft.world.phys.Vec3 gp) {
         var p = mod.getPlayer();
         var world = mod.getWorld();
         double dx = gp.x - p.getX(), dz = gp.z - p.getZ();
-        net.minecraft.util.math.Direction dir = Math.abs(dx) >= Math.abs(dz)
-                ? (dx >= 0 ? net.minecraft.util.math.Direction.EAST : net.minecraft.util.math.Direction.WEST)
-                : (dz >= 0 ? net.minecraft.util.math.Direction.SOUTH : net.minecraft.util.math.Direction.NORTH);
-        net.minecraft.util.math.BlockPos ahead = p.getBlockPos().offset(dir);
+        net.minecraft.core.Direction dir = Math.abs(dx) >= Math.abs(dz)
+                ? (dx >= 0 ? net.minecraft.core.Direction.EAST : net.minecraft.core.Direction.WEST)
+                : (dz >= 0 ? net.minecraft.core.Direction.SOUTH : net.minecraft.core.Direction.NORTH);
+        net.minecraft.core.BlockPos ahead = p.blockPosition().relative(dir);
         boolean aheadClear = world.getBlockState(ahead).getCollisionShape(world, ahead).isEmpty();
-        boolean noFloor1 = world.getBlockState(ahead.down()).getCollisionShape(world, ahead.down()).isEmpty();
-        boolean noFloor2 = world.getBlockState(ahead.down(2)).getCollisionShape(world, ahead.down(2)).isEmpty();
+        boolean noFloor1 = world.getBlockState(ahead.below()).getCollisionShape(world, ahead.below()).isEmpty();
+        boolean noFloor2 = world.getBlockState(ahead.below(2)).getCollisionShape(world, ahead.below(2)).isEmpty();
         return aheadClear && noFloor1 && noFloor2;
     }
 
@@ -679,29 +683,29 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
      *  freak goal far overhead can never build an endless tower. Returns -1 when NOT trapped
      *  (open ground, a plain cliff face the goal is not behind, or a ceiling overhead), so the
      *  normal give-up path runs instead of pillaring pointlessly. */
-    private int pillarEscapeY(AltoClef mod, net.minecraft.util.math.Vec3d gp) {
+    private int pillarEscapeY(AltoClef mod, net.minecraft.world.phys.Vec3 gp) {
         var p = mod.getPlayer();
         var world = mod.getWorld();
-        net.minecraft.util.math.BlockPos feet = p.getBlockPos();
+        net.minecraft.core.BlockPos feet = p.blockPosition();
         // Need clear space above the head, or a pillar cannot even start.
-        net.minecraft.util.math.BlockPos over = feet.up(2);
+        net.minecraft.core.BlockPos over = feet.above(2);
         if (!world.getBlockState(over).getCollisionShape(world, over).isEmpty()) return -1;
         double dx = gp.x - p.getX(), dz = gp.z - p.getZ();
-        net.minecraft.util.math.Direction dir = Math.abs(dx) >= Math.abs(dz)
-                ? (dx >= 0 ? net.minecraft.util.math.Direction.EAST : net.minecraft.util.math.Direction.WEST)
-                : (dz >= 0 ? net.minecraft.util.math.Direction.SOUTH : net.minecraft.util.math.Direction.NORTH);
-        net.minecraft.util.math.BlockPos ahead = feet.offset(dir);
+        net.minecraft.core.Direction dir = Math.abs(dx) >= Math.abs(dz)
+                ? (dx >= 0 ? net.minecraft.core.Direction.EAST : net.minecraft.core.Direction.WEST)
+                : (dz >= 0 ? net.minecraft.core.Direction.SOUTH : net.minecraft.core.Direction.NORTH);
+        net.minecraft.core.BlockPos ahead = feet.relative(dir);
         // A wall the bot cannot step (feet-level solid) OR jump (head-level solid too) over.
         boolean solidFeet = !world.getBlockState(ahead).getCollisionShape(world, ahead).isEmpty();
-        boolean solidHead = !world.getBlockState(ahead.up()).getCollisionShape(world, ahead.up()).isEmpty();
+        boolean solidHead = !world.getBlockState(ahead.above()).getCollisionShape(world, ahead.above()).isEmpty();
         if (!(solidFeet && solidHead)) return -1;   // not walled in toward the goal -> not our case
         int goalY = (int) Math.ceil(gp.y);
         int cap = Math.min(goalY, feet.getY() + 24);
         // Climb only to where the wall in the goal's direction first opens up (a 2-tall gap we
         // could step through), so we escape the pit without towering past it.
         for (int y = feet.getY() + 1; y <= cap; y++) {
-            net.minecraft.util.math.BlockPos a = new net.minecraft.util.math.BlockPos(ahead.getX(), y, ahead.getZ());
-            net.minecraft.util.math.BlockPos a2 = a.up();
+            net.minecraft.core.BlockPos a = new net.minecraft.core.BlockPos(ahead.getX(), y, ahead.getZ());
+            net.minecraft.core.BlockPos a2 = a.above();
             if (world.getBlockState(a).getCollisionShape(world, a).isEmpty()
                     && world.getBlockState(a2).getCollisionShape(world, a2).isEmpty()) {
                 return y;
@@ -785,16 +789,16 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             setDebugState("Routing to a reachable cell within " + near.range() + " blocks");
             return true;
         }
-        net.minecraft.util.math.Vec3d gp = goal.target();
+        net.minecraft.world.phys.Vec3 gp = goal.target();
         if (gp != null) {
             // An XZ goal has no height and a Y-level goal has no column; both say so with NaN and
             // borrow the missing half from where the bot is standing.
             if (Double.isNaN(gp.x) || Double.isNaN(gp.z)) {
-                gp = new net.minecraft.util.math.Vec3d(Double.isNaN(gp.x) ? mod.getPlayer().getX() : gp.x,
+                gp = new net.minecraft.world.phys.Vec3(Double.isNaN(gp.x) ? mod.getPlayer().getX() : gp.x,
                         gp.y, Double.isNaN(gp.z) ? mod.getPlayer().getZ() : gp.z);
             }
             if (Double.isNaN(gp.y)) {
-                gp = new net.minecraft.util.math.Vec3d(gp.x, mod.getPlayer().getY(), gp.z);
+                gp = new net.minecraft.world.phys.Vec3(gp.x, mod.getPlayer().getY(), gp.z);
             }
             // Publish the live goal for the planned escape (PlannedEscape): a stuck bot's best
             // escape target is the thing it was trying to reach.
@@ -830,7 +834,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             // MEASURE THE SNAP. The 1219 stall runs at a goal whose floor is AIR
             // (tgt[1205.5,104.0,-839.5], floor=air), so this must either move it to solid ground
             // or admit it cannot. Nine million expanded nodes says nobody found out which.
-            net.minecraft.util.math.Vec3d gpBefore = gp;
+            net.minecraft.world.phys.Vec3 gpBefore = gp;
             gp = snapGoalToStandable(gp, mod);
             snapAsked++;
             // ⛔ A SNAP THAT LANDS ON THE BOT'S OWN FEET IS NOT A GOAL, IT IS A DEAD END (G40,
@@ -846,7 +850,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             // finds no route into rock and the escalation hands it to FastNavigator, which does.
             if (kaptainwutax.tungsten.TungstenConfig.get().snapNeverLandsOnSelf
                     && gp != null && gpBefore != null && !gp.equals(gpBefore)) {
-                net.minecraft.util.math.BlockPos meS = mod.getPlayer().getBlockPos();
+                net.minecraft.core.BlockPos meS = mod.getPlayer().blockPosition();
                 if (meS.getX() == (int) Math.floor(gp.x) && meS.getY() == (int) Math.floor(gp.y)
                         && meS.getZ() == (int) Math.floor(gp.z)) {
                     snapRefusedSelf++;
@@ -860,7 +864,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             // so the two layers agree and the request itself is the no-op. The real target
             // stays unreached while the task asks again every tick.
             if (gp != null) {
-                net.minecraft.util.math.BlockPos me = mod.getPlayer().getBlockPos();
+                net.minecraft.core.BlockPos me = mod.getPlayer().blockPosition();
                 if (me.getX() == (int) Math.floor(gp.x) && me.getY() == (int) Math.floor(gp.y)
                         && me.getZ() == (int) Math.floor(gp.z)) {
                     snapToSelf++;
@@ -880,7 +884,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             // where isFinished() already returned false (the guard sits above this block).
             if (gp != null && gpBefore != null && !gp.equals(gpBefore)) {
                 snapMoved++;
-                snappedGoalCell = net.minecraft.util.math.BlockPos.ofFloored(gp.x, gp.y, gp.z);
+                snappedGoalCell = net.minecraft.core.BlockPos.containing(gp.x, gp.y, gp.z);
             } else {
                 // The goal stood on its own, so exact arrival still means exact.
                 snappedGoalCell = null;
@@ -914,7 +918,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
 
         // ── Anti-permanent-stuck safety net ──────────────────────────────
         long nowMs = System.currentTimeMillis();
-        net.minecraft.util.math.Vec3d plNow = new net.minecraft.util.math.Vec3d(
+        net.minecraft.world.phys.Vec3 plNow = new net.minecraft.world.phys.Vec3(
                 mod.getPlayer().getX(), mod.getPlayer().getY(), mod.getPlayer().getZ());
 
         // ⛔ A NAVIGATOR NOBODY IN THIS TASK ARMED IS EITHER OURS OR IN THE WAY (G40, 2026-09-11).
@@ -933,9 +937,9 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                 setDebugState("Tungsten: yielding to a running navigator leg (escape / builder)...");
                 return true;
             }
-            net.minecraft.util.math.Vec3d ng = kaptainwutax.tungsten.task.FastNavigator.currentGoal();
-            if (ng != null && ng.squaredDistanceTo(gp) <= 4.0) {
-                twFnGoal = net.minecraft.util.math.BlockPos.ofFloored(gp);
+            net.minecraft.world.phys.Vec3 ng = kaptainwutax.tungsten.task.FastNavigator.currentGoal();
+            if (ng != null && ng.distanceToSqr(gp) <= 4.0) {
+                twFnGoal = net.minecraft.core.BlockPos.containing(gp);
                 pdFnAdopted++;
             } else {
                 kaptainwutax.tungsten.task.FastNavigator.stop();
@@ -952,7 +956,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
         // and keeps the progress checker fed (the shimmy is already suppressed because
         // Nav.isPathing()/Pillar/Bridge are true — see UnstuckChain).
         if (kaptainwutax.tungsten.task.FastNavigator.isActive() && twFnGoal != null) {
-            net.minecraft.util.math.BlockPos gpCell = net.minecraft.util.math.BlockPos.ofFloored(gp);
+            net.minecraft.core.BlockPos gpCell = net.minecraft.core.BlockPos.containing(gp);
             // Goal moved far from what it is building toward -> stop and let the normal drive
             // (or a fresh escalation) re-plan on the new goal next tick.
             // ⛔ OR THE CELL THE ROUTE WAS ARMED FOR NO LONGER SATISFIES THE GOAL (G88, round 44,
@@ -964,7 +968,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             // (PathingBehavior: !goal.isInGoal(path.getDest())); this is that test on the armed
             // cell, with the drive's own arrival verdict.
             boolean goalLeft = !reachedAt(mod, goal, twFnGoal, false);
-            if (twFnGoal.getSquaredDistance(gpCell) > 16.0 || goalLeft) {
+            if (twFnGoal.distSqr(gpCell) > 16.0 || goalLeft) {
                 if (goalLeft) pdGoalLeft++;
                 kaptainwutax.tungsten.task.FastNavigator.stop();
                 twFnGoal = null;
@@ -1004,7 +1008,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             if (exG != null) exG.stop = false;
             // G69: the goal decides arrival -- the navigator gets this task's own verdict
             kaptainwutax.tungsten.task.FastNavigator.start(gp, at -> reachedAt(mod, goal, at, false));
-            twFnGoal = net.minecraft.util.math.BlockPos.ofFloored(gp);
+            twFnGoal = net.minecraft.core.BlockPos.containing(gp);
             twFnCooldownUntilMs = nowMs + 12000;
             twBestDistToGoal = -1; twBestImproveMs = 0L;
             pdFnBuild++;
@@ -1104,7 +1108,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
         // branch below, which is the one that can hand a liquid edge to MovementSwim.
         // Refreshing the timer here lets that branch run. It is not a licence to float forever:
         // the branch below either produces a route or falls through as before.
-        if (mod.getPlayer().isTouchingWater()) {
+        if (mod.getPlayer().isInWater()) {
             twStuckPos = plNow;
             twStuckSinceMs = nowMs;
             twStuckResets = 0;
@@ -1190,7 +1194,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             // pond. Measured on the playthrough course: the bot sat in the pond at (-177,62,290)
             // for ten minutes with mqStarted=0 and called=0 — this branch was never entered at
             // all, so nothing downstream could have helped.
-            boolean inWater = mod.getPlayer().isTouchingWater();
+            boolean inWater = mod.getPlayer().isInWater();
             if (distToGoal <= 4.0) pdNear++;
             if (distToGoal > 4.0
                     && (!inWater || kaptainwutax.tungsten.TungstenConfig.get().navUsesQueue)
@@ -1213,17 +1217,17 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                 // so the search and the executor now agree on where the bot is standing.
                 // G53: start from the cell that supports the body (a lip-hanging body's centre
                 // column may have no floor at all).
-                net.minecraft.util.math.BlockPos startB =
+                net.minecraft.core.BlockPos startB =
                         kaptainwutax.tungsten.task.FastNavigator.supportedFeet(mod.getPlayer());
-                net.minecraft.util.math.BlockPos goalB = net.minecraft.util.math.BlockPos.ofFloored(gp);
-                java.util.List<net.minecraft.util.math.BlockPos> bfs =
+                net.minecraft.core.BlockPos goalB = net.minecraft.core.BlockPos.containing(gp);
+                java.util.List<net.minecraft.core.BlockPos> bfs =
                         kaptainwutax.tungsten.combat.CombatPathfinder.findPath(startB, goalB, mod.getWorld());
                 boolean smart = kaptainwutax.tungsten.TungstenConfig.get().smartMoves;
                 // A degenerate 2-wp stub to a far goal = CombatPathfinder couldn't route the
                 // terrain (gapped/steep). With smartMoves the async SmartMoves search CAN
                 // route it, so skip the stub and fall through to the robust path (2)/(3).
                 boolean degenerateStub = smart && bfs.size() == 2 && distToGoal > 6.0
-                        && Math.sqrt(bfs.get(1).getSquaredDistance(goalB)) > distToGoal - 3.0;
+                        && Math.sqrt(bfs.get(1).distSqr(goalB)) > distToGoal - 3.0;
                 if (kaptainwutax.tungsten.task.BlockPathWalker.DEBUG)
                     Debug.logMessage(String.format("primDrive gridBFS sz%d degen%b d%.1f dy%.1f",
                             bfs.size(), degenerateStub, distToGoal, gp.y - mod.getPlayer().getY()));
@@ -1236,7 +1240,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                 // not. Rate-limited, because the state repeats every tick.
                 if (bfs.size() < 2 && nowMs - twLastNoRouteLogMs > 2000) {
                     twLastNoRouteLogMs = nowMs;
-                    net.minecraft.util.math.BlockPos me = startB;
+                    net.minecraft.core.BlockPos me = startB;
                     Debug.logMessage(String.format(
                             "primDrive NO ROUTE: at %d,%d,%d -> goal %d,%d,%d (d%.1f) goalTask=%s",
                             me.getX(), me.getY(), me.getZ(), goalB.getX(), goalB.getY(), goalB.getZ(),
@@ -1264,7 +1268,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                         if (ex != null) ex.stop = false;
                         // G69: the goal decides arrival -- the navigator gets this task's own verdict
             kaptainwutax.tungsten.task.FastNavigator.start(gp, at -> reachedAt(mod, goal, at, false));
-                        twFnGoal = net.minecraft.util.math.BlockPos.ofFloored(gp);
+                        twFnGoal = net.minecraft.core.BlockPos.containing(gp);
                         twFnCooldownUntilMs = nowMs + 12000;   // give it room to build before re-deciding
                         twNoRouteSinceMs = 0L;
                         pdFnBuild++;
@@ -1335,14 +1339,14 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                 // reaches near the current goal; else recompute. (Off by default so the
                 // legacy path selection is untouched.)
                 boolean fresh = !smart || (bp.isPresent() && !bp.get().isEmpty()
-                        && bp.get().get(bp.get().size() - 1).getBlockPos().getSquaredDistance(goalB) <= 36.0);
+                        && bp.get().get(bp.get().size() - 1).getBlockPos().distSqr(goalB) <= 36.0);
                 if (kaptainwutax.tungsten.task.BlockPathWalker.DEBUG)
                     Debug.logMessage(String.format("primDrive robustPath present%b sz%d fresh%b",
                             bp.isPresent(), bp.map(java.util.List::size).orElse(0), fresh));
                 if (bp.isPresent() && bp.get().size() >= 2 && fresh) {
-                    java.util.List<net.minecraft.util.math.BlockPos> wps = new java.util.ArrayList<>();
+                    java.util.List<net.minecraft.core.BlockPos> wps = new java.util.ArrayList<>();
                     for (kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode n : bp.get()) {
-                        net.minecraft.util.math.BlockPos bpos = n.getBlockPos();
+                        net.minecraft.core.BlockPos bpos = n.getBlockPos();
                         // ⛔ DO NOT HAND ON A ROUTE THAT REPEATS A CELL. The movement queue types
                         // every edge and an edge from a cell to itself has no type, so it
                         // truncated the chain there and gave back every step after it. Measured on
@@ -1426,7 +1430,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                     && !kaptainwutax.tungsten.task.FastNavigator.isActive()
                     && nowMs >= twFnCooldownUntilMs
                     && kaptainwutax.tungsten.TungstenConfig.get().allowBreak) {
-                net.minecraft.util.math.BlockPos gCell = net.minecraft.util.math.BlockPos.ofFloored(gp);
+                net.minecraft.core.BlockPos gCell = net.minecraft.core.BlockPos.containing(gp);
                 boolean goalUnwalkable = !standable(mod.getWorld(), gCell.getX(), gCell.getY(), gCell.getZ());
                 if (twNearStillPos == null || plNow.distanceTo(twNearStillPos) > 0.3) {
                     twNearStillPos = plNow;
@@ -1496,7 +1500,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
         // not moving, hand the tick back and let something else try.
         pdPlanning++;
         boolean queueRunning = kaptainwutax.tungsten.path.movements.MovementQueue.isRunning();
-        net.minecraft.util.math.BlockPos hereNow = mod.getPlayer().getBlockPos();
+        net.minecraft.core.BlockPos hereNow = mod.getPlayer().blockPosition();
         if (queueRunning || !hereNow.equals(twPlanFeet)) {
             twPlanFeet = hereNow;
             twPlanSinceMs = nowMs;
@@ -1522,9 +1526,9 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
      *  Snap it to the nearest standable cell (surface on top of a block / ground
      *  below the air) so the bot actually approaches. Valid standable goals are
      *  returned unchanged — normal navigation is untouched. */
-    private static net.minecraft.util.math.Vec3d snapGoalToStandable(net.minecraft.util.math.Vec3d gp, AltoClef mod) {
+    private static net.minecraft.world.phys.Vec3 snapGoalToStandable(net.minecraft.world.phys.Vec3 gp, AltoClef mod) {
         try {
-            net.minecraft.world.World w = mod.getWorld();
+            net.minecraft.world.level.Level w = mod.getWorld();
             int gx = (int) Math.floor(gp.x), gy = (int) Math.floor(gp.y), gz = (int) Math.floor(gp.z);
             if (standable(w, gx, gy, gz)) return gp;                 // already fine
             if (isSolidAt(w, gx, gy, gz)) {
@@ -1543,16 +1547,16 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                 for (int[] d : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
                     for (int dy = 0; dy >= -1; dy--) {
                         if (standable(w, gx + d[0], gy + dy, gz + d[1])) {
-                            return new net.minecraft.util.math.Vec3d(
+                            return new net.minecraft.world.phys.Vec3(
                                     gx + d[0] + 0.5, gy + dy, gz + d[1] + 0.5);
                         }
                     }
                 }
                 for (int y = gy + 1; y <= gy + 5; y++)               // no neighbour: stand on top
-                    if (standable(w, gx, y, gz)) return new net.minecraft.util.math.Vec3d(gx + 0.5, y, gz + 0.5);
+                    if (standable(w, gx, y, gz)) return new net.minecraft.world.phys.Vec3(gx + 0.5, y, gz + 0.5);
             }
             for (int y = gy; y >= gy - 6; y--)                       // floating goal → drop to the ground
-                if (standable(w, gx, y, gz)) return new net.minecraft.util.math.Vec3d(gx + 0.5, y, gz + 0.5);
+                if (standable(w, gx, y, gz)) return new net.minecraft.world.phys.Vec3(gx + 0.5, y, gz + 0.5);
         } catch (Throwable ignored) { }
         return gp;
     }
@@ -1576,13 +1580,13 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     // pricing turns into "attempt N/4 -- stepping aside for 45 s". Nothing connected the two.
     // Now the drive counts the give-ups per block (static: the drive task is rebuilt constantly)
     // and the third in ninety seconds hands the block to the chooser's memory.
-    private static net.minecraft.util.math.BlockPos routeGiveUpBlock = null;
+    private static net.minecraft.core.BlockPos routeGiveUpBlock = null;
     private static int routeGiveUps = 0;
     private static long routeGiveUpMs = 0L;
     private static final int ROUTE_GIVEUPS_MAX = 3;
     private static final long ROUTE_GIVEUP_WINDOW_MS = 90_000L;
     /** The block the reach / dig route was last armed for, cleared once its give-up is counted. */
-    private net.minecraft.util.math.BlockPos twRouteArmedBlock = null;
+    private net.minecraft.core.BlockPos twRouteArmedBlock = null;
     /** G74: blocks handed to the chooser's memory after three route give-ups in a row. */
     public static volatile int pdRouteRefused;
     /** G81: the drive's last branch, one line, for the unstuck chain to print beside its own
@@ -1590,7 +1594,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     public static volatile String lastDriveNote = "-";
 
     /** Count a give-up for {@code block}; true when it is the third in the window. */
-    private static boolean noteRouteGiveUp(net.minecraft.util.math.BlockPos block) {
+    private static boolean noteRouteGiveUp(net.minecraft.core.BlockPos block) {
         long now = System.currentTimeMillis();
         if (block.equals(routeGiveUpBlock) && now - routeGiveUpMs < ROUTE_GIVEUP_WINDOW_MS) {
             routeGiveUps++;
@@ -1616,15 +1620,15 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     /** G52: routes (navigator / walker / queue / tower / bridge / swim-out) still running when the
      *  drive that owned them stopped and no other drive took over -- stopped with it. */
     public static volatile int pdRouteStopped;
-    private net.minecraft.util.math.Vec3d twNearStillPos = null;
+    private net.minecraft.world.phys.Vec3 twNearStillPos = null;
     private long twNearStillSinceMs = 0L;
 
     /** The goal the drive last steered at, and when -- read by PlannedEscape. */
-    public static volatile net.minecraft.util.math.Vec3d lastGoalVec = null;
+    public static volatile net.minecraft.world.phys.Vec3 lastGoalVec = null;
     public static volatile long lastGoalAtMs = 0L;
     /** The block a REACH goal was for (null for a position goal), so an escape re-armed at the
      *  live goal keeps the reach semantics instead of asking to stand inside the ore. */
-    public static volatile net.minecraft.util.math.BlockPos lastGoalReachBlock = null;
+    public static volatile net.minecraft.core.BlockPos lastGoalReachBlock = null;
 
     /**
      * Drive a REACH goal: get the FEET next to a block (baritone's GoalGetToBlock), digging if
@@ -1635,9 +1639,9 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
      * <p>Returns true while the navigator owns the tick, false when there is nothing left to walk.
      */
     private boolean driveReach(AltoClef mod, adris.altoclef.util.goals.AltoGoal.Adjacent adj,
-                               net.minecraft.util.math.Vec3d gp) {
-        net.minecraft.util.math.BlockPos block = adj.pos();
-        net.minecraft.util.math.BlockPos feet =
+                               net.minecraft.world.phys.Vec3 gp) {
+        net.minecraft.core.BlockPos block = adj.pos();
+        net.minecraft.core.BlockPos feet =
                 kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(mod.getPlayer());
         boolean armedForThis = kaptainwutax.tungsten.task.FastNavigator.isActive()
                 && block.equals(kaptainwutax.tungsten.task.FastNavigator.reachBlock());
@@ -1684,7 +1688,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             var exR = kaptainwutax.tungsten.TungstenModDataContainer.EXECUTOR;
             if (exR != null) exR.stop = false;
             kaptainwutax.tungsten.task.FastNavigator.start(gp, block);
-            twFnGoal = net.minecraft.util.math.BlockPos.ofFloored(gp);
+            twFnGoal = net.minecraft.core.BlockPos.containing(gp);
             twRouteArmedBlock = block;
             twReachRearmAtMs = nowMs + 2500;
             pdReachArmed++;
@@ -1705,13 +1709,13 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
 
     /** G55: a block goal that must be DUG INTO -- solid, breakable, not a container or another
      *  block entity (those are interacted with, never mined on the way to them). */
-    private static boolean diggableGoalCell(AltoClef mod, net.minecraft.util.math.BlockPos cell) {
+    private static boolean diggableGoalCell(AltoClef mod, net.minecraft.core.BlockPos cell) {
         try {
-            net.minecraft.world.World w = mod.getWorld();
-            net.minecraft.block.BlockState st = w.getBlockState(cell);
+            net.minecraft.world.level.Level w = mod.getWorld();
+            net.minecraft.world.level.block.state.BlockState st = w.getBlockState(cell);
             if (st.getCollisionShape(w, cell).isEmpty()) return false;     // standable or air: walk
             if (st.hasBlockEntity()) return false;                          // chest, table, furnace
-            if (st.getHardness(w, cell) < 0) return false;                  // bedrock and kin
+            if (st.getDestroySpeed(w, cell) < 0) return false;                  // bedrock and kin
             return kaptainwutax.tungsten.path.BreakRules.canBreak(w, cell, st);
         } catch (Throwable t) {
             return false;
@@ -1723,8 +1727,8 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
      * GoalBlock on rock). Same shape as {@link #driveReach}: straight to FastNavigator as an exact
      * cell -- no snap, no grid BFS -- and arrival is the exact cell, the same test isFinished uses.
      */
-    private boolean driveDig(AltoClef mod, net.minecraft.util.math.BlockPos cell) {
-        net.minecraft.util.math.BlockPos feet =
+    private boolean driveDig(AltoClef mod, net.minecraft.core.BlockPos cell) {
+        net.minecraft.core.BlockPos feet =
                 kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(mod.getPlayer());
         boolean armedForThis = kaptainwutax.tungsten.task.FastNavigator.isActive()
                 && cell.equals(kaptainwutax.tungsten.task.FastNavigator.driveExactCell());
@@ -1775,12 +1779,12 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     }
 
     /** Shared with TimeoutWanderTask, which needs the same question about its wander target. */
-    public static boolean standable(net.minecraft.world.World w, int x, int y, int z) {
+    public static boolean standable(net.minecraft.world.level.Level w, int x, int y, int z) {
         return isSolidAt(w, x, y - 1, z) && !isSolidAt(w, x, y, z) && !isSolidAt(w, x, y + 1, z);
     }
 
-    private static boolean isSolidAt(net.minecraft.world.World w, int x, int y, int z) {
-        net.minecraft.util.math.BlockPos p = new net.minecraft.util.math.BlockPos(x, y, z);
+    private static boolean isSolidAt(net.minecraft.world.level.Level w, int x, int y, int z) {
+        net.minecraft.core.BlockPos p = new net.minecraft.core.BlockPos(x, y, z);
         return !w.getBlockState(p).getCollisionShape(w, p).isEmpty();
     }
 }

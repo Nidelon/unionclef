@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 public class ImageComparer {
     public static List<File> listFilesForFolder(final File folder, List<File> resultFileList) {
@@ -25,7 +25,7 @@ public class ImageComparer {
 
     public static List<File> getCaptchaDatasetFiles() {
         List<File> resultFileList = new ArrayList<File>();
-        File screens_folder = new File(MinecraftClient.getInstance().runDirectory, "map_screenshots");
+        File screens_folder = new File(Minecraft.getInstance().gameDirectory, "map_screenshots");
         if (screens_folder.exists()) {
             listFilesForFolder(screens_folder, resultFileList);
         }

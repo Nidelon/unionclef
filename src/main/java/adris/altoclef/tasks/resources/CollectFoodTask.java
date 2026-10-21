@@ -24,21 +24,31 @@ import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.slots.SmokerSlot;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.block.*;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.HoglinEntity;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.mob.SlimeEntity;
-import net.minecraft.entity.passive.*;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.SmokerScreenHandler;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.Heightmap;
+import net.minecraft.world.level.block.BeetrootBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CarrotBlock;
+import net.minecraft.world.level.block.CropBlock;
+import net.minecraft.world.level.block.PotatoBlock;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.hoglin.Hoglin;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.monster.cubemob.Slime;
+import net.minecraft.world.entity.animal.chicken.Chicken;
+import net.minecraft.world.entity.animal.cow.Cow;
+import net.minecraft.world.entity.animal.pig.Pig;
+import net.minecraft.world.entity.animal.rabbit.Rabbit;
+import net.minecraft.world.entity.animal.sheep.Sheep;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.SmokerMenu;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.levelgen.Heightmap;
 import kaptainwutax.tungsten.helpers.PlayerFit;
 
 import java.util.List;
@@ -51,14 +61,14 @@ public class CollectFoodTask extends Task {
 
     // Represents order of preferred mobs to least preferred
     public static final CookableFoodTarget[] COOKABLE_FOODS = new CookableFoodTarget[]{
-            new CookableFoodTarget("beef", CowEntity.class),
-            new CookableFoodTarget("porkchop", PigEntity.class),
-            new CookableFoodTarget("chicken", ChickenEntity.class),
-            new CookableFoodTarget("mutton", SheepEntity.class),
-            new CookableFoodTarget("rabbit", RabbitEntity.class),
+            new CookableFoodTarget("beef", Cow.class),
+            new CookableFoodTarget("porkchop", Pig.class),
+            new CookableFoodTarget("chicken", Chicken.class),
+            new CookableFoodTarget("mutton", Sheep.class),
+            new CookableFoodTarget("rabbit", Rabbit.class),
             // The Nether's only meat. Listed after the pig so the shared raw item still resolves
             // to the same porkchop everywhere this table is read.
-            new CookableFoodTarget("porkchop", HoglinEntity.class)
+            new CookableFoodTarget("porkchop", Hoglin.class)
     };
 
     public static final Item[] ITEMS_TO_PICK_UP = new Item[]{
@@ -145,8 +155,8 @@ public class CollectFoodTask extends Task {
         int potentialBread = (int) (mod.getItemStorage().getItemCount(Items.WHEAT) / 3) + mod.getItemStorage().getItemCount(Items.HAY_BLOCK) * 3;
         potentialFood += Objects.requireNonNull(ItemVer.getFoodComponent( Items.BREAD)).getHunger() * potentialBread;
         // Check smelting
-        ScreenHandler screen = mod.getPlayer().currentScreenHandler;
-        if (screen instanceof SmokerScreenHandler) {
+        AbstractContainerMenu screen = mod.getPlayer().containerMenu;
+        if (screen instanceof SmokerMenu) {
             potentialFood += getFoodPotential(StorageHelper.getItemStackInSlot(SmokerSlot.INPUT_SLOT_MATERIALS));
             potentialFood += getFoodPotential(StorageHelper.getItemStackInSlot(SmokerSlot.OUTPUT_SLOT));
         }
@@ -174,7 +184,7 @@ public class CollectFoodTask extends Task {
 
         List<BlockPos> haysPos = mod.getBlockScanner().getKnownLocations(Blocks.HAY_BLOCK);
         for (BlockPos HaysPos : haysPos) {
-            BlockPos haysUpPos = HaysPos.up();
+            BlockPos haysUpPos = HaysPos.above();
             if (mod.getWorld().getBlockState(haysUpPos).getBlock() == Blocks.CARVED_PUMPKIN) {
                 Debug.logMessage("Blacklisting pillage hay bales.");
                 mod.getBlockScanner().requestBlockUnreachable(HaysPos, 0);
@@ -250,7 +260,7 @@ public class CollectFoodTask extends Task {
             for (Item item : ITEMS_TO_PICK_UP) {
                 Task t = this.pickupTaskOrNull(mod, item);
                 if (t != null) {
-                    setDebugState("Picking up Food: " + item.getTranslationKey());
+                    setDebugState("Picking up Food: " + item.getDescriptionId());
                     currentResourceTask = t;
                     return currentResourceTask;
                 }
@@ -279,7 +289,7 @@ public class CollectFoodTask extends Task {
                     BlockState s = mod.getWorld().getBlockState(blockPos);
                     Block b = s.getBlock();
                     if (b instanceof CropBlock) {
-                        boolean isWheat = !(b instanceof PotatoesBlock || b instanceof CarrotsBlock || b instanceof BeetrootsBlock);
+                        boolean isWheat = !(b instanceof PotatoBlock || b instanceof CarrotBlock || b instanceof BeetrootBlock);
                         if (isWheat) {
                             // Chunk needs to be loaded for wheat maturity to be checked.
                             if (!mod.getChunkTracker().isChunkLoaded(blockPos)) {
@@ -287,7 +297,7 @@ public class CollectFoodTask extends Task {
                             }
                             // Prune if we're not mature/fully grown wheat.
                             CropBlock crop = (CropBlock) b;
-                            return crop.isMature(s);
+                            return crop.isMaxAge(s);
                         }
                     }
                     // Unbreakable.
@@ -295,7 +305,7 @@ public class CollectFoodTask extends Task {
                     // We're not wheat so do NOT reject.
                 }), 96);
                 if (t != null) {
-                    setDebugState("Harvesting " + target.cropItem.getTranslationKey());
+                    setDebugState("Harvesting " + target.cropItem.getDescriptionId());
                     currentResourceTask = t;
                     return currentResourceTask;
                 }
@@ -308,10 +318,10 @@ public class CollectFoodTask extends Task {
 
             for (CookableFoodTarget cookable : COOKABLE_FOODS) {
                 if (!mod.getEntityTracker().entityFound(cookable.mobToKill)) continue;
-                Optional<Entity> nearest = mod.getEntityTracker().getClosestEntity(mod.getPlayer().getPos(),notBaby ,cookable.mobToKill);
+                Optional<Entity> nearest = mod.getEntityTracker().getClosestEntity(mod.getPlayer().position(),notBaby ,cookable.mobToKill);
                 if (nearest.isEmpty()) continue; // ?? This crashed once?
                 int hungerPerformance = cookable.getCookedUnits();
-                double sqDistance = nearest.get().squaredDistanceTo(mod.getPlayer());
+                double sqDistance = nearest.get().distanceToSqr(mod.getPlayer());
                 double score = (double) 100 * hungerPerformance / (sqDistance);
                 if (cookable.isFish()) {
                     score = 0;
@@ -323,7 +333,7 @@ public class CollectFoodTask extends Task {
                 }
             }
             if (bestEntity != null) {
-                setDebugState("Killing " + bestEntity.getType().getTranslationKey());
+                setDebugState("Killing " + bestEntity.getType().getDescriptionId());
                 currentResourceTask = killTaskOrNull(bestEntity, notBaby, bestRawFood);
                 return currentResourceTask;
             }
@@ -340,12 +350,12 @@ public class CollectFoodTask extends Task {
         // Known food remains preferable, including food in a cave. With no option,
         // explore a habitat where new food can appear instead of orbiting underground.
         if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD) {
-            BlockPos feet = mod.getPlayer().getBlockPos();
+            BlockPos feet = mod.getPlayer().blockPosition();
             // Excavating an open shaft lowers its heightmap even while its floor is
             // several blocks below the surrounding terrain. Keep the selected surface
             // level until the body can step out, instead of treating open sky as arrival.
             int top = surfaceSearchTask != null ? surfaceSearchY
-                    : mod.getWorld().getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ());
+                    : mod.getWorld().getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ());
             // ⛔ WATER OVERHEAD IS NOT A CEILING (full58 resume, 2026-10-01). The heightmap counts
             // water as blocking, so a body swimming three blocks down in open water read as
             // "underground" and was sent to a dry surface it never reached: 45 minutes at 4.8 health
@@ -353,7 +363,7 @@ public class CollectFoodTask extends Task {
             boolean underCover = surfaceSearchTask != null || rockOverhead(mod, feet, top);
             // And a surface search that stops closing in is given up for the outward search.
             if (surfaceSearchTask != null) {
-                double d = mod.getPlayer().getPos().distanceTo(net.minecraft.util.math.Vec3d.ofCenter(
+                double d = mod.getPlayer().position().distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(
                         new BlockPos(feet.getX(), surfaceSearchY, feet.getZ())));
                 if (d < surfaceSearchBest - 2) {
                     surfaceSearchBest = d;
@@ -420,18 +430,18 @@ public class CollectFoodTask extends Task {
             for (int dz = -SURFACE_SEARCH_RADIUS; dz <= SURFACE_SEARCH_RADIUS; dz++) {
                 int x = feet.getX() + dx, z = feet.getZ() + dz;
                 if (!mod.getChunkTracker().isChunkLoaded(new BlockPos(x, feet.getY(), z))) continue;
-                int top = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+                int top = world.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
                 double support = PlayerFit.supportTop(world, new BlockPos(x, top, z));
                 if (Double.isNaN(support) || !PlayerFit.bodyFits(world, x + 0.5, support, z + 0.5)) continue;
                 BlockPos candidate = new BlockPos(x, (int) Math.floor(support), z);
                 if (!world.getFluidState(candidate).isEmpty()
-                        || !world.getFluidState(candidate.down()).isEmpty()
+                        || !world.getFluidState(candidate.below()).isEmpty()
                         || !WorldHelper.canReach(candidate)) continue;
                 // The bottom of a 1x1 shaft has open sky above it and is no surface: full55 kept
                 // "reaching the surface" one cell over, at the foot of the shaft next to its own.
                 boolean walledIn = true;
-                for (net.minecraft.util.math.Direction d : net.minecraft.util.math.Direction.Type.HORIZONTAL) {
-                    BlockPos n = candidate.offset(d);
+                for (net.minecraft.core.Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                    BlockPos n = candidate.relative(d);
                     if (world.getBlockState(n).getCollisionShape(world, n).isEmpty()) {
                         walledIn = false;
                         break;
@@ -450,12 +460,12 @@ public class CollectFoodTask extends Task {
     }
 
     static void blackListChickenJockeys(AltoClef mod) {
-        if (mod.getEntityTracker().entityFound(ChickenEntity.class)) {
-            Optional<Entity> chickens = mod.getEntityTracker().getClosestEntity(ChickenEntity.class);
+        if (mod.getEntityTracker().entityFound(Chicken.class)) {
+            Optional<Entity> chickens = mod.getEntityTracker().getClosestEntity(Chicken.class);
             if (chickens.isPresent()) {
-                Iterable<Entity> entities = mod.getWorld().getEntities();
+                Iterable<Entity> entities = mod.getWorld().entitiesForRendering();
                 for (Entity entity : entities) {
-                    if (entity instanceof HostileEntity || entity instanceof SlimeEntity) {
+                    if (entity instanceof Monster || entity instanceof Slime) {
                         if (chickens.get().hasPassenger(entity)) {
                             if (mod.getEntityTracker().isEntityReachable(entity)) {
                                 Debug.logMessage("Blacklisting chicken jockey.");
@@ -504,15 +514,15 @@ public class CollectFoodTask extends Task {
             if (!WorldHelper.canBreak(blockPos)) return false;
             return accept.test(blockPos);
         };
-        Optional<BlockPos> nearestBlock = mod.getBlockScanner().getNearestBlock(mod.getPlayer().getPos(), acceptPlus, blockToCheck);
+        Optional<BlockPos> nearestBlock = mod.getBlockScanner().getNearestBlock(mod.getPlayer().position(), acceptPlus, blockToCheck);
 
-        if (nearestBlock.isPresent() && !nearestBlock.get().isWithinDistance(mod.getPlayer().getPos(), maxRange)) {
+        if (nearestBlock.isPresent() && !nearestBlock.get().closerThan(BlockPos.containing(mod.getPlayer().position()), maxRange)) {
             nearestBlock = Optional.empty();
         }
 
         Optional<ItemEntity> nearestDrop = Optional.empty();
         if (mod.getEntityTracker().itemDropped(itemToGrab)) {
-            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().getPos(), itemToGrab);
+            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), itemToGrab);
         }
 
         if (nearestDrop.isPresent()) {
@@ -540,11 +550,11 @@ public class CollectFoodTask extends Task {
     private Task pickupTaskOrNull(AltoClef mod, Item itemToGrab, double maxRange) {
         Optional<ItemEntity> nearestDrop = Optional.empty();
         if (mod.getEntityTracker().itemDropped(itemToGrab)) {
-            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().getPos(), itemToGrab);
+            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), itemToGrab);
         }
         if (nearestDrop.isPresent()) {
-            if (nearestDrop.get().isInRange(mod.getPlayer(), maxRange)) {
-                if (mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(nearestDrop.get().getStack(), false).isEmpty()) {
+            if (nearestDrop.get().closerThan(mod.getPlayer(), maxRange)) {
+                if (mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(nearestDrop.get().getItem(), false).isEmpty()) {
                     Optional<Slot> slot = StorageHelper.getGarbageSlot(mod);
 
                     // tf am I supposed to do if its empty
@@ -563,7 +573,7 @@ public class CollectFoodTask extends Task {
                             } else {
                                 mod.log("unknown food item: "+itemToGrab);
                             }
-                            int groundCost = (int) (hunger * nearestDrop.get().getStack().getCount());
+                            int groundCost = (int) (hunger * nearestDrop.get().getItem().getCount());
 
                             if (inventoryCost > groundCost) return null;
                         }

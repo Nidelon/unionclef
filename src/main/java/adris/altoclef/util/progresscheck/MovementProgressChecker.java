@@ -2,12 +2,12 @@ package adris.altoclef.util.progresscheck;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.WorldHelper;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 public class MovementProgressChecker {
 
-    private final IProgressChecker<Vec3d> distanceChecker;
+    private final IProgressChecker<Vec3> distanceChecker;
     private final IProgressChecker<Double> mineChecker;
 
     private BlockPos lastBreakingBlock = null;
@@ -83,13 +83,13 @@ public class MovementProgressChecker {
             }
             miningWork += Math.max(0, fraction - lastMiningFraction);
             lastMiningFraction = fraction;
-            lastBreakingBlock = breakBlock == null ? null : breakBlock.toImmutable();
+            lastBreakingBlock = breakBlock == null ? null : breakBlock.immutable();
             lastBreakingWasSolid = breakBlock != null && !WorldHelper.isAir(breakBlock);
             mineChecker.setProgress(miningWork);
             return !mineChecker.failed();
         } else {
             mineChecker.reset();
-            distanceChecker.setProgress(mod.getPlayer().getPos());
+            distanceChecker.setProgress(mod.getPlayer().position());
             return !distanceChecker.failed();
         }
     }
@@ -108,7 +108,7 @@ public class MovementProgressChecker {
     private static final int STALL_MOVE_GRACE = 40;
     /**
      * Net distance (blocks) the body must travel FROM the grace anchor to count as genuinely
-     * moving rather than shimmying in place. Squared for {@link Vec3d#squaredDistanceTo}.
+     * moving rather than shimmying in place. Squared for {@link Vec3#squaredDistanceTo}.
      *
      * <p>⛔ WHY THIS REPLACED A 0.02-BLOCK PER-TICK BAR (2026-09-19). The old test compared each
      * tick only against the one before it (a FOLLOWING anchor) with a 0.0004 (=0.02²) threshold.
@@ -124,7 +124,7 @@ public class MovementProgressChecker {
      */
     private static final double STALL_MOVE_MIN_SQ = 1.0;
     private int ticksSinceMoved = 0;
-    private Vec3d lastMoveTickPos = null;
+    private Vec3 lastMoveTickPos = null;
 
     /**
      * True when the body has stayed within {@link #STALL_MOVE_MIN_SQ} of a FIXED anchor for at
@@ -157,7 +157,7 @@ public class MovementProgressChecker {
     public void resetIfPathingWithGrace(AltoClef mod, boolean isPathing) {
         var self = mod.getPlayer();
         if (self != null) {
-            Vec3d pos = self.getPos();
+            Vec3 pos = self.position();
             // A FIXED anchor and a NET-distance bar (see STALL_MOVE_MIN_SQ). The anchor is only
             // replaced once the body has genuinely LEFT it -- travelled STALL_MOVE_MIN blocks away
             // -- not on every sub-bar twitch. A shimmy stays inside that radius and accumulates
@@ -166,7 +166,7 @@ public class MovementProgressChecker {
             // anchor did the opposite: a shimmy cleared it every tick and the grace never grew.)
             if (lastMoveTickPos == null) {
                 lastMoveTickPos = pos;
-            } else if (pos.squaredDistanceTo(lastMoveTickPos) > STALL_MOVE_MIN_SQ) {
+            } else if (pos.distanceToSqr(lastMoveTickPos) > STALL_MOVE_MIN_SQ) {
                 ticksSinceMoved = 0;
                 lastMoveTickPos = pos;
             } else {

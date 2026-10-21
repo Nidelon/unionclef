@@ -3,12 +3,12 @@ package adris.altoclef.util;
 import adris.altoclef.multiversion.RecipeVer;
 import adris.altoclef.multiversion.recipemanager.RecipeManagerWrapper;
 import adris.altoclef.multiversion.recipemanager.WrappedRecipeEntry;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.recipe.Ingredient;
-import net.minecraft.recipe.Recipe;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.Recipe;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -26,12 +26,12 @@ public class JankCraftingRecipeMapping {
         //#if MC >= 12111
         //$$ // Recipe API changed in 1.21.11 — RecipeManager/getRecipeManager() not available
         //#else
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
 
         // Check if the network handler is available
-        if (client.getNetworkHandler() != null) {
-            RecipeManagerWrapper recipes = RecipeManagerWrapper.of(client.getNetworkHandler().getRecipeManager());
-            ClientWorld world = client.world;
+        if (client.getConnection() != null) {
+            RecipeManagerWrapper recipes = RecipeManagerWrapper.of(client.getConnection().recipes());
+            ClientLevel world = client.level;
 
             // Check if the recipe manager is available
             if (recipes != null) {
@@ -67,9 +67,9 @@ public class JankCraftingRecipeMapping {
                         .filter(itemTarget -> itemTarget != null && !itemTarget.isEmpty())
                         .collect(Collectors.toList());
                 // Check if the recipe has ingredients
-                if (!checkRecipe.value().getIngredients().isEmpty()) {
+                if (!checkRecipe.value().placementInfo().ingredients().isEmpty()) {
                     // Iterate through the ingredients of the recipe
-                    for (Ingredient ingredient : checkRecipe.value().getIngredients()) {
+                    for (Ingredient ingredient : checkRecipe.value().placementInfo().ingredients()) {
                         // Skip empty ingredients
                         if (ingredient.isEmpty()) {
                             continue;
@@ -79,7 +79,7 @@ public class JankCraftingRecipeMapping {
                         for (int i = 0; i < toSatisfy.size(); ++i) {
                             ItemTarget target = toSatisfy.get(i);
                             // Check if any of the ingredient's matching stacks matches the item target
-                            for (ItemStack stack : ingredient.getMatchingStacks()) {
+                            for (ItemStack stack : ingredient.items().map(h -> new ItemStack(h.value())).toArray(ItemStack[]::new)) {
                                 if (target.matches(stack.getItem())) {
                                     toSatisfy.remove(i);
                                     break outer;

@@ -1,8 +1,8 @@
 package kaptainwutax.tungsten.world;
 
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3i;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
 
 /**
  * A better BlockPos that has fewer hash collisions (and slightly more performant offsets)
@@ -13,7 +13,7 @@ import net.minecraft.util.math.Vec3i;
  *
  * @author leijurv
  */
-public final class BetterBlockPos extends net.minecraft.util.math.BlockPos {
+public final class BetterBlockPos extends net.minecraft.core.BlockPos {
 
     private static final int NUM_X_BITS = 26;
     private static final int NUM_Z_BITS = NUM_X_BITS;
@@ -35,6 +35,20 @@ public final class BetterBlockPos extends net.minecraft.util.math.BlockPos {
         this.x = x;
         this.y = y;
         this.z = z;
+    }
+
+    // 26.2 renamed BlockPos.up/add to above/offset; the rest of tungsten still
+    // speaks the old names, so keep them here in one place
+    public BetterBlockPos up(int n) {
+        return new BetterBlockPos(getX(), getY() + n, getZ());
+    }
+
+    public BetterBlockPos add(int dx, int dy, int dz) {
+        return new BetterBlockPos(getX() + dx, getY() + dy, getZ() + dz);
+    }
+
+    public BetterBlockPos add(net.minecraft.core.Vec3i other) {
+        return add(other.getX(), other.getY(), other.getZ());
     }
 
     public BetterBlockPos(double x, double y, double z) {
@@ -142,7 +156,7 @@ public final class BetterBlockPos extends net.minecraft.util.math.BlockPos {
     }
 
     public BetterBlockPos relative(Direction dir) {
-        Vec3i vec = dir.getVector();
+        Vec3i vec = dir.getUnitVec3i();
         return new BetterBlockPos(x + vec.getX(), y + vec.getY(), z + vec.getZ());
     }
 
@@ -150,7 +164,7 @@ public final class BetterBlockPos extends net.minecraft.util.math.BlockPos {
         if (dist == 0) {
             return this;
         }
-        Vec3i vec = dir.getVector();
+        Vec3i vec = dir.getUnitVec3i();
         return new BetterBlockPos(x + vec.getX() * dist, y + vec.getY() * dist, z + vec.getZ() * dist);
     }
 

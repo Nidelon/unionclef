@@ -1,7 +1,7 @@
 package adris.altoclef.multiversion;
 
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 
 public class BlockStateVer {
 
@@ -18,7 +18,7 @@ public class BlockStateVer {
     @Pattern
     private static boolean isReplaceable(BlockState state) {
         //#if MC >= 11904
-        return state.isReplaceable();
+        return state.canBeReplaced();
         //#else
         //$$ return state.getMaterial().isReplaceable();
         //#endif
@@ -27,7 +27,7 @@ public class BlockStateVer {
     @Pattern
     private static float getHardness(BlockState state) {
         //#if MC >= 11701
-        return state.getBlock().getHardness();
+        return state.getBlock().defaultDestroyTime();
         //#else
         //$$ return state.getHardness(null, null);
         //#endif

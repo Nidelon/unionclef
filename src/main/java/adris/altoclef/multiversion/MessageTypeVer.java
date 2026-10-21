@@ -5,6 +5,6 @@ import net.minecraft.network.chat.ChatType;
 public class MessageTypeVer {
 
     public static ChatType getMessageType(ChatType.Bound parameters) {
-        return parameters.chatType();
+        return parameters.chatType().value();
     }
 }

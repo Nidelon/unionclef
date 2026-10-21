@@ -1,7 +1,7 @@
 package kaptainwutax.tungsten.combat;
 
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Attack timing logic: cooldown, reach, crit detection.
@@ -35,16 +35,16 @@ public final class AttackTiming {
      * off the ground, not in water, not on a ladder, not slowed in the air, not riding.
      * A crit is +50% damage and it is free — the bot is already jumping around the target.
      */
-    public static boolean isCrit(ClientPlayerEntity player) {
-        return player.getVelocity().y < 0.0
-                && !player.isOnGround()
-                && !player.isClimbing()
-                && !player.isTouchingWater()
-                && !player.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.BLINDNESS)
-                && !player.hasVehicle();
+    public static boolean isCrit(LocalPlayer player) {
+        return player.getDeltaMovement().y < 0.0
+                && !player.onGround()
+                && !player.onClimbable()
+                && !player.isInWater()
+                && !player.hasEffect(net.minecraft.world.effect.MobEffects.BLINDNESS)
+                && !player.isPassenger();
     }
 
-    public static float yawTo(Vec3d from, Vec3d to) {
+    public static float yawTo(Vec3 from, Vec3 to) {
         double dx = to.x - from.x;
         double dz = to.z - from.z;
         return (float) (Math.toDegrees(-Math.atan2(dx, dz)));
@@ -53,7 +53,7 @@ public final class AttackTiming {
     /**
      * Compute pitch from player eyes to target center.
      */
-    public static float pitchTo(Vec3d eyePos, Vec3d targetCenter) {
+    public static float pitchTo(Vec3 eyePos, Vec3 targetCenter) {
         double dx = targetCenter.x - eyePos.x;
         double dy = targetCenter.y - eyePos.y;
         double dz = targetCenter.z - eyePos.z;

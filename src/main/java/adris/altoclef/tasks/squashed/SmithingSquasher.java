@@ -9,8 +9,8 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.slots.SmithingTableSlot;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.SmithingScreenHandler;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.SmithingMenu;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -62,7 +62,7 @@ public class SmithingSquasher extends TypeSquasher<UpgradeInSmithingTableTask> {
             List<ItemTarget> resultingTargets = Arrays.asList(itemTargets);
 
             // Subtract required counts if we're in a smithing table, so putting items in the table doesn't remove them.
-            boolean inSmithingTable = (mod.getPlayer().currentScreenHandler instanceof SmithingScreenHandler);
+            boolean inSmithingTable = (mod.getPlayer().containerMenu instanceof SmithingMenu);
             if (inSmithingTable) {
                 for (int i = 0; i < resultingTargets.size(); ++i) {
                     ItemTarget target = resultingTargets.get(i);

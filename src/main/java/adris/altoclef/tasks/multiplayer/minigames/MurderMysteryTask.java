@@ -11,12 +11,14 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.*;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.ShearsItem;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 
@@ -27,8 +29,8 @@ public class MurderMysteryTask extends Task {
     // Radius at which a dangerous enemy is detected / loot near enemies is blacklisted
     private static final double DANGER_RADIUS = 20.0;
 
-    private Vec3d _closestPlayerLastPos;
-    private Vec3d _closestPlayerLastObservePos;
+    private Vec3 _closestPlayerLastPos;
+    private Vec3 _closestPlayerLastObservePos;
     private double _closestDistance;
     private boolean _targetIsNear = false;
     private boolean _forceWait = false;
@@ -132,21 +134,21 @@ public class MurderMysteryTask extends Task {
         Optional<Entity> closestDanger;
         if (!isReadyToPunk(mod)) {
             closestDanger = mod.getEntityTracker().getClosestEntity(
-                    mod.getPlayer().getPos(),
-                    toPunk -> shouldAvoid(mod, (PlayerEntity) toPunk),
-                    PlayerEntity.class);
+                    mod.getPlayer().position(),
+                    toPunk -> shouldAvoid(mod, (Player) toPunk),
+                    Player.class);
         } else {
             closestDanger = Optional.empty();
         }
 
         Optional<Entity> closest = mod.getEntityTracker().getClosestEntity(
-                mod.getPlayer().getPos(),
-                toPunk -> isEnemy(mod, (PlayerEntity) toPunk),
-                PlayerEntity.class);
+                mod.getPlayer().position(),
+                toPunk -> isEnemy(mod, (Player) toPunk),
+                Player.class);
 
         if (closest.isPresent()) {
-            _closestPlayerLastPos = closest.get().getPos();
-            _closestPlayerLastObservePos = mod.getPlayer().getPos();
+            _closestPlayerLastPos = closest.get().position();
+            _closestPlayerLastObservePos = mod.getPlayer().position();
             _closestDistance = _closestPlayerLastPos.distanceTo(_closestPlayerLastObservePos);
             if (_closestDistance <= 8 && mod.getEntityTracker().isEntityReachable(closest.get()))
                 _targetIsNear = true;
@@ -176,13 +178,13 @@ public class MurderMysteryTask extends Task {
         }
 
         Optional<Entity> closestKiller = mod.getEntityTracker().getClosestEntity(
-                mod.getPlayer().getPos(),
-                toPunk -> hasKillerWeapon((PlayerEntity) toPunk),
-                PlayerEntity.class);
+                mod.getPlayer().position(),
+                toPunk -> hasKillerWeapon((Player) toPunk),
+                Player.class);
         Optional<Entity> closestDetective = mod.getEntityTracker().getClosestEntity(
-                mod.getPlayer().getPos(),
-                toPunk -> hasDetectiveWeapon((PlayerEntity) toPunk),
-                PlayerEntity.class);
+                mod.getPlayer().position(),
+                toPunk -> hasDetectiveWeapon((Player) toPunk),
+                Player.class);
 
         if (closestKiller.isPresent()) {
             _killerName = closestKiller.get().getName().getString();
@@ -202,13 +204,13 @@ public class MurderMysteryTask extends Task {
                 _runAwayExtraTime.reset();
                 if (_change_chain_priority)
                     mod.getBehaviour().setUserTaskChainPriority(80);
-                _runAwayTask = new RunAwayFromPositionTask(40, danger.getBlockPos());
+                _runAwayTask = new RunAwayFromPositionTask(40, danger.blockPosition());
                 return _runAwayTask;
             }
         }
 
         if (closest.isPresent() && isReadyToPunk(mod)) {
-            PlayerEntity entity = (PlayerEntity) closest.get();
+            Player entity = (Player) closest.get();
             float dist = mod.getPlayer().distanceTo(entity);
             boolean tooClose = dist < 6f;
 
@@ -225,10 +227,10 @@ public class MurderMysteryTask extends Task {
                 return new TungstenPunkTask(entity.getName().getString());
             }
 
-            if (LookHelper.cleanLineOfSight(entity.getPos(), dist)) {
+            if (LookHelper.cleanLineOfSight(entity.position(), dist)) {
                 String name = entity.getName().getString();
                 if (mod.getItemStorage().getItemCount(Items.ENDER_PEARL) > 2) {
-                    return new ThrowEnderPearlSimpleProjectileTask(entity.getBlockPos().add(0, -1, 0));
+                    return new ThrowEnderPearlSimpleProjectileTask(entity.blockPosition().offset(0, -1, 0));
                 } else if (Objects.equals(_roles.get(name), MurderRole.KILLER)) {
                     if (useBow(mod, entity)) {
                         if (_change_chain_priority) mod.getBehaviour().setUserTaskChainPriority(80);
@@ -257,7 +259,7 @@ public class MurderMysteryTask extends Task {
             if (mod.getEntityTracker().itemDropped(check)) {
                 Optional<ItemEntity> closestEnt = mod.getEntityTracker().getClosestItemDrop(
                         ent -> mod.getEntityTracker().isEntityReachable(ent)
-                                && mod.getPlayer().getPos().isInRange(ent.getEyePos(), 400)
+                                && mod.getPlayer().position().closerThan(ent.getEyePosition(), 400)
                                 // Skip loot that is too close to any known enemy — avoids oscillation bug
                                 && !isLootNearEnemy(mod, ent, DANGER_RADIUS),
                         check);
@@ -290,16 +292,16 @@ public class MurderMysteryTask extends Task {
         }
     }
 
-    public static boolean hasKillerWeapon(PlayerEntity entity) {
+    public static boolean hasKillerWeapon(Player entity) {
         for (Item weapon : ItemHelper.MMKillerWeapons) {
-            if (entity.getMainHandStack().isOf(weapon)) return true;
+            if (entity.getMainHandItem().is(weapon)) return true;
         }
         return false;
     }
 
-    public static boolean hasDetectiveWeapon(PlayerEntity entity) {
+    public static boolean hasDetectiveWeapon(Player entity) {
         for (Item weapon : ItemHelper.MMDetectiveWeapons) {
-            if (entity.getMainHandStack().isOf(weapon)) return true;
+            if (entity.getMainHandItem().is(weapon)) return true;
         }
         return false;
     }
@@ -308,25 +310,25 @@ public class MurderMysteryTask extends Task {
         return mod.getItemStorage().hasItemInventoryOnly(ItemHelper.MMKillerWeapons);
     }
 
-    public static boolean isValidTargetMM(PlayerEntity player) {
+    public static boolean isValidTargetMM(Player player) {
         return isValidPlayerMM(player) && !isInjured(player);
     }
 
-    public static boolean isValidPlayerMM(PlayerEntity player) {
-        if (player == null || player.isDead() || !player.isAlive()) return false;
+    public static boolean isValidPlayerMM(Player player) {
+        if (player == null || player.isDeadOrDying() || !player.isAlive()) return false;
         if (player.isCreative() || player.isSpectator()) return false;
-        if (player.isSleeping() || player.hasVehicle()) return false;
+        if (player.isSleeping() || player.isPassenger()) return false;
         if (player.isInvulnerable() || player.isInvisible()) return false;
         if (player.getName() == null) return false;
         return true;
     }
 
-    private static boolean isInjured(PlayerEntity player) {
+    private static boolean isInjured(Player player) {
         if (player == null) return false;
-        return player.hasVehicle();
+        return player.isPassenger();
     }
 
-    private boolean shouldAvoid(AltoClef mod, PlayerEntity player) {
+    private boolean shouldAvoid(AltoClef mod, Player player) {
         return isValidTargetMM(player) && shouldAvoid(mod, player.getName().getString());
     }
 
@@ -339,7 +341,7 @@ public class MurderMysteryTask extends Task {
         }
     }
 
-    private boolean isEnemy(AltoClef mod, PlayerEntity player) {
+    private boolean isEnemy(AltoClef mod, Player player) {
         return isValidTargetMM(player) && isEnemy(mod, player.getName().getString());
     }
 
@@ -357,8 +359,8 @@ public class MurderMysteryTask extends Task {
      * Used to skip loot that would pull the bot back toward a dangerous player.
      */
     private boolean isLootNearEnemy(AltoClef mod, ItemEntity item, double radius) {
-        return mod.getEntityTracker().getTrackedEntities(PlayerEntity.class).stream()
-                .anyMatch(player -> isEnemy(mod, player) && player.getPos().isInRange(item.getPos(), radius));
+        return mod.getEntityTracker().getTrackedEntities(Player.class).stream()
+                .anyMatch(player -> isEnemy(mod, player) && player.position().closerThan(item.position(), radius));
     }
 
     private boolean useBow(AltoClef mod, Entity target) {

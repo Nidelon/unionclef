@@ -13,13 +13,13 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.FallingBlock;
-import net.minecraft.block.LeavesBlock;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.Item;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.core.BlockPos;
 
 import java.util.Arrays;
 import java.util.List;
@@ -45,8 +45,8 @@ public class CoverWithBlocksTask extends Task {
         AltoClef mod = AltoClef.getInstance();
         Item[] throwAways = mod.getModSettings().getThrowawayItems(true);
         Item[] throwAwaysToUse = Arrays.stream(throwAways)
-                .filter(item -> !(Block.getBlockFromItem(item) instanceof LeavesBlock)
-                        && !(Block.getBlockFromItem(item) instanceof FallingBlock)
+                .filter(item -> !(Block.byItem(item) instanceof LeavesBlock)
+                        && !(Block.byItem(item) instanceof FallingBlock)
                         && item instanceof BlockItem)
                 .toArray(Item[]::new);
         int throwAwayCount = mod.getItemStorage().getItemCount(throwAwaysToUse);
@@ -96,16 +96,16 @@ public class CoverWithBlocksTask extends Task {
 
     private Task coverLavaWithBlocks(AltoClef mod) {
         Predicate<BlockPos> validLava = blockPos ->
-                mod.getWorld().getBlockState(blockPos).getFluidState().isStill()
-                        && WorldHelper.isAir(blockPos.up())
+                mod.getWorld().getBlockState(blockPos).getFluidState().isSource()
+                        && WorldHelper.isAir(blockPos.above())
                         && (!WorldHelper.isBlock(blockPos.north(), Blocks.LAVA)
                         || !WorldHelper.isBlock(blockPos.south(), Blocks.LAVA)
                         || !WorldHelper.isBlock(blockPos.east(), Blocks.LAVA)
                         || !WorldHelper.isBlock(blockPos.west(), Blocks.LAVA)
-                        || !WorldHelper.isBlock(blockPos.north().up(), Blocks.LAVA)
-                        || !WorldHelper.isBlock(blockPos.south().up(), Blocks.LAVA)
-                        || !WorldHelper.isBlock(blockPos.east().up(), Blocks.LAVA)
-                        || !WorldHelper.isBlock(blockPos.west().up(), Blocks.LAVA));
+                        || !WorldHelper.isBlock(blockPos.north().above(), Blocks.LAVA)
+                        || !WorldHelper.isBlock(blockPos.south().above(), Blocks.LAVA)
+                        || !WorldHelper.isBlock(blockPos.east().above(), Blocks.LAVA)
+                        || !WorldHelper.isBlock(blockPos.west().above(), Blocks.LAVA));
 
         Optional<BlockPos> lava = mod.getBlockScanner().getNearestBlock(validLava, Blocks.LAVA);
         if (lava.isEmpty()) return null;
@@ -115,23 +115,23 @@ public class CoverWithBlocksTask extends Task {
             timer.reset();
         }
         if (!WorldHelper.isBlock(lavaPos, Blocks.LAVA)
-                || !WorldHelper.isAir(lavaPos.up())
-                || !mod.getWorld().getBlockState(lavaPos).getFluidState().isStill()) {
+                || !WorldHelper.isAir(lavaPos.above())
+                || !mod.getWorld().getBlockState(lavaPos).getFluidState().isSource()) {
             lavaPos = lava.get();
             timer.reset();
         }
 
         Item[] throwAways = mod.getModSettings().getThrowawayItems(true);
         Item[] throwAwaysToUse = Arrays.stream(throwAways)
-                .filter(item -> !(Block.getBlockFromItem(item) instanceof LeavesBlock)
-                        && !(Block.getBlockFromItem(item) instanceof FallingBlock)
+                .filter(item -> !(Block.byItem(item) instanceof LeavesBlock)
+                        && !(Block.byItem(item) instanceof FallingBlock)
                         && item instanceof BlockItem)
                 .toArray(Item[]::new);
         List<Slot> presentThrowAways = mod.getItemStorage().getSlotsWithItemPlayerInventory(true, throwAwaysToUse);
         if (!presentThrowAways.isEmpty()) {
             for (Slot slot : presentThrowAways) {
                 Item item = StorageHelper.getItemStackInSlot(slot).getItem();
-                Block block = Block.getBlockFromItem(item);
+                Block block = Block.byItem(item);
                 return new PlaceBlockTask(lavaPos, block);
             }
         }

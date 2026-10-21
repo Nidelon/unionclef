@@ -19,21 +19,21 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.client.option.Perspective;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.util.ScreenshotRecorder;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.CameraType;
+import com.mojang.blaze3d.platform.NativeImage;
+import net.minecraft.client.Screenshot;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.GameMode;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.GameType;
 import py4j.Py4JException;
 
 import static adris.altoclef.util.helpers.LookHelper.getLookingProbability;
@@ -67,7 +67,7 @@ public class Py4jEntryPoint {
     public Py4jEntryPoint(AltoClef mod) {
         _mod = mod;
         resetValues();
-        _executor = Util.getMainWorkerExecutor();
+        _executor = Util.backgroundExecutor();
     }
 
     public void onVoiceFeed(String playerName, byte[] audio) {
@@ -127,21 +127,21 @@ public class Py4jEntryPoint {
     }
 
     public void setPerspective(int perspectiveNum) {
-        Perspective perspective = Perspective.FIRST_PERSON;
+        CameraType perspective = CameraType.FIRST_PERSON;
         switch (perspectiveNum) {
             case 0:
-                perspective = Perspective.FIRST_PERSON;
+                perspective = CameraType.FIRST_PERSON;
                 break;
             case 1:
-                perspective = Perspective.THIRD_PERSON_BACK;
+                perspective = CameraType.THIRD_PERSON_BACK;
                 break;
             case 2:
-                perspective = Perspective.THIRD_PERSON_FRONT;
+                perspective = CameraType.THIRD_PERSON_FRONT;
                 break;
             default:
                 Debug.logMessage("Unknown perspective requested: " + perspectiveNum);
         }
-        MinecraftClient.getInstance().options.setPerspective(perspective);
+        Minecraft.getInstance().options.setCameraType(perspective);
     }
 
     public boolean hasActiveTask() {
@@ -179,13 +179,13 @@ public class Py4jEntryPoint {
         // 1.21.11: takeScreenshot is async (Consumer<NativeImage>) and NativeImage.getBytes() is gone.
         // Encode PNG via NativeImage.writeTo(Path) (MC's native encoder) into a temp file, read it back, delete.
         CompletableFuture<byte[]> future = new CompletableFuture<>();
-        MinecraftClient.getInstance().execute(() -> {
+        Minecraft.getInstance().execute(() -> {
             try {
-                Framebuffer buffer = MinecraftClient.getInstance().getFramebuffer();
-                ScreenshotRecorder.takeScreenshot(buffer, (img) -> {
+                RenderTarget buffer = Minecraft.getInstance().gameRenderer.mainRenderTarget();
+                Screenshot.takeScreenshot(buffer, (img) -> {
                     try {
                         java.nio.file.Path tmp = java.nio.file.Files.createTempFile("uclef_shot", ".png");
-                        img.writeTo(tmp);
+                        img.writeToFile(tmp);
                         byte[] data = java.nio.file.Files.readAllBytes(tmp);
                         java.nio.file.Files.deleteIfExists(tmp);
                         future.complete(data);
@@ -308,14 +308,14 @@ public class Py4jEntryPoint {
     public int countLogsNear(int radius) {
         try {
             if (!AltoClef.inGame() || _mod.getWorld() == null || _mod.getPlayer() == null) return -1;
-            net.minecraft.util.math.BlockPos me = _mod.getPlayer().getBlockPos();
+            net.minecraft.core.BlockPos me = _mod.getPlayer().blockPosition();
             int found = 0;
             for (int dx = -radius; dx <= radius; dx += 2) {
                 for (int dz = -radius; dz <= radius; dz += 2) {
                     for (int dy = -8; dy <= 24; dy += 2) {
-                        net.minecraft.util.math.BlockPos p = me.add(dx, dy, dz);
-                        if (!_mod.getWorld().isChunkLoaded(p.getX() >> 4, p.getZ() >> 4)) continue;
-                        if (_mod.getWorld().getBlockState(p).isIn(net.minecraft.registry.tag.BlockTags.LOGS)) {
+                        net.minecraft.core.BlockPos p = me.offset(dx, dy, dz);
+                        if (!_mod.getWorld().hasChunk(p.getX() >> 4, p.getZ() >> 4)) continue;
+                        if (_mod.getWorld().getBlockState(p).is(net.minecraft.tags.BlockTags.LOGS)) {
                             found++;
                         }
                     }
@@ -378,11 +378,11 @@ public class Py4jEntryPoint {
         if (AltoClef.inGame() && _mod.getPlayer() != null && _mod.getWorld() != null) {
             // Get the block below the player
             try {
-                net.minecraft.util.math.BlockPos playerPos = _mod.getPlayer().getBlockPos();
-                net.minecraft.util.math.BlockPos belowPos = playerPos.down();
-                net.minecraft.block.BlockState blockState = _mod.getWorld().getBlockState(belowPos);
+                net.minecraft.core.BlockPos playerPos = _mod.getPlayer().blockPosition();
+                net.minecraft.core.BlockPos belowPos = playerPos.below();
+                net.minecraft.world.level.block.state.BlockState blockState = _mod.getWorld().getBlockState(belowPos);
                 String blockName = blockState.getBlock().getName().getString().toLowerCase();
-                if (_mod.getPlayer().isOnGround() && blockName.equals("air")) {
+                if (_mod.getPlayer().onGround() && blockName.equals("air")) {
                     return "dirt";
                 }
                 return blockName;
@@ -394,12 +394,12 @@ public class Py4jEntryPoint {
         }
     }
 
-    public String getGroundBlockForPlayer(PlayerEntity player) {
+    public String getGroundBlockForPlayer(Player player) {
         if (_mod.getWorld() != null && player != null) {
             try {
-                net.minecraft.util.math.BlockPos playerPos = player.getBlockPos();
-                net.minecraft.util.math.BlockPos belowPos = playerPos.down();
-                net.minecraft.block.BlockState blockState = _mod.getWorld().getBlockState(belowPos);
+                net.minecraft.core.BlockPos playerPos = player.blockPosition();
+                net.minecraft.core.BlockPos belowPos = playerPos.below();
+                net.minecraft.world.level.block.state.BlockState blockState = _mod.getWorld().getBlockState(belowPos);
                 return blockState.getBlock().getName().getString().toLowerCase();
             } catch (Exception e) {
                 return "unknown";
@@ -410,13 +410,13 @@ public class Py4jEntryPoint {
 
     public String getHeldItem() {
         if (AltoClef.inGame() && _mod.getPlayer() != null) {
-            java.util.List<ItemStack> handItems = java.util.List.of(_mod.getPlayer().getMainHandStack(), _mod.getPlayer().getOffHandStack());
+            java.util.List<ItemStack> handItems = java.util.List.of(_mod.getPlayer().getMainHandItem(), _mod.getPlayer().getOffhandItem());
             for (ItemStack item : handItems) {
                 if (item.getItem() != null) {
-                    String itemName = item.getItem().getName().getString().toLowerCase();
+                    String itemName = item.getItem().getName(item).getString().toLowerCase();
                     if (!itemName.equals("air")) {
-                        if (item.contains(DataComponentTypes.CUSTOM_NAME)) {
-                            String itemCustomName = item.getName().getString().toLowerCase();
+                        if (item.has(DataComponents.CUSTOM_NAME)) {
+                            String itemCustomName = item.getHoverName().getString().toLowerCase();
                             return itemName + " (named " + itemCustomName + ")";
                         }
                         return itemName;
@@ -429,9 +429,9 @@ public class Py4jEntryPoint {
         }
     }
 
-    public PlayerEntity getEntity(String playerName) {
+    public Player getEntity(String playerName) {
         if (AltoClef.inGame() && _mod.getPlayer() != null) {
-            Optional<PlayerEntity> player = _mod.getEntityTracker().getPlayerEntity(playerName);
+            Optional<Player> player = _mod.getEntityTracker().getPlayerEntity(playerName);
             return player.orElse(null);
         } else {
             return null;
@@ -493,7 +493,7 @@ public class Py4jEntryPoint {
     }
 
     public String saayHellooo(String name) {
-        return "Hello, " + name + "!" + Items.SOUL_SAND.getName().getString();
+        return "Hello, " + name + "!" + Items.SOUL_SAND.getName(new ItemStack(Items.SOUL_SAND)).getString();
     }
 
     public AgentState getState() {
@@ -575,7 +575,7 @@ public class Py4jEntryPoint {
     }
 
     public void RunInnerCommand(String command) {
-        MinecraftClient.getInstance().execute(() -> {
+        Minecraft.getInstance().execute(() -> {
             AltoClef.getCommandExecutor().execute(command);
         });
     }
@@ -621,7 +621,7 @@ public class Py4jEntryPoint {
     }
 
     public void ConnectToServer(String ip) {
-        MinecraftClient.getInstance().execute(() -> {
+        Minecraft.getInstance().execute(() -> {
             _mod.getTaskRunner().gameMenuTaskChain.connectToServer(ip);
         });
     }
@@ -637,7 +637,7 @@ public class Py4jEntryPoint {
      */
     public boolean disconnectFromServer() {
         return Boolean.TRUE.equals(onClientThread(() -> {
-            _mod.getTaskRunner().gameMenuTaskChain.disconnectFromServer(MinecraftClient.getInstance());
+            _mod.getTaskRunner().gameMenuTaskChain.disconnectFromServer(Minecraft.getInstance());
             return !AltoClef.inGame();
         }, false));
     }
@@ -789,14 +789,14 @@ public class Py4jEntryPoint {
         });
     }
 
-    public Vec3d Nuller() {
+    public Vec3 Nuller() {
         return null;
     }
 
     public Rotation getGoalRotation() {
         Rotation result = null;
         if (AltoClef.inGame()) {
-            Vec3d goal = currentGoalVec();
+            Vec3 goal = currentGoalVec();
             if (goal != null) {
                 Rotation targetrot = LookHelper.getLookRotation(_mod, goal);
                 result = LookHelper.getLookRotation().subtract(targetrot);
@@ -856,7 +856,7 @@ public class Py4jEntryPoint {
      * </ul>
      *
      * <p>Replaces the old baritone goal read: baritone is no longer compiled, tungsten is the only
-     * pathfinder. The previous version returned a raw Vec3d, or null when idle.
+     * pathfinder. The previous version returned a raw Vec3, or null when idle.
      */
     public Map<String, Object> getCurrentGoal() {
         Map<String, Object> idle = new LinkedHashMap<>();
@@ -864,8 +864,8 @@ public class Py4jEntryPoint {
         if (!AltoClef.inGame()) return idle;
         // Already on the client thread (an in-process caller): read directly, never queue onto
         // ourselves and wait.
-        MinecraftClient mcNow = MinecraftClient.getInstance();
-        Map<String, Object> out = mcNow != null && mcNow.isOnThread()
+        Minecraft mcNow = Minecraft.getInstance();
+        Map<String, Object> out = mcNow != null && mcNow.isSameThread()
                 ? describeNavTarget()
                 : onClientThread(this::describeNavTarget, null);
         if (out == null) {
@@ -885,9 +885,9 @@ public class Py4jEntryPoint {
     private Map<String, Object> describeNavTarget() {
         Map<String, Object> out = new LinkedHashMap<>();
         try {
-            MinecraftClient mc = MinecraftClient.getInstance();
-            net.minecraft.client.network.ClientPlayerEntity player = mc == null ? null : mc.player;
-            net.minecraft.client.world.ClientWorld world = mc == null ? null : mc.world;
+            Minecraft mc = Minecraft.getInstance();
+            net.minecraft.client.player.LocalPlayer player = mc == null ? null : mc.player;
+            net.minecraft.client.multiplayer.ClientLevel world = mc == null ? null : mc.level;
             if (player == null || world == null) {
                 out.put("active", false);
                 return out;
@@ -895,12 +895,12 @@ public class Py4jEntryPoint {
 
             boolean followOn = kaptainwutax.tungsten.task.FollowEntityTask.isActive();
             boolean followPlayerOn = kaptainwutax.tungsten.task.FollowPlayerTask.isActive();
-            Vec3d fnGoal = kaptainwutax.tungsten.task.FastNavigator.currentGoal();
+            Vec3 fnGoal = kaptainwutax.tungsten.task.FastNavigator.currentGoal();
             boolean pathfinderOn = isTungstenActive();
-            List<net.minecraft.util.math.BlockPos> route = kaptainwutax.tungsten.task.BlockPathWalker.routeForOverlay();
+            List<net.minecraft.core.BlockPos> route = kaptainwutax.tungsten.task.BlockPathWalker.routeForOverlay();
             boolean walkerOn = kaptainwutax.tungsten.task.BlockPathWalker.isRunning();
             boolean queueOn = kaptainwutax.tungsten.path.movements.MovementQueue.isRunning();
-            Vec3d driveGoal = adris.altoclef.tasks.movement.CustomBaritoneGoalTask.lastGoalVec;
+            Vec3 driveGoal = adris.altoclef.tasks.movement.CustomBaritoneGoalTask.lastGoalVec;
             long driveAt = adris.altoclef.tasks.movement.CustomBaritoneGoalTask.lastGoalAtMs;
             boolean driveFresh = driveGoal != null
                     && System.currentTimeMillis() - driveAt <= DRIVE_GOAL_FRESH_MS;
@@ -915,19 +915,19 @@ public class Py4jEntryPoint {
             engines.put("movementQueue", queueOn);
 
             String source = null;
-            Vec3d target = null;
+            Vec3 target = null;
 
             // 1. Entity chase: the entity itself is the target, but only while it is really there.
             if (followOn) {
-                net.minecraft.entity.Entity ent = kaptainwutax.tungsten.task.FollowEntityTask.getTarget();
+                net.minecraft.world.entity.Entity ent = kaptainwutax.tungsten.task.FollowEntityTask.getTarget();
                 if (ent != null && !ent.isRemoved() && ent.isAlive()
-                        && world.getEntityById(ent.getId()) == ent) {
+                        && world.getEntity(ent.getId()) == ent) {
                     source = "follow";
-                    target = new Vec3d(ent.getX(), ent.getY(), ent.getZ());
+                    target = new Vec3(ent.getX(), ent.getY(), ent.getZ());
                     Map<String, Object> e = new LinkedHashMap<>();
                     e.put("id", ent.getId());
                     e.put("name", ent.getName() == null ? "" : ent.getName().getString());
-                    e.put("type", net.minecraft.registry.Registries.ENTITY_TYPE.getId(ent.getType()).toString());
+                    e.put("type", net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(ent.getType()).toString());
                     out.put("entity", e);
                 }
                 // Entity gone: the chase heads for the last sighting through the engines below.
@@ -944,7 +944,7 @@ public class Py4jEntryPoint {
             }
             // 4. Physics A* target (a stale value is left in the field when idle, so gate on active).
             if (source == null && pathfinderOn) {
-                Vec3d t = kaptainwutax.tungsten.TungstenModDataContainer.PATHFINDER.TARGET;
+                Vec3 t = kaptainwutax.tungsten.TungstenModDataContainer.PATHFINDER.TARGET;
                 if (finite(t)) {
                     source = "pathfinder";
                     target = t;
@@ -952,10 +952,10 @@ public class Py4jEntryPoint {
             }
             // 5. End of the block route being walked.
             if (source == null && walkerOn && route != null && !route.isEmpty()) {
-                net.minecraft.util.math.BlockPos end = route.get(route.size() - 1);
+                net.minecraft.core.BlockPos end = route.get(route.size() - 1);
                 if (end != null) {
                     source = "walker";
-                    target = new Vec3d(end.getX() + 0.5, end.getY(), end.getZ() + 0.5);
+                    target = new Vec3(end.getX() + 0.5, end.getY(), end.getZ() + 0.5);
                 }
             }
             // 6. End of the queued movements.
@@ -964,10 +964,10 @@ public class Py4jEntryPoint {
                         kaptainwutax.tungsten.path.movements.MovementQueue.remainingForOverlay();
                 if (rem != null && !rem.isEmpty()) {
                     kaptainwutax.tungsten.path.movements.Movement last = rem.get(rem.size() - 1);
-                    net.minecraft.util.math.BlockPos end = last == null ? null : last.getDest();
+                    net.minecraft.core.BlockPos end = last == null ? null : last.getDest();
                     if (end != null) {
                         source = "movementQueue";
-                        target = new Vec3d(end.getX() + 0.5, end.getY(), end.getZ() + 0.5);
+                        target = new Vec3(end.getX() + 0.5, end.getY(), end.getZ() + 0.5);
                     }
                 }
             }
@@ -1007,23 +1007,23 @@ public class Py4jEntryPoint {
         }
     }
 
-    private static boolean finite(Vec3d v) {
+    private static boolean finite(Vec3 v) {
         return v != null && Double.isFinite(v.x) && Double.isFinite(v.y) && Double.isFinite(v.z);
     }
 
     /** The current target as a vector for in-process callers, null when idle. */
-    private Vec3d currentGoalVec() {
+    private Vec3 currentGoalVec() {
         Map<String, Object> g = getCurrentGoal();
         if (!Boolean.TRUE.equals(g.get("active"))) return null;
         Object x = g.get("x"), y = g.get("y"), z = g.get("z");
         if (!(x instanceof Double) || !(y instanceof Double) || !(z instanceof Double)) return null;
-        return new Vec3d((Double) x, (Double) y, (Double) z);
+        return new Vec3((Double) x, (Double) y, (Double) z);
     }
 
     /** The current navigation target as "x y z" (one decimal), or "" when there is none.
      *  Same source as {@link #getCurrentGoal()}. */
     public String getCurrentGoalString() {
-        Vec3d goal = currentGoalVec();
+        Vec3 goal = currentGoalVec();
         if (goal == null) return "";
         return String.format("%.1f %.1f %.1f", goal.x, goal.y, goal.z);
     }
@@ -1041,31 +1041,31 @@ public class Py4jEntryPoint {
     }
 
     public double getSpeed() {
-        return _mod.getPlayer() == null ? 0 : (double) _mod.getPlayer().getMovementSpeed();
+        return _mod.getPlayer() == null ? 0 : (double) _mod.getPlayer().getSpeed();
     }
 
-    public Vec3d getSpeedVector() {
-        return _mod.getPlayer() == null ? new Vec3d(0, 0, 0) : _mod.getPlayer().getVelocity();
+    public Vec3 getSpeedVector() {
+        return _mod.getPlayer() == null ? new Vec3(0, 0, 0) : _mod.getPlayer().getDeltaMovement();
     }
 
     public double getPitch() {
-        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getPitch();
+        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getXRot(1.0f);
     }
 
     public double getPitch(double TickDelta) {
-        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getPitch((float) TickDelta);
+        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getXRot(1.0f);
     }
 
     public double getYaw() {
-        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getYaw();
+        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getYRot(1.0f);
     }
 
     public double getYaw(double TickDelta) {
-        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getYaw((float) TickDelta);
+        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getYRot(1.0f);
     }
 
-    public Vec3d getAngVector() {
-        return _mod.getPlayer() == null ? new Vec3d(0, 0, 0) : _mod.getPlayer().getRotationVector();
+    public Vec3 getAngVector() {
+        return _mod.getPlayer() == null ? new Vec3(0, 0, 0) : _mod.getPlayer().getLookAngle();
     }
 
     /** Last n per-tick yaw samples (oldest first) — for quantifying aim jitter (the shake):
@@ -1078,19 +1078,19 @@ public class Py4jEntryPoint {
     }
 
     public double getSpeedX() {
-        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getVelocity().getX();
+        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getDeltaMovement().x();
     }
 
     public double getSpeedY() {
-        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getVelocity().getY();
+        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getDeltaMovement().y();
     }
 
     public double getSpeedZ() {
-        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getVelocity().getZ();
+        return _mod.getPlayer() == null ? 0 : _mod.getPlayer().getDeltaMovement().z();
     }
 
     public double getSpeedXZ() {
-        return _mod.getPlayer() == null ? 0 : Math.sqrt(Math.pow(_mod.getPlayer().getVelocity().getX(), 2) + Math.pow(_mod.getPlayer().getVelocity().getZ(), 2));
+        return _mod.getPlayer() == null ? 0 : Math.sqrt(Math.pow(_mod.getPlayer().getDeltaMovement().x(), 2) + Math.pow(_mod.getPlayer().getDeltaMovement().z(), 2));
     }
 
     /** Full ordered descriptions of the current task chain, copied on the client thread.
@@ -1154,13 +1154,13 @@ public class Py4jEntryPoint {
         return 0;
     }
 
-    public ArrayList<PlayerThreat> nearsetPlayerThreats(List<AbstractClientPlayerEntity> playerList, int limit) {
-        PlayerEntity self = _mod.getPlayer();
+    public ArrayList<PlayerThreat> nearsetPlayerThreats(List<AbstractClientPlayer> playerList, int limit) {
+        Player self = _mod.getPlayer();
         ArrayList<PlayerThreat> nearsetPlayerThreats = new ArrayList<>();
         if (playerList != null && self != null && self.getName() != null && _mod.getWorld() != null) {
-            Vec3d selfPos = self.getPos();
+            Vec3 selfPos = self.position();
             if (selfPos != null) {
-                for (AbstractClientPlayerEntity player : playerList) {
+                for (AbstractClientPlayer player : playerList) {
                     if (player != null && player.getName() != null) {
                         PlayerThreat playerThreat = _mod.getDamageTracker().getThreatTable().getPlayerThreat(player.getName().getString());
                         if (limit <= 0) {
@@ -1221,31 +1221,31 @@ public class Py4jEntryPoint {
         }
     }
 
-    boolean attackable(AbstractClientPlayerEntity player) {
-        return player != null && !player.isInCreativeMode() && !player.isSpectator() && !player.isInvulnerable();
+    boolean attackable(AbstractClientPlayer player) {
+        return player != null && !player.hasInfiniteMaterials() && !player.isSpectator() && !player.isInvulnerable();
     }
 
-    GameMode getGameMode(AbstractClientPlayerEntity player) {
+    GameType getGameMode(AbstractClientPlayer player) {
         if (player == null)
-            return GameMode.SURVIVAL;
-        if (player.isInCreativeMode())
-            return GameMode.CREATIVE;
+            return GameType.SURVIVAL;
+        if (player.hasInfiniteMaterials())
+            return GameType.CREATIVE;
         if (player.isSpectator())
-            return GameMode.SPECTATOR;
-        return GameMode.SURVIVAL;
+            return GameType.SPECTATOR;
+        return GameType.SURVIVAL;
     }
 
     public List<Map<String, String>> getPlayersInfo(int limit) {
-        PlayerEntity self = _mod.getPlayer();
+        Player self = _mod.getPlayer();
         List<Map<String, String>> list = new ArrayList<>();
         if (self != null) {
-            Vec3d selfPos = self.getPos();
+            Vec3 selfPos = self.position();
             if (selfPos != null) {
 
-                List<AbstractClientPlayerEntity> playerList = _mod.getDamageTracker().getPlayerList();
-                Map<String, AbstractClientPlayerEntity> playerListMap = new HashMap<>();
+                List<AbstractClientPlayer> playerList = _mod.getDamageTracker().getPlayerList();
+                Map<String, AbstractClientPlayer> playerListMap = new HashMap<>();
 
-                for (AbstractClientPlayerEntity player : playerList) {
+                for (AbstractClientPlayer player : playerList) {
                     if (player != null && player.getName() != null) {
                         playerListMap.put(player.getName().getString(), player);
                     }
@@ -1254,17 +1254,17 @@ public class Py4jEntryPoint {
                 ArrayList<PlayerThreat> nearsetPlayerThreats = nearsetPlayerThreats(playerList, limit);
 
                 for (PlayerThreat threat : nearsetPlayerThreats) {
-                    AbstractClientPlayerEntity player = playerListMap.get(threat.name);
+                    AbstractClientPlayer player = playerListMap.get(threat.name);
                     if (player == null) continue;
-                    Text nameText = player.getName();
-                    Vec3d pos = threat.lastPos;
+                    Component nameText = player.getName();
+                    Vec3 pos = threat.lastPos;
                     if (nameText != null && pos != null) {
                         Map<String, String> playerInfoMap = new HashMap<>();
                         playerInfoMap.put("name", threat.name);
                         playerInfoMap.put("health", String.valueOf(threat.lastHealth));
-                        playerInfoMap.put("distance", String.valueOf(pos.distanceTo(self.getPos())));
+                        playerInfoMap.put("distance", String.valueOf(pos.distanceTo(self.position())));
                         playerInfoMap.put("is_looking_at_you_prob", String.valueOf(getLookingProbability(player, self)));
-                        Item item = player.getMainHandStack().getItem();
+                        Item item = player.getMainHandItem().getItem();
                         if (item != null) {
                             playerInfoMap.put("hand_item", item.toString());
                         } else {
@@ -1278,9 +1278,9 @@ public class Py4jEntryPoint {
                         playerInfoMap.put("recently_damaged", String.valueOf(!threat.damagedTimer.elapsed()));
                         playerInfoMap.put("recently_attacked", String.valueOf(!threat.lastAttackTimer.elapsed()));
                         playerInfoMap.put("attackable", String.valueOf(attackable(player)));
-                        playerInfoMap.put("gamemode", getGameMode(player).asString());
+                        playerInfoMap.put("gamemode", getGameMode(player).getSerializedName());
                         playerInfoMap.put("godmode", String.valueOf(player.isInvulnerable()));
-                        playerInfoMap.put("is_operator", String.valueOf(player.isCreativeLevelTwoOp()));
+                        playerInfoMap.put("is_operator", String.valueOf(player.canUseGameMasterBlocks()));
                         playerInfoMap.put("position", String.format("%.0f, %.0f, %.0f", pos.x, pos.y, pos.z));
                         list.add(playerInfoMap);
                     }
@@ -1300,46 +1300,46 @@ public class Py4jEntryPoint {
      */
     public List<Map<String, String>> getEntitiesInfo(int limit) {
         List<Map<String, String>> list = new ArrayList<>();
-        PlayerEntity self = _mod.getPlayer();
+        Player self = _mod.getPlayer();
         if (self == null) return list;
-        Vec3d selfPos = self.getPos();
+        Vec3 selfPos = self.position();
         if (selfPos == null) return list;
-        List<net.minecraft.entity.Entity> close;
+        List<net.minecraft.world.entity.Entity> close;
         try {
             close = _mod.getEntityTracker().getAllTrackedEntities();
         } catch (Exception e) {
             return list;
         }
-        List<net.minecraft.entity.Entity> ents = new ArrayList<>();
-        for (net.minecraft.entity.Entity e : close) {
-            if (e == null || e == self || e instanceof PlayerEntity) continue;
+        List<net.minecraft.world.entity.Entity> ents = new ArrayList<>();
+        for (net.minecraft.world.entity.Entity e : close) {
+            if (e == null || e == self || e instanceof Player) continue;
             ents.add(e);
         }
-        ents.sort((a, b) -> Double.compare(a.squaredDistanceTo(selfPos), b.squaredDistanceTo(selfPos)));
+        ents.sort((a, b) -> Double.compare(a.distanceToSqr(selfPos), b.distanceToSqr(selfPos)));
         int n = 0;
-        for (net.minecraft.entity.Entity e : ents) {
+        for (net.minecraft.world.entity.Entity e : ents) {
             if (limit > 0 && n >= limit) break;
-            Vec3d pos = e.getPos();
+            Vec3 pos = e.position();
             if (pos == null) continue;
             Map<String, String> m = new HashMap<>();
             try {
-                m.put("type", net.minecraft.registry.Registries.ENTITY_TYPE.getId(e.getType()).getPath());
+                m.put("type", net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath());
             } catch (Exception ex) {
                 m.put("type", "unknown");
             }
             m.put("distance", String.format("%.1f", pos.distanceTo(selfPos)));
             m.put("position", String.format("%.0f, %.0f, %.0f", pos.x, pos.y, pos.z));
-            boolean isItem = e instanceof net.minecraft.entity.ItemEntity;
+            boolean isItem = e instanceof net.minecraft.world.entity.item.ItemEntity;
             m.put("is_item", String.valueOf(isItem));
             if (isItem) {
-                ItemStack st = ((net.minecraft.entity.ItemEntity) e).getStack();
+                ItemStack st = ((net.minecraft.world.entity.item.ItemEntity) e).getItem();
                 m.put("item", st.getItem().toString());
                 m.put("count", String.valueOf(st.getCount()));
             }
-            boolean living = e instanceof net.minecraft.entity.LivingEntity;
-            m.put("is_hostile", String.valueOf(e instanceof net.minecraft.entity.mob.HostileEntity));
+            boolean living = e instanceof net.minecraft.world.entity.LivingEntity;
+            m.put("is_hostile", String.valueOf(e instanceof net.minecraft.world.entity.monster.Monster));
             m.put("is_mob", String.valueOf(living && !isItem));
-            if (living) m.put("health", String.format("%.0f", ((net.minecraft.entity.LivingEntity) e).getHealth()));
+            if (living) m.put("health", String.format("%.0f", ((net.minecraft.world.entity.LivingEntity) e).getHealth()));
             if (e.getName() != null) m.put("name", e.getName().getString());
             list.add(m);
             n++;
@@ -1354,7 +1354,7 @@ public class Py4jEntryPoint {
     /** Shield-block primitive: raise the shield (must be in a hand) for N ticks. */
     public boolean shieldBlock(int ticks) {
         try {
-            net.minecraft.client.MinecraftClient.getInstance().execute(() ->
+            net.minecraft.client.Minecraft.getInstance().execute(() ->
                     kaptainwutax.tungsten.task.ShieldBlocker.hold(ticks));
             return true;
         } catch (Exception e) {
@@ -1368,10 +1368,10 @@ public class Py4jEntryPoint {
     public boolean shootArrowAt(String playerName) {
         try {
             if (_mod.getWorld() == null) return false;
-            for (net.minecraft.entity.player.PlayerEntity p : _mod.getWorld().getPlayers()) {
+            for (net.minecraft.world.entity.player.Player p : _mod.getWorld().players()) {
                 if (p.getName().getString().equalsIgnoreCase(playerName)) {
-                    net.minecraft.entity.player.PlayerEntity target = p;
-                    net.minecraft.client.MinecraftClient.getInstance().execute(() ->
+                    net.minecraft.world.entity.player.Player target = p;
+                    net.minecraft.client.Minecraft.getInstance().execute(() ->
                             kaptainwutax.tungsten.task.BowShooter.shootAt(target));
                     return true;
                 }
@@ -1388,7 +1388,7 @@ public class Py4jEntryPoint {
         Map<String, String> m = new HashMap<>();
         try {
             if (_mod.getWorld() == null || _mod.getPlayer() == null) return m;
-            for (net.minecraft.entity.player.PlayerEntity p : _mod.getWorld().getPlayers()) {
+            for (net.minecraft.world.entity.player.Player p : _mod.getWorld().players()) {
                 if (p.getName().getString().equalsIgnoreCase(playerName)) {
                     kaptainwutax.tungsten.combat.TrajectorySolver.Solution sol =
                             kaptainwutax.tungsten.combat.TrajectorySolver.solve(
@@ -1415,17 +1415,17 @@ public class Py4jEntryPoint {
         return onClientThread(() -> {
             Map<String, String> m = new HashMap<>();
             if (_mod.getWorld() == null) return m;
-            for (net.minecraft.entity.player.PlayerEntity p : _mod.getWorld().getPlayers()) {
+            for (net.minecraft.world.entity.player.Player p : _mod.getWorld().players()) {
                 if (p.getName().getString().equalsIgnoreCase(playerName)) {
-                    Vec3d pos = p.getPos();
-                    Vec3d v = p.getVelocity();
+                    Vec3 pos = p.position();
+                    Vec3 v = p.getDeltaMovement();
                     m.put("x", String.format("%.4f", pos.x));
                     m.put("y", String.format("%.4f", pos.y));
                     m.put("z", String.format("%.4f", pos.z));
                     m.put("vx", String.format("%.5f", v.x));
                     m.put("vy", String.format("%.5f", v.y));
                     m.put("vz", String.format("%.5f", v.z));
-                    m.put("onGround", String.valueOf(p.isOnGround()));
+                    m.put("onGround", String.valueOf(p.onGround()));
                     return m;
                 }
             }
@@ -1439,7 +1439,7 @@ public class Py4jEntryPoint {
     public boolean canBreakBlock(int x, int y, int z) {
         try {
             if (_mod.getWorld() == null) return false;
-            net.minecraft.util.math.BlockPos pos = new net.minecraft.util.math.BlockPos(x, y, z);
+            net.minecraft.core.BlockPos pos = new net.minecraft.core.BlockPos(x, y, z);
             return kaptainwutax.tungsten.path.BreakRules.canBreak(
                     _mod.getWorld(), pos, _mod.getWorld().getBlockState(pos));
         } catch (Exception e) {
@@ -1455,13 +1455,13 @@ public class Py4jEntryPoint {
     public Map<String, Object> canPlaceBlock(int x, int y, int z) {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player == null || client.world == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
-            net.minecraft.util.math.BlockPos p = new net.minecraft.util.math.BlockPos(x, y, z);
+            Minecraft client = Minecraft.getInstance();
+            if (client.player == null || client.level == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
+            net.minecraft.core.BlockPos p = new net.minecraft.core.BlockPos(x, y, z);
             out.put("ok", true);
-            out.put("canPlace", kaptainwutax.tungsten.path.PlaceRules.canPlace(client.world, p));
+            out.put("canPlace", kaptainwutax.tungsten.path.PlaceRules.canPlace(client.level, p));
             out.put("policyAllows", kaptainwutax.tungsten.path.PlaceRules.allowedByPolicy(p));
-            out.put("replaceable", client.world.getBlockState(p).isReplaceable());
+            out.put("replaceable", client.level.getBlockState(p).canBeReplaced());
             return out;
         }, Map.of("ok", false, "reason", "client thread timeout"));
     }
@@ -1556,8 +1556,8 @@ public class Py4jEntryPoint {
                 // "support snap" pre-processing needed -- that was specifically working around
                 // BlockSpacePathFinder's own weaker start handling, not a general FastPlanner
                 // requirement).
-                net.minecraft.util.math.BlockPos start = _mod.getPlayer().getBlockPos();
-                net.minecraft.util.math.BlockPos goal = new net.minecraft.util.math.BlockPos(x, y, z);
+                net.minecraft.core.BlockPos start = _mod.getPlayer().blockPosition();
+                net.minecraft.core.BlockPos goal = new net.minecraft.core.BlockPos(x, y, z);
                 var res = kaptainwutax.tungsten.path.fast.FastPlanner.plan(
                         _mod.getWorld(), start, goal, 3000L);
                 boolean found = !res.isEmpty();
@@ -1569,8 +1569,8 @@ public class Py4jEntryPoint {
                         if (w.toBreak != null) breaks += w.toBreak.size();
                     }
                     m.put("breaks", String.valueOf(breaks));
-                    net.minecraft.util.math.BlockPos lastPos = res.path.get(res.path.size() - 1).pos;
-                    double endDistance = Math.sqrt(lastPos.getSquaredDistance(goal));
+                    net.minecraft.core.BlockPos lastPos = res.path.get(res.path.size() - 1).pos;
+                    double endDistance = Math.sqrt(lastPos.distSqr(goal));
                     m.put("endDistance", String.format("%.1f", endDistance));
                     // res.complete is FastPlanner's own "the plan actually reaches the goal
                     // cell" signal -- authoritative, unlike the old endDistance-threshold guess
@@ -1590,14 +1590,14 @@ public class Py4jEntryPoint {
         Map<String, String> m = new HashMap<>();
         try {
             if (_mod.getWorld() == null) { m.put("error", "no world"); return m; }
-            net.minecraft.util.math.BlockPos pos = new net.minecraft.util.math.BlockPos(x, y, z);
-            net.minecraft.block.BlockState bs = _mod.getWorld().getBlockState(pos);
+            net.minecraft.core.BlockPos pos = new net.minecraft.core.BlockPos(x, y, z);
+            net.minecraft.world.level.block.state.BlockState bs = _mod.getWorld().getBlockState(pos);
             m.put("position", x + ", " + y + ", " + z);
             m.put("block", bs.getBlock().getName().getString().toLowerCase());
-            try { m.put("id", net.minecraft.registry.Registries.BLOCK.getId(bs.getBlock()).toString()); } catch (Exception e) {}
+            try { m.put("id", net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(bs.getBlock()).toString()); } catch (Exception e) {}
             m.put("is_air", String.valueOf(bs.isAir()));
-            try { m.put("hardness", String.format("%.2f", bs.getHardness(_mod.getWorld(), pos))); } catch (Exception e) {}
-            try { m.put("replaceable", String.valueOf(bs.isReplaceable())); } catch (Exception e) {}
+            try { m.put("hardness", String.format("%.2f", bs.getDestroySpeed(_mod.getWorld(), pos))); } catch (Exception e) {}
+            try { m.put("replaceable", String.valueOf(bs.canBeReplaced())); } catch (Exception e) {}
         } catch (Exception e) {
             m.put("error", String.valueOf(e));
         }
@@ -1614,17 +1614,17 @@ public class Py4jEntryPoint {
         try {
             if (_mod.getPlayer() == null || _mod.getWorld() == null) return list;
             int r = Math.max(1, Math.min(radius, 5));
-            net.minecraft.util.math.BlockPos c = _mod.getPlayer().getBlockPos();
+            net.minecraft.core.BlockPos c = _mod.getPlayer().blockPosition();
             for (int dx = -r; dx <= r; dx++)
                 for (int dy = -r; dy <= r; dy++)
                     for (int dz = -r; dz <= r; dz++) {
-                        net.minecraft.util.math.BlockPos p = c.add(dx, dy, dz);
-                        net.minecraft.block.BlockState bs = _mod.getWorld().getBlockState(p);
+                        net.minecraft.core.BlockPos p = c.offset(dx, dy, dz);
+                        net.minecraft.world.level.block.state.BlockState bs = _mod.getWorld().getBlockState(p);
                         if (bs.isAir()) continue;
                         Map<String, String> m = new HashMap<>();
                         m.put("position", p.getX() + ", " + p.getY() + ", " + p.getZ());
                         m.put("block", bs.getBlock().getName().getString().toLowerCase());
-                        try { m.put("hardness", String.format("%.2f", bs.getHardness(_mod.getWorld(), p))); } catch (Exception e) {}
+                        try { m.put("hardness", String.format("%.2f", bs.getDestroySpeed(_mod.getWorld(), p))); } catch (Exception e) {}
                         list.add(m);
                     }
         } catch (Exception e) {}
@@ -1644,7 +1644,7 @@ public class Py4jEntryPoint {
         try {
             if (_mod.getPlayer() == null || _mod.getWorld() == null) return list;
             int r = Math.max(1, Math.min(radius, 6));
-            net.minecraft.util.math.BlockPos c = _mod.getPlayer().getBlockPos();
+            net.minecraft.core.BlockPos c = _mod.getPlayer().blockPosition();
             for (int dx = -r; dx <= r; dx++)
                 for (int dz = -r; dz <= r; dz++) {
                     Map<String, String> m = new HashMap<>();
@@ -1652,12 +1652,12 @@ public class Py4jEntryPoint {
                     m.put("dz", String.valueOf(dz));
                     boolean found = false;
                     for (int dy = 8; dy >= -8; dy--) {
-                        net.minecraft.util.math.BlockPos p = c.add(dx, dy, dz);
-                        net.minecraft.block.BlockState bs = _mod.getWorld().getBlockState(p);
+                        net.minecraft.core.BlockPos p = c.offset(dx, dy, dz);
+                        net.minecraft.world.level.block.state.BlockState bs = _mod.getWorld().getBlockState(p);
                         if (bs.isAir()) continue;
                         m.put("top_dy", String.valueOf(dy));
                         m.put("block", bs.getBlock().getName().getString().toLowerCase());
-                        try { m.put("hardness", String.format("%.2f", bs.getHardness(_mod.getWorld(), p))); } catch (Exception e) {}
+                        try { m.put("hardness", String.format("%.2f", bs.getDestroySpeed(_mod.getWorld(), p))); } catch (Exception e) {}
                         found = true;
                         break;
                     }
@@ -1730,7 +1730,7 @@ public class Py4jEntryPoint {
     private <T> T onClientThread(java.util.function.Supplier<T> sup, T fallback) {
         try {
             CompletableFuture<T> fut = new CompletableFuture<>();
-            MinecraftClient.getInstance().execute(() -> {
+            Minecraft.getInstance().execute(() -> {
                 try { fut.complete(sup.get()); } catch (Exception e) { fut.completeExceptionally(e); }
             });
             return fut.get(5, TimeUnit.SECONDS);
@@ -1745,8 +1745,8 @@ public class Py4jEntryPoint {
         m.put("index", index);
         m.put("empty", st.isEmpty());
         if (!st.isEmpty()) {
-            m.put("item", net.minecraft.registry.Registries.ITEM.getId(st.getItem()).toString());
-            m.put("name", st.getName().getString());
+            m.put("item", net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(st.getItem()).toString());
+            m.put("name", st.getHoverName().getString());
             m.put("count", st.getCount());
         }
         return m;
@@ -1762,21 +1762,21 @@ public class Py4jEntryPoint {
     public Map<String, Object> getOpenScreen() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player == null || client.currentScreen == null) {
+            Minecraft client = Minecraft.getInstance();
+            if (client.player == null || client.gui.screen() == null) {
                 out.put("open", false);
                 return out;
             }
             out.put("open", true);
-            out.put("screen", client.currentScreen.getClass().getSimpleName());
-            try { out.put("title", client.currentScreen.getTitle().getString()); } catch (Exception ignored) {}
+            out.put("screen", client.gui.screen().getClass().getSimpleName());
+            try { out.put("title", client.gui.screen().getTitle().getString()); } catch (Exception ignored) {}
             List<Map<String, Object>> slots = new ArrayList<>();
-            net.minecraft.screen.ScreenHandler h = client.player.currentScreenHandler;
+            net.minecraft.world.inventory.AbstractContainerMenu h = client.player.containerMenu;
             for (int i = 0; i < h.slots.size(); i++) {
-                slots.add(slotEntry(i, h.getSlot(i).getStack()));
+                slots.add(slotEntry(i, h.getSlot(i).getItem()));
             }
             out.put("slots", slots);
-            out.put("syncId", h.syncId);
+            out.put("syncId", h.containerId);
             return out;
         }, Map.of("open", false, "error", "client thread timeout"));
     }
@@ -1785,15 +1785,15 @@ public class Py4jEntryPoint {
     public Map<String, Object> getInventoryFull() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            var player = MinecraftClient.getInstance().player;
+            var player = Minecraft.getInstance().player;
             if (player == null) { out.put("ok", false); return out; }
             var inv = player.getInventory();
             List<Map<String, Object>> main = new ArrayList<>();
-            for (int i = 0; i < inv.size(); i++) main.add(slotEntry(i, inv.getStack(i)));
+            for (int i = 0; i < inv.getContainerSize(); i++) main.add(slotEntry(i, inv.getItem(i)));
             out.put("slots", main);                       // 0-8 hotbar, 9-35 main, 36-39 armor, 40 offhand
             int sel = adris.altoclef.multiversion.entity.PlayerVer.getSelectedSlot(inv);
             out.put("selectedHotbar", sel);
-            out.put("heldItem", slotEntry(sel, player.getMainHandStack()));
+            out.put("heldItem", slotEntry(sel, player.getMainHandItem()));
             out.put("ok", true);
             return out;
         }, Map.of("ok", false, "error", "client thread timeout"));
@@ -1802,11 +1802,11 @@ public class Py4jEntryPoint {
     /** Click a slot of the CURRENT screen by window index.
      *  button: 0=LMB 1=RMB; action: PICKUP | QUICK_MOVE (shift) | THROW | SWAP. */
     public boolean clickUiSlot(int windowSlot, int button, String action) {
-        net.minecraft.screen.slot.SlotActionType type;
+        net.minecraft.world.inventory.ContainerInput type;
         try {
-            type = net.minecraft.screen.slot.SlotActionType.valueOf(action.toUpperCase());
+            type = net.minecraft.world.inventory.ContainerInput.valueOf(action.toUpperCase());
         } catch (Exception e) {
-            type = net.minecraft.screen.slot.SlotActionType.PICKUP;
+            type = net.minecraft.world.inventory.ContainerInput.PICKUP;
         }
         final var ftype = type;
         return Boolean.TRUE.equals(onClientThread(() -> {
@@ -1827,19 +1827,19 @@ public class Py4jEntryPoint {
      *  Returns the clicked slot index, or -1 if not found in time. */
     public int clickMenuByName(java.util.List<String> names, int button, String action, int timeoutMs) {
         long deadline = System.currentTimeMillis() + Math.max(500, timeoutMs);
-        net.minecraft.screen.slot.SlotActionType type;
-        try { type = net.minecraft.screen.slot.SlotActionType.valueOf(action.toUpperCase()); }
-        catch (Exception e) { type = net.minecraft.screen.slot.SlotActionType.PICKUP; }
+        net.minecraft.world.inventory.ContainerInput type;
+        try { type = net.minecraft.world.inventory.ContainerInput.valueOf(action.toUpperCase()); }
+        catch (Exception e) { type = net.minecraft.world.inventory.ContainerInput.PICKUP; }
         final var ftype = type;
         while (System.currentTimeMillis() < deadline) {
             Integer idx = onClientThread(() -> {
-                MinecraftClient client = MinecraftClient.getInstance();
-                if (client.player == null || client.currentScreen == null) return null;
-                var h = client.player.currentScreenHandler;
+                Minecraft client = Minecraft.getInstance();
+                if (client.player == null || client.gui.screen() == null) return null;
+                var h = client.player.containerMenu;
                 for (int i = 0; i < h.slots.size(); i++) {
-                    var st = h.getSlot(i).getStack();
+                    var st = h.getSlot(i).getItem();
                     if (st == null || st.isEmpty()) continue;
-                    String nm = st.getName().getString();
+                    String nm = st.getHoverName().getString();
                     if (nm == null) continue;
                     String low = nm.toLowerCase();
                     for (String want : names) {
@@ -1867,7 +1867,7 @@ public class Py4jEntryPoint {
     public boolean selectHotbar(int slot) {
         if (slot < 0 || slot > 8) return false;
         return Boolean.TRUE.equals(onClientThread(() -> {
-            var player = MinecraftClient.getInstance().player;
+            var player = Minecraft.getInstance().player;
             if (player == null) return false;
             adris.altoclef.multiversion.entity.PlayerVer.setSelectedSlot(player.getInventory(), slot);
             return true;
@@ -1885,9 +1885,9 @@ public class Py4jEntryPoint {
     /** Absolute look at a world point (eyes follow x,y,z). */
     public boolean lookAt(double x, double y, double z) {
         return Boolean.TRUE.equals(onClientThread(() -> {
-            var player = MinecraftClient.getInstance().player;
+            var player = Minecraft.getInstance().player;
             if (player == null) return false;
-            Rotation rot = LookHelper.getLookRotation(_mod, new Vec3d(x, y, z));
+            Rotation rot = LookHelper.getLookRotation(_mod, new Vec3(x, y, z));
             _mod.getInputControls().forceLook(rot.getYaw(), rot.getPitch());
             return true;
         }, false));
@@ -1896,9 +1896,9 @@ public class Py4jEntryPoint {
     /** Look straight at a player/entity by name. */
     public boolean lookAtPlayer(String playerName) {
         return Boolean.TRUE.equals(onClientThread(() -> {
-            PlayerEntity p = getEntity(playerName);
+            Player p = getEntity(playerName);
             if (p == null) return false;
-            Vec3d aim = LookHelper.getOptimalAimPoint(_mod, p);
+            Vec3 aim = LookHelper.getOptimalAimPoint(_mod, p);
             Rotation rot = LookHelper.getLookRotation(_mod, aim);
             _mod.getInputControls().forceLook(rot.getYaw(), rot.getPitch());
             return true;
@@ -1908,10 +1908,10 @@ public class Py4jEntryPoint {
     /** Relative camera turn by degrees. (doubles: py4j maps python numbers to double) */
     public boolean rotateCamera(double dYaw, double dPitch) {
         return Boolean.TRUE.equals(onClientThread(() -> {
-            var player = MinecraftClient.getInstance().player;
+            var player = Minecraft.getInstance().player;
             if (player == null) return false;
-            _mod.getInputControls().forceLook((float) (player.getYaw() + dYaw),
-                    (float) Math.max(-90.0, Math.min(90.0, player.getPitch() + dPitch)));
+            _mod.getInputControls().forceLook((float) (player.getYRot(1.0f) + dYaw),
+                    (float) Math.max(-90.0, Math.min(90.0, player.getXRot(1.0f) + dPitch)));
             return true;
         }, false));
     }
@@ -1952,7 +1952,7 @@ public class Py4jEntryPoint {
         if (!Boolean.TRUE.equals(started)) return false;
         new Thread(() -> {
             try { Thread.sleep(Math.max(20, Math.min(ms, 10000))); } catch (InterruptedException ignored) {}
-            MinecraftClient.getInstance().execute(() -> _mod.getInputControls().release(input));
+            Minecraft.getInstance().execute(() -> _mod.getInputControls().release(input));
         }, "holdKey-release").start();
         return true;
     }
@@ -1962,19 +1962,19 @@ public class Py4jEntryPoint {
     public Map<String, Object> interactEntity(String playerName, boolean use) {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            PlayerEntity p = getEntity(playerName);
+            Player p = getEntity(playerName);
             if (p == null) { out.put("ok", false); out.put("reason", "entity not found"); return out; }
             if (!LookHelper.canHitEntity(_mod, p)) {
                 out.put("ok", false); out.put("reason", "out of reach");
-                out.put("distance", MinecraftClient.getInstance().player.distanceTo(p));
+                out.put("distance", Minecraft.getInstance().player.distanceTo(p));
                 return out;
             }
-            Vec3d aim = LookHelper.getOptimalAimPoint(_mod, p);
+            Vec3 aim = LookHelper.getOptimalAimPoint(_mod, p);
             Rotation rot = LookHelper.getLookRotation(_mod, aim);
             _mod.getInputControls().forceLook(rot.getYaw(), rot.getPitch());
             if (use) {
-                var res = MinecraftClient.getInstance().interactionManager
-                        .interactEntity(MinecraftClient.getInstance().player, p, net.minecraft.util.Hand.MAIN_HAND);
+                var res = Minecraft.getInstance().gameMode
+                        .interact(Minecraft.getInstance().player, p, null, net.minecraft.world.InteractionHand.MAIN_HAND);
                 out.put("result", res.toString());
             } else {
                 _mod.getControllerExtras().attack(p, true);
@@ -1994,23 +1994,23 @@ public class Py4jEntryPoint {
     public Map<String, Object> mouseClick(String button) {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             String b = button == null ? "left" : button.toLowerCase();
             switch (b) {
                 case "left" -> _mod.getInputControls().tryPress(kaptainwutax.tungsten.path.movements.Input.CLICK_LEFT);
                 case "right" -> _mod.getInputControls().tryPress(kaptainwutax.tungsten.path.movements.Input.CLICK_RIGHT);
                 case "middle" -> {
-                    var k = client.options.pickItemKey;
-                    k.setPressed(true);
-                    net.minecraft.client.option.KeyBinding.onKeyPressed(k.getDefaultKey());
+                    var k = client.options.keyPickItem;
+                    k.setDown(true);
+                    net.minecraft.client.KeyMapping.click(k.getDefaultKey());
                     // released next tick by the client's own key handling
                 }
                 default -> { out.put("ok", false); out.put("reason", "button must be left/right/middle"); return out; }
             }
             out.put("ok", true);
             out.put("button", b);
-            var t = client.crosshairTarget;
+            var t = client.hitResult;
             out.put("hit", t == null ? "NONE" : t.getType().toString());
             return out;
         }, Map.of("ok", false, "reason", "client thread timeout"));
@@ -2024,12 +2024,12 @@ public class Py4jEntryPoint {
     public Map<String, Object> screenClickAt(double x, double y, String button, boolean scaled) {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
-            net.minecraft.client.gui.screen.Screen s = client.currentScreen;
+            Minecraft client = Minecraft.getInstance();
+            net.minecraft.client.gui.screens.Screen s = client.gui.screen();
             if (s == null) { out.put("ok", false); out.put("reason", "no screen open"); return out; }
             double sx = x, sy = y;
             if (!scaled) {
-                double f = client.getWindow().getScaleFactor();
+                double f = client.getWindow().getGuiScale();
                 sx = x / f; sy = y / f;
             }
             int btn = switch (button == null ? "left" : button.toLowerCase()) {
@@ -2081,20 +2081,20 @@ public class Py4jEntryPoint {
     public Map<String, Object> interactCrosshairEntity() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player == null || client.interactionManager == null) {
+            Minecraft client = Minecraft.getInstance();
+            if (client.player == null || client.gameMode == null) {
                 out.put("ok", false); out.put("reason", "not in game"); return out;
             }
-            var hit = client.crosshairTarget;
-            if (!(hit instanceof net.minecraft.util.hit.EntityHitResult ehr)) {
+            var hit = client.hitResult;
+            if (!(hit instanceof net.minecraft.world.phys.EntityHitResult ehr)) {
                 out.put("ok", false);
                 out.put("reason", "no entity under crosshair — lookAt it first");
                 return out;
             }
-            net.minecraft.entity.Entity target = ehr.getEntity();
-            var res = client.interactionManager.interactEntity(
-                    client.player, target, net.minecraft.util.Hand.MAIN_HAND);
-            client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            net.minecraft.world.entity.Entity target = ehr.getEntity();
+            var res = client.gameMode.interact(
+                    client.player, target, null, net.minecraft.world.InteractionHand.MAIN_HAND);
+            client.player.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
             out.put("ok", true);
             out.put("result", res.toString());
             out.put("entityType", target.getType().toString());
@@ -2106,8 +2106,8 @@ public class Py4jEntryPoint {
     public Map<String, Object> reachability(String playerName) {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            PlayerEntity p = getEntity(playerName);
-            var me = MinecraftClient.getInstance().player;
+            Player p = getEntity(playerName);
+            var me = Minecraft.getInstance().player;
             if (p == null || me == null) { out.put("exists", false); return out; }
             out.put("exists", true);
             out.put("distance", me.distanceTo(p));
@@ -2122,16 +2122,16 @@ public class Py4jEntryPoint {
     public Map<String, Object> useHeldItem() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player == null || client.interactionManager == null) {
+            Minecraft client = Minecraft.getInstance();
+            if (client.player == null || client.gameMode == null) {
                 out.put("ok", false);
                 out.put("reason", "not in game");
                 return out;
             }
-            var res = client.interactionManager.interactItem(client.player, net.minecraft.util.Hand.MAIN_HAND);
+            var res = client.gameMode.useItem(client.player, net.minecraft.world.InteractionHand.MAIN_HAND);
             out.put("ok", true);
             out.put("result", res.toString());
-            out.put("held", slotEntry(-1, client.player.getMainHandStack()));
+            out.put("held", slotEntry(-1, client.player.getMainHandItem()));
             return out;
         }, Map.of("ok", false, "reason", "client thread timeout"));
     }
@@ -2145,28 +2145,28 @@ public class Py4jEntryPoint {
     public Map<String, Object> placeBlockLooking() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player == null || client.interactionManager == null) {
+            Minecraft client = Minecraft.getInstance();
+            if (client.player == null || client.gameMode == null) {
                 out.put("ok", false); out.put("reason", "not in game"); return out;
             }
-            var hit = client.crosshairTarget;
-            if (!(hit instanceof net.minecraft.util.hit.BlockHitResult bhr)
-                    || hit.getType() != net.minecraft.util.hit.HitResult.Type.BLOCK) {
+            var hit = client.hitResult;
+            if (!(hit instanceof net.minecraft.world.phys.BlockHitResult bhr)
+                    || hit.getType() != net.minecraft.world.phys.HitResult.Type.BLOCK) {
                 out.put("ok", false);
                 out.put("reason", "no block under crosshair — lookAt a block face first");
                 return out;
             }
-            int before = client.player.getMainHandStack().getCount();
-            var res = client.interactionManager.interactBlock(
-                    client.player, net.minecraft.util.Hand.MAIN_HAND, bhr);
-            client.player.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            int before = client.player.getMainHandItem().getCount();
+            var res = client.gameMode.useItemOn(
+                    client.player, net.minecraft.world.InteractionHand.MAIN_HAND, bhr);
+            client.player.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
             out.put("ok", true);
             out.put("result", res.toString());
             out.put("target", bhr.getBlockPos().toShortString());
-            out.put("side", bhr.getSide().toString());
-            out.put("held", client.player.getMainHandStack().getItem().toString());
+            out.put("side", bhr.getDirection().toString());
+            out.put("held", client.player.getMainHandItem().getItem().toString());
             out.put("count_before", before);
-            out.put("count_after", client.player.getMainHandStack().getCount());
+            out.put("count_after", client.player.getMainHandItem().getCount());
             return out;
         }, Map.of("ok", false, "reason", "client thread timeout"));
     }
@@ -2189,13 +2189,13 @@ public class Py4jEntryPoint {
      *  never nest onClientThread (nesting deadlocks the render thread). */
     private Map<String, Object> placeBlockAtRaw(int x, int y, int z) {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player == null || client.interactionManager == null) {
+            Minecraft client = Minecraft.getInstance();
+            if (client.player == null || client.gameMode == null) {
                 out.put("ok", false); out.put("reason", "not in game"); return out;
             }
-            var world = client.player.getEntityWorld();
-            net.minecraft.util.math.BlockPos target = new net.minecraft.util.math.BlockPos(x, y, z);
-            if (!world.getBlockState(target).isReplaceable()) {
+            var world = client.player.level();
+            net.minecraft.core.BlockPos target = new net.minecraft.core.BlockPos(x, y, z);
+            if (!world.getBlockState(target).canBeReplaced()) {
                 out.put("ok", false); out.put("reason", "target not replaceable (already occupied)"); return out;
             }
             // protection policy (protected areas / claims / altoclef place-avoiders)
@@ -2203,39 +2203,39 @@ public class Py4jEntryPoint {
                 out.put("ok", false); out.put("reason", "placing denied (protected area)"); return out;
             }
             // ensure a placeable block is held (else pick the first block item in the hotbar)
-            if (!(client.player.getMainHandStack().getItem() instanceof net.minecraft.item.BlockItem)) {
+            if (!(client.player.getMainHandItem().getItem() instanceof net.minecraft.world.item.BlockItem)) {
                 int found = -1;
                 for (int i = 0; i < 9; i++) {
-                    if (client.player.getInventory().getStack(i).getItem() instanceof net.minecraft.item.BlockItem) { found = i; break; }
+                    if (client.player.getInventory().getItem(i).getItem() instanceof net.minecraft.world.item.BlockItem) { found = i; break; }
                 }
                 if (found < 0) { out.put("ok", false); out.put("reason", "no block item in hotbar"); return out; }
                 adris.altoclef.multiversion.entity.PlayerVer.setSelectedSlot(client.player.getInventory(), found);
             }
             // find a solid neighbour to place against; aim at the shared face
-            net.minecraft.util.math.Vec3d eye = client.player.getEyePos();
-            for (net.minecraft.util.math.Direction dir : net.minecraft.util.math.Direction.values()) {
-                net.minecraft.util.math.BlockPos support = target.offset(dir);
+            net.minecraft.world.phys.Vec3 eye = client.player.getEyePosition();
+            for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+                net.minecraft.core.BlockPos support = target.relative(dir);
                 if (world.getBlockState(support).isAir()
                         || world.getBlockState(support).getCollisionShape(world, support).isEmpty()) continue;
                 // the face of `support` that borders target points opposite to dir
-                net.minecraft.util.math.Direction side = dir.getOpposite();
-                net.minecraft.util.math.Vec3d faceCenter = net.minecraft.util.math.Vec3d.ofCenter(support)
-                        .add(net.minecraft.util.math.Vec3d.of(side.getVector()).multiply(0.5));
-                if (eye.squaredDistanceTo(faceCenter) > 5.0 * 5.0) continue;
+                net.minecraft.core.Direction side = dir.getOpposite();
+                net.minecraft.world.phys.Vec3 faceCenter = net.minecraft.world.phys.Vec3.atCenterOf(support)
+                        .add(net.minecraft.world.phys.Vec3.atLowerCornerOf(side.getUnitVec3i()).scale(0.5));
+                if (eye.distanceToSqr(faceCenter) > 5.0 * 5.0) continue;
                 // aim there and place against the crosshair block
-                net.minecraft.util.math.Vec3d d = faceCenter.subtract(eye);
+                net.minecraft.world.phys.Vec3 d = faceCenter.subtract(eye);
                 // Humanized aim via the vanilla mouse pipeline (changeLookDirection,
                 // pixel-quantized) — never setYaw/setPitch, which anti-cheats flag.
                 // One-shot call, so apply the delta immediately (mouse-like packet).
                 float wantYaw = (float) Math.toDegrees(-Math.atan2(d.x, d.z));
                 float wantPitch = (float) Math.toDegrees(-Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)));
-                double sens = client.options.getMouseSensitivity().getValue();
+                double sens = client.options.sensitivity().get();
                 double f = sens * 0.6 + 0.2;
                 double sensScale = f * f * f * 8.0;
                 double degPerPixel = sensScale * 0.15;
-                double dPitchDeg = net.minecraft.util.math.MathHelper.wrapDegrees(wantPitch - client.player.getPitch());
-                double dYawDeg = net.minecraft.util.math.MathHelper.wrapDegrees(wantYaw - client.player.getYaw());
-                client.player.changeLookDirection(
+                double dPitchDeg = net.minecraft.util.Mth.wrapDegrees(wantPitch - client.player.getXRot(1.0f));
+                double dYawDeg = net.minecraft.util.Mth.wrapDegrees(wantYaw - client.player.getYRot(1.0f));
+                client.player.turn(
                         Math.round(dYawDeg / degPerPixel) * sensScale,
                         Math.round(dPitchDeg / degPerPixel) * sensScale);
                 // THE LAST FORGED PLACEMENT IN THE PROJECT DIED HERE. What stood on this line
@@ -2279,7 +2279,7 @@ public class Py4jEntryPoint {
      *  autonomously; poll bridgePlaced()/bridgeActive(). (TODO 7.2) */
     public boolean bridgeForward(String direction, int blocks) {
         try {
-            net.minecraft.client.MinecraftClient.getInstance().execute(() ->
+            net.minecraft.client.Minecraft.getInstance().execute(() ->
                     kaptainwutax.tungsten.task.BridgeTask.start(direction, blocks));
             return true;
         } catch (Exception e) { return false; }
@@ -2287,7 +2287,7 @@ public class Py4jEntryPoint {
     /** Godbridge TOWARD a target position (bedwars: bridge to enemy island). */
     public boolean bridgeTo(int x, int y, int z) {
         try {
-            net.minecraft.client.MinecraftClient.getInstance().execute(() ->
+            net.minecraft.client.Minecraft.getInstance().execute(() ->
                     kaptainwutax.tungsten.task.BridgeTask.startTo(x, y, z));
             return true;
         } catch (Exception e) { return false; }
@@ -2298,7 +2298,7 @@ public class Py4jEntryPoint {
     /** Pillar up to Y by placing blocks under self (#46). Equip a block first. */
     public boolean pillarTo(int y) {
         try {
-            net.minecraft.client.MinecraftClient.getInstance().execute(() ->
+            net.minecraft.client.Minecraft.getInstance().execute(() ->
                     kaptainwutax.tungsten.task.PillarTask.startTo(y));
             return true;
         } catch (Exception e) { return false; }
@@ -2311,7 +2311,7 @@ public class Py4jEntryPoint {
      */
     public String debugSlotRevertBurst(int windowSlot, int packets) {
         try {
-            long ms = net.minecraft.client.MinecraftClient.getInstance().submit(() ->
+            long ms = net.minecraft.client.Minecraft.getInstance().submit(() ->
                     AltoClef.getInstance().getSlotHandler().debugRevertBurst(windowSlot, packets))
                     .get(5, java.util.concurrent.TimeUnit.SECONDS);
             return "ban=" + ms;
@@ -2321,7 +2321,7 @@ public class Py4jEntryPoint {
     /** G83: how long clicks on a window slot of the current screen are still dropped (ms). */
     public String slotBanRemainingMs(int windowSlot) {
         try {
-            long ms = net.minecraft.client.MinecraftClient.getInstance().submit(() ->
+            long ms = net.minecraft.client.Minecraft.getInstance().submit(() ->
                     AltoClef.getInstance().getSlotHandler().banRemainingMs(windowSlot))
                     .get(5, java.util.concurrent.TimeUnit.SECONDS);
             return "ban=" + ms;
@@ -2352,8 +2352,8 @@ public class Py4jEntryPoint {
      *         measuring a build against itself.
      */
     public Map<String, Object> avoidBreakingRegion(int x, int y, int z, int radius) {
-        final net.minecraft.util.math.BlockPos centre =
-                new net.minecraft.util.math.BlockPos(x, y, z);
+        final net.minecraft.core.BlockPos centre =
+                new net.minecraft.core.BlockPos(x, y, z);
         final int r = Math.max(0, radius);
         _mod.getBehaviour().avoidBlockBreakingExtra(pos ->
                 Math.abs(pos.getX() - centre.getX()) <= r
@@ -3581,17 +3581,17 @@ public class Py4jEntryPoint {
         if (mod == null || mod.getCraftingRecipeTracker() == null) {
             return "recipeProbe: no mod";
         }
-        net.minecraft.item.Item[] probes = {
-                net.minecraft.item.Items.OAK_PLANKS,
-                net.minecraft.item.Items.CRAFTING_TABLE,
-                net.minecraft.item.Items.STONE_PICKAXE,
-                net.minecraft.item.Items.BUCKET,
+        net.minecraft.world.item.Item[] probes = {
+                net.minecraft.world.item.Items.OAK_PLANKS,
+                net.minecraft.world.item.Items.CRAFTING_TABLE,
+                net.minecraft.world.item.Items.STONE_PICKAXE,
+                net.minecraft.world.item.Items.BUCKET,
         };
         StringBuilder out = new StringBuilder();
-        for (net.minecraft.item.Item probe : probes) {
+        for (net.minecraft.world.item.Item probe : probes) {
             // hasRecipeForItem calls ensureUpdated, which is the whole point of asking.
             boolean known = mod.getCraftingRecipeTracker().hasRecipeForItem(probe);
-            out.append(' ').append(net.minecraft.registry.Registries.ITEM.getId(probe).getPath())
+            out.append(' ').append(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(probe).getPath())
                     .append('=').append(known);
         }
         return "recipesKnown=" + adris.altoclef.trackers.CraftingRecipeTracker.recipesKnown + out;
@@ -4488,7 +4488,7 @@ public class Py4jEntryPoint {
     public boolean setLastNetherPortal(String dimension, int x, int y, int z) {
         try {
             _mod.getMiscBlockTracker().remember(adris.altoclef.util.Dimension.valueOf(dimension),
-                    new net.minecraft.util.math.BlockPos(x, y, z));
+                    new net.minecraft.core.BlockPos(x, y, z));
             return true;
         } catch (IllegalArgumentException e) {
             return false;
@@ -4717,7 +4717,7 @@ public class Py4jEntryPoint {
     public Map<String, Object> gotoFar(int x, int y, int z, int horizon) {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            var me = MinecraftClient.getInstance().player;
+            var me = Minecraft.getInstance().player;
             if (me == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             int h = Math.max(4, horizon);
             double dx = x + 0.5 - me.getX(), dz = z + 0.5 - me.getZ();
@@ -4752,8 +4752,8 @@ public class Py4jEntryPoint {
     public Map<String, Object> getPerfStats() {
         Map<String, Object> out = new HashMap<>();
         try {
-            var mc = MinecraftClient.getInstance();
-            out.put("fps", mc.getCurrentFps());
+            var mc = Minecraft.getInstance();
+            out.put("fps", mc.getFps());
             int renderers = kaptainwutax.tungsten.TungstenModRenderContainer.RENDERERS.size()
                     + kaptainwutax.tungsten.TungstenModRenderContainer.BLOCK_PATH_RENDERER.size()
                     + kaptainwutax.tungsten.TungstenModRenderContainer.RUNNING_PATH_RENDERER.size()
@@ -4789,11 +4789,11 @@ public class Py4jEntryPoint {
      *  (no-op). */
     public boolean respawnPlayer() {
         return Boolean.TRUE.equals(onClientThread(() -> {
-            var client = MinecraftClient.getInstance();
+            var client = Minecraft.getInstance();
             if (client.player == null) return false;
-            if (client.player.getHealth() > 0 && client.currentScreen == null) return false;
-            if (client.currentScreen != null) client.setScreen(null);
-            client.player.requestRespawn();
+            if (client.player.getHealth() > 0 && client.gui.screen() == null) return false;
+            if (client.gui.screen() != null) client.gui.setScreen(null);
+            client.player.respawn();
             return true;
         }, false));
     }
@@ -4925,7 +4925,7 @@ public class Py4jEntryPoint {
     public Map<String, Object> pathStatus() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            var me = MinecraftClient.getInstance().player;
+            var me = Minecraft.getInstance().player;
             if (me == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             out.put("ok", true);
             out.put("busy", hasActiveTask());
@@ -4951,7 +4951,7 @@ public class Py4jEntryPoint {
     public Map<String, Object> stopPathing() {
         String p = kaptainwutax.tungsten.TungstenMod.getCommandPrefix();
         ChatMessage(p + "stop");                                                            // tungsten
-        MinecraftClient.getInstance().execute(() -> {
+        Minecraft.getInstance().execute(() -> {
             _mod.getCommandExecutor().executeWithPrefix("stop");
             _gotoGoal = null;
         });
@@ -4964,7 +4964,7 @@ public class Py4jEntryPoint {
 
     /** Hunt one player by name via the tungsten combat engine (approach + aura). */
     public Map<String, Object> punk(String name) {
-        net.minecraft.client.MinecraftClient.getInstance().execute(() ->
+        net.minecraft.client.Minecraft.getInstance().execute(() ->
                 kaptainwutax.tungsten.task.PunkPlayerTask.start(name));
         Map<String, Object> out = new HashMap<>();
         out.put("ok", true); out.put("target", name);
@@ -4975,7 +4975,7 @@ public class Py4jEntryPoint {
      *  never hitting anyone in `avoid`. Re-targets automatically as the fight
      *  evolves. The agent picks the sets (brain); the mod executes. */
     public Map<String, Object> punkAny(java.util.List<String> allow, java.util.List<String> avoid) {
-        net.minecraft.client.MinecraftClient.getInstance().execute(() ->
+        net.minecraft.client.Minecraft.getInstance().execute(() ->
                 kaptainwutax.tungsten.task.PunkPlayerTask.startAny(allow, avoid));
         Map<String, Object> out = new HashMap<>();
         out.put("ok", true);
@@ -4992,7 +4992,7 @@ public class Py4jEntryPoint {
 
     /** Stop the tungsten combat engine. */
     public Map<String, Object> punkStop() {
-        net.minecraft.client.MinecraftClient.getInstance().execute(
+        net.minecraft.client.Minecraft.getInstance().execute(
                 kaptainwutax.tungsten.task.PunkPlayerTask::stop);
         return Map.of("ok", true);
     }
@@ -5002,7 +5002,7 @@ public class Py4jEntryPoint {
      *  re-planning as it chases, and never backs off into the void. Stops any punk
      *  in progress. The agent decides when to run; the mod keeps the distance. */
     public Map<String, Object> runAwayPlayer(String name, double distance) {
-        net.minecraft.client.MinecraftClient.getInstance().execute(() ->
+        net.minecraft.client.Minecraft.getInstance().execute(() ->
                 kaptainwutax.tungsten.task.RunAwayTask.start(name, distance));
         Map<String, Object> out = new HashMap<>();
         out.put("ok", true); out.put("threat", name); out.put("keepDistance", Math.max(3.0, distance));
@@ -5011,7 +5011,7 @@ public class Py4jEntryPoint {
 
     /** Stop fleeing. */
     public Map<String, Object> runAwayStop() {
-        net.minecraft.client.MinecraftClient.getInstance().execute(
+        net.minecraft.client.Minecraft.getInstance().execute(
                 kaptainwutax.tungsten.task.RunAwayTask::stop);
         return Map.of("ok", true);
     }
@@ -5039,11 +5039,11 @@ public class Py4jEntryPoint {
      *  target ONCE to current facing + dyaw and does not refresh it. The aim must
      *  auto-release within STALE_MS; poll {@link #windMouseHasTarget()} to verify. */
     public Map<String, Object> pokeStaleAim(double dyaw) {
-        net.minecraft.client.MinecraftClient.getInstance().execute(() -> {
-            var p = net.minecraft.client.MinecraftClient.getInstance().player;
+        net.minecraft.client.Minecraft.getInstance().execute(() -> {
+            var p = net.minecraft.client.Minecraft.getInstance().player;
             if (p != null)
                 kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.setTarget(
-                        p.getYaw() + (float) dyaw, p.getPitch());
+                        p.getYRot(1.0f) + (float) dyaw, p.getXRot(1.0f));
         });
         Map<String, Object> out = new HashMap<>();
         out.put("ok", true);
@@ -5073,8 +5073,8 @@ public class Py4jEntryPoint {
         try {
             kaptainwutax.tungsten.TungstenModRenderContainer.SELECTION.clear();
             kaptainwutax.tungsten.TungstenModRenderContainer.SELECTION.add(new kaptainwutax.tungsten.render.Cuboid(
-                    new net.minecraft.util.math.Vec3d(_selMin[0], _selMin[1], _selMin[2]),
-                    new net.minecraft.util.math.Vec3d(_selMax[0] - _selMin[0] + 1, _selMax[1] - _selMin[1] + 1, _selMax[2] - _selMin[2] + 1),
+                    new net.minecraft.world.phys.Vec3(_selMin[0], _selMin[1], _selMin[2]),
+                    new net.minecraft.world.phys.Vec3(_selMax[0] - _selMin[0] + 1, _selMax[1] - _selMin[1] + 1, _selMax[2] - _selMin[2] + 1),
                     new kaptainwutax.tungsten.render.Color(255, 230, 60)));
         } catch (Exception ignored) {}
         Map<String, Object> out = new HashMap<>();
@@ -5157,16 +5157,16 @@ public class Py4jEntryPoint {
     public Map<String, Object> mineBlocks(Object positionsObj) {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient mc = MinecraftClient.getInstance();
+            Minecraft mc = Minecraft.getInstance();
             if (mc.player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             var ex = kaptainwutax.tungsten.TungstenModDataContainer.EXECUTOR;
             if (ex == null) { out.put("ok", false); out.put("reason", "no executor"); return out; }
-            java.util.List<net.minecraft.util.math.BlockPos> queue = new java.util.ArrayList<>();
+            java.util.List<net.minecraft.core.BlockPos> queue = new java.util.ArrayList<>();
             // Take Object (py4j reflection wouldn't match a List<...> param) and coerce; py4j
             // also hands Python ints across as Java Long, so read them via Number.intValue().
             if (positionsObj instanceof java.util.List<?> positions) for (Object po : positions) {
                 if (po instanceof java.util.List<?> p && p.size() >= 3) {
-                    queue.add(new net.minecraft.util.math.BlockPos(
+                    queue.add(new net.minecraft.core.BlockPos(
                             ((Number) p.get(0)).intValue(),
                             ((Number) p.get(1)).intValue(),
                             ((Number) p.get(2)).intValue()));
@@ -5175,7 +5175,7 @@ public class Py4jEntryPoint {
             if (queue.isEmpty()) { out.put("ok", false); out.put("reason", "no positions"); return out; }
             // Point the mining-resume at the bot itself so it doesn't wander to a stale goal.
             // getPos() (not getEntityPos()) — version-safe across 1.21.1..1.21.11 shared src.
-            kaptainwutax.tungsten.TungstenMod.TARGET = mc.player.getPos();
+            kaptainwutax.tungsten.TungstenMod.TARGET = mc.player.position();
             kaptainwutax.tungsten.TungstenMod.markGotoTarget();
             ex.setPath(new java.util.ArrayList<>());
             ex.startBreaking(queue);
@@ -5193,8 +5193,8 @@ public class Py4jEntryPoint {
     public Map<String, Object> destroyBlockAt(int x, int y, int z) {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            if (MinecraftClient.getInstance().player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
-            net.minecraft.util.math.BlockPos pos = new net.minecraft.util.math.BlockPos(x, y, z);
+            if (Minecraft.getInstance().player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
+            net.minecraft.core.BlockPos pos = new net.minecraft.core.BlockPos(x, y, z);
             _mod.runUserTask(new adris.altoclef.tasks.construction.DestroyBlockTask(pos));
             out.put("ok", true); out.put("pos", pos.toShortString());
             return out;
@@ -5222,15 +5222,15 @@ public class Py4jEntryPoint {
     public Map<String, Object> cleanupScaffold() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient mc = MinecraftClient.getInstance();
+            Minecraft mc = Minecraft.getInstance();
             if (mc.player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             var ex = kaptainwutax.tungsten.TungstenModDataContainer.EXECUTOR;
             if (ex == null) { out.put("ok", false); out.put("reason", "no executor"); return out; }
-            java.util.List<net.minecraft.util.math.BlockPos> scaffold =
+            java.util.List<net.minecraft.core.BlockPos> scaffold =
                     kaptainwutax.tungsten.util.ScaffoldRegistry.snapshotTopDown();
             if (scaffold.isEmpty()) { out.put("ok", true); out.put("queued", 0);
                 out.put("reason", "no scaffold recorded"); return out; }
-            kaptainwutax.tungsten.TungstenMod.TARGET = mc.player.getPos();
+            kaptainwutax.tungsten.TungstenMod.TARGET = mc.player.position();
             kaptainwutax.tungsten.TungstenMod.markGotoTarget();
             ex.setPath(new java.util.ArrayList<>());
             ex.startBreaking(scaffold);
@@ -5247,14 +5247,14 @@ public class Py4jEntryPoint {
     }
 
     // ── //replace — stateful break-then-place over the selection ──────────────
-    private java.util.List<net.minecraft.util.math.BlockPos> _replaceCells = null;
+    private java.util.List<net.minecraft.core.BlockPos> _replaceCells = null;
     private String _replaceToName = null;
 
-    private boolean blockNameMatches(net.minecraft.block.BlockState st, String name) {
+    private boolean blockNameMatches(net.minecraft.world.level.block.state.BlockState st, String name) {
         if (name == null || name.isEmpty() || name.equals("*") || name.equalsIgnoreCase("any"))
             return !st.isAir();   // "any"/"*" = replace any non-air block
         String want = name.contains(":") ? name : "minecraft:" + name;
-        return net.minecraft.registry.Registries.BLOCK.getId(st.getBlock()).toString().equals(want);
+        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(st.getBlock()).toString().equals(want);
     }
 
     /** //replace: swap every selection cell whose block is `fromName` (or "*"/"any" =
@@ -5265,24 +5265,24 @@ public class Py4jEntryPoint {
     public Map<String, Object> replaceSelection(String fromName, String toName) {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             if (_selMin == null) { out.put("ok", false); out.put("reason", "no selection — call select() first"); return out; }
             var ex = kaptainwutax.tungsten.TungstenModDataContainer.EXECUTOR;
             if (ex == null) { out.put("ok", false); out.put("reason", "no executor"); return out; }
-            java.util.List<net.minecraft.util.math.BlockPos> cells = new java.util.ArrayList<>();
+            java.util.List<net.minecraft.core.BlockPos> cells = new java.util.ArrayList<>();
             for (int y = _selMin[1]; y <= _selMax[1]; y++)
                 for (int x = _selMin[0]; x <= _selMax[0]; x++)
                     for (int z = _selMin[2]; z <= _selMax[2]; z++) {
-                        net.minecraft.util.math.BlockPos p = new net.minecraft.util.math.BlockPos(x, y, z);
-                        if (blockNameMatches(client.world.getBlockState(p), fromName)) cells.add(p);
+                        net.minecraft.core.BlockPos p = new net.minecraft.core.BlockPos(x, y, z);
+                        if (blockNameMatches(client.level.getBlockState(p), fromName)) cells.add(p);
                     }
             if (cells.isEmpty()) { out.put("ok", true); out.put("matched", 0); out.put("phase", "done");
                 out.put("reason", "no cells match " + fromName); return out; }
             _replaceCells = cells;
             _replaceToName = toName;
             // point mining-resume at the bot so it doesn't wander to a stale goal
-            kaptainwutax.tungsten.TungstenMod.TARGET = client.player.getPos();
+            kaptainwutax.tungsten.TungstenMod.TARGET = client.player.position();
             kaptainwutax.tungsten.TungstenMod.markGotoTarget();
             ex.setPath(new java.util.ArrayList<>());
             ex.startBreaking(cells);
@@ -5296,7 +5296,7 @@ public class Py4jEntryPoint {
     public Map<String, Object> replaceStatus() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             var ex = kaptainwutax.tungsten.TungstenModDataContainer.EXECUTOR;
             int breaking = (ex != null && ex.breakQueue != null) ? ex.breakQueue.size() : 0;
@@ -5314,13 +5314,13 @@ public class Py4jEntryPoint {
             // what it cannot reach. So each poll re-derives the state from the WORLD, which is
             // the only honest source, and keeps the list until every cell actually holds the
             // wanted block.
-            _replaceCells.sort(java.util.Comparator.comparingInt(net.minecraft.util.math.BlockPos::getY));
-            java.util.List<net.minecraft.util.math.BlockPos> toBreak = new java.util.ArrayList<>();
-            java.util.List<net.minecraft.util.math.BlockPos> toPlace = new java.util.ArrayList<>();
-            for (net.minecraft.util.math.BlockPos p : _replaceCells) {
-                net.minecraft.block.BlockState st = client.world.getBlockState(p);
+            _replaceCells.sort(java.util.Comparator.comparingInt(net.minecraft.core.BlockPos::getY));
+            java.util.List<net.minecraft.core.BlockPos> toBreak = new java.util.ArrayList<>();
+            java.util.List<net.minecraft.core.BlockPos> toPlace = new java.util.ArrayList<>();
+            for (net.minecraft.core.BlockPos p : _replaceCells) {
+                net.minecraft.world.level.block.state.BlockState st = client.level.getBlockState(p);
                 if (blockNameMatches(st, _replaceToName)) continue;        // done: it is the new block
-                if (st.isReplaceable()) toPlace.add(p); else toBreak.add(p);
+                if (st.canBeReplaced()) toPlace.add(p); else toBreak.add(p);
             }
             if (toBreak.isEmpty() && toPlace.isEmpty()) {
                 _replaceCells = null;
@@ -5335,13 +5335,13 @@ public class Py4jEntryPoint {
                 // the bot four and a half blocks too far and nobody walking it in. The build queue
                 // learned to walk (C5.10); the break side never did, so it does it here — same
                 // question, same helper.
-                net.minecraft.util.math.BlockPos first = toBreak.get(0);
-                double reach = client.player.getEyePos()
-                        .distanceTo(net.minecraft.util.math.Vec3d.ofCenter(first));
+                net.minecraft.core.BlockPos first = toBreak.get(0);
+                double reach = client.player.getEyePosition()
+                        .distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(first));
                 if (reach > 4.0) {
-                    net.minecraft.util.math.BlockPos stand =
-                            kaptainwutax.tungsten.helpers.BlockPlaceHelper.workStand(client.world, first);
-                    if (stand != null && !client.player.getBlockPos().equals(stand)) {
+                    net.minecraft.core.BlockPos stand =
+                            kaptainwutax.tungsten.helpers.BlockPlaceHelper.workStand(client.level, first);
+                    if (stand != null && !client.player.blockPosition().equals(stand)) {
                         kaptainwutax.tungsten.task.FastNavigator.startExact(stand);
                         out.put("ok", true); out.put("phase", "walking");
                         out.put("remaining", toBreak.size());
@@ -5382,7 +5382,7 @@ public class Py4jEntryPoint {
     public Map<String, Object> buildBlocks(Object blocksObj) {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             java.util.List<int[]> pos = new java.util.ArrayList<>();
             java.util.List<String> names = new java.util.ArrayList<>();
@@ -5404,12 +5404,12 @@ public class Py4jEntryPoint {
             int queued = 0, already = 0;
             String runName = null;
             boolean first = true;   // the first run REPLACES the previous batch, the rest append
-            java.util.List<net.minecraft.util.math.BlockPos> run = new java.util.ArrayList<>();
+            java.util.List<net.minecraft.core.BlockPos> run = new java.util.ArrayList<>();
             for (int oi : order) {
                 int[] p = pos.get(oi);
                 String name = names.get(oi);
-                net.minecraft.util.math.BlockPos bp = new net.minecraft.util.math.BlockPos(p[0], p[1], p[2]);
-                if (!client.world.getBlockState(bp).isReplaceable()) { already++; continue; }
+                net.minecraft.core.BlockPos bp = new net.minecraft.core.BlockPos(p[0], p[1], p[2]);
+                if (!client.level.getBlockState(bp).canBeReplaced()) { already++; continue; }
                 if (runName != null && !runName.equals(name)) {
                     if (first) { kaptainwutax.tungsten.helpers.BlockPlaceHelper.beginBatch(run, runName); first = false; }
                     else kaptainwutax.tungsten.helpers.BlockPlaceHelper.enqueue(run, runName);
@@ -5439,15 +5439,15 @@ public class Py4jEntryPoint {
      *  we("replace stone cobblestone"), we("cyl glass"). */
     public Map<String, Object> we(String cmd) {
         int[][] pos = onClientThread(() -> {
-            MinecraftClient mc = MinecraftClient.getInstance();
+            Minecraft mc = Minecraft.getInstance();
             int[] pb = null, cb = null;
             if (mc.player != null) {
-                net.minecraft.util.math.BlockPos p = mc.player.getBlockPos();
+                net.minecraft.core.BlockPos p = mc.player.blockPosition();
                 pb = new int[]{p.getX(), p.getY(), p.getZ()};
             }
-            if (mc.crosshairTarget instanceof net.minecraft.util.hit.BlockHitResult bhr
-                    && mc.crosshairTarget.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK) {
-                net.minecraft.util.math.BlockPos p = bhr.getBlockPos();
+            if (mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult bhr
+                    && mc.hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                net.minecraft.core.BlockPos p = bhr.getBlockPos();
                 cb = new int[]{p.getX(), p.getY(), p.getZ()};
             }
             return new int[][]{pb, cb};
@@ -5467,7 +5467,7 @@ public class Py4jEntryPoint {
     public Map<String, Object> copySelection() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             if (_selMin == null) { out.put("ok", false); out.put("reason", "no selection"); return out; }
             java.util.List<Object> clip = new java.util.ArrayList<>();
@@ -5475,10 +5475,10 @@ public class Py4jEntryPoint {
             for (int y = _selMin[1]; y <= _selMax[1]; y++)
                 for (int x = _selMin[0]; x <= _selMax[0]; x++)
                     for (int z = _selMin[2]; z <= _selMax[2]; z++) {
-                        net.minecraft.block.BlockState st = client.world.getBlockState(new net.minecraft.util.math.BlockPos(x, y, z));
+                        net.minecraft.world.level.block.state.BlockState st = client.level.getBlockState(new net.minecraft.core.BlockPos(x, y, z));
                         if (st.isAir()) continue;
                         clip.add(java.util.List.of(x - ox, y - oy, z - oz,
-                                net.minecraft.registry.Registries.BLOCK.getId(st.getBlock()).toString()));
+                                net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(st.getBlock()).toString()));
                     }
             _clipboard = clip;
             out.put("ok", true); out.put("copied", clip.size());
@@ -5491,9 +5491,9 @@ public class Py4jEntryPoint {
     public Map<String, Object> pasteClipboard() {
         if (_clipboard == null || _clipboard.isEmpty()) return Map.of("ok", false, "reason", "clipboard empty (//copy first)");
         int[] anchor = onClientThread(() -> {
-            var p = MinecraftClient.getInstance().player;
+            var p = Minecraft.getInstance().player;
             if (p == null) return null;
-            net.minecraft.util.math.BlockPos b = p.getBlockPos();
+            net.minecraft.core.BlockPos b = p.blockPosition();
             return new int[]{b.getX(), b.getY(), b.getZ()};
         }, null);
         if (anchor == null) return Map.of("ok", false, "reason", "not in game");
@@ -5518,7 +5518,7 @@ public class Py4jEntryPoint {
     public Map<String, Object> undoSnapshot() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null || _selMin == null) { out.put("ok", false); out.put("reason", "no selection"); return out; }
             long vol = (long) (_selMax[0] - _selMin[0] + 1) * (_selMax[1] - _selMin[1] + 1) * (_selMax[2] - _selMin[2] + 1);
             if (vol > UNDO_MAX_CELLS) { out.put("ok", false); out.put("reason", "selection too big for undo (" + vol + ")"); return out; }
@@ -5526,9 +5526,9 @@ public class Py4jEntryPoint {
             for (int y = _selMin[1]; y <= _selMax[1]; y++)
                 for (int x = _selMin[0]; x <= _selMax[0]; x++)
                     for (int z = _selMin[2]; z <= _selMax[2]; z++) {
-                        net.minecraft.block.BlockState st = client.world.getBlockState(new net.minecraft.util.math.BlockPos(x, y, z));
+                        net.minecraft.world.level.block.state.BlockState st = client.level.getBlockState(new net.minecraft.core.BlockPos(x, y, z));
                         snap.add(java.util.List.of(x, y, z,
-                                st.isAir() ? "air" : net.minecraft.registry.Registries.BLOCK.getId(st.getBlock()).toString()));
+                                st.isAir() ? "air" : net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(st.getBlock()).toString()));
                     }
             _undoStack.push(snap);
             while (_undoStack.size() > UNDO_MAX_STACK) _undoStack.removeLast();
@@ -5542,21 +5542,21 @@ public class Py4jEntryPoint {
     public Map<String, Object> undoLast() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             if (_undoStack.isEmpty()) { out.put("ok", false); out.put("reason", "nothing to undo"); return out; }
             var ex = kaptainwutax.tungsten.TungstenModDataContainer.EXECUTOR;
             if (ex == null) { out.put("ok", false); out.put("reason", "no executor"); return out; }
             java.util.List<Object> snap = _undoStack.pop();
-            java.util.List<net.minecraft.util.math.BlockPos> breakAll = new java.util.ArrayList<>();
+            java.util.List<net.minecraft.core.BlockPos> breakAll = new java.util.ArrayList<>();
             java.util.List<Object> rebuild = new java.util.ArrayList<>();
             for (Object o : snap) {
                 java.util.List<?> c = (java.util.List<?>) o;
                 int x = ((Number) c.get(0)).intValue(), y = ((Number) c.get(1)).intValue(), z = ((Number) c.get(2)).intValue();
-                breakAll.add(new net.minecraft.util.math.BlockPos(x, y, z));
+                breakAll.add(new net.minecraft.core.BlockPos(x, y, z));
                 if (!"air".equals(c.get(3))) rebuild.add(o);
             }
-            kaptainwutax.tungsten.TungstenMod.TARGET = client.player.getPos();
+            kaptainwutax.tungsten.TungstenMod.TARGET = client.player.position();
             kaptainwutax.tungsten.TungstenMod.markGotoTarget();
             ex.setPath(new java.util.ArrayList<>());
             ex.startBreaking(breakAll);
@@ -5589,9 +5589,9 @@ public class Py4jEntryPoint {
     public Map<String, Object> loadSchem(String name) {
         Map<String, Object> parsed = onClientThread(() -> {
             Map<String, Object> o = new HashMap<>();
-            MinecraftClient mc = MinecraftClient.getInstance();
+            Minecraft mc = Minecraft.getInstance();
             if (mc.player == null) { o.put("ok", false); o.put("reason", "not in game"); return o; }
-            java.io.File dir = new java.io.File(mc.runDirectory, "schematics");
+            java.io.File dir = new java.io.File(mc.gameDirectory, "schematics");
             java.io.File f = new java.io.File(dir, name);
             if (!f.exists()) {
                 for (String ext : new String[]{".schem", ".schematic", ".litematic"}) {
@@ -5655,17 +5655,17 @@ public class Py4jEntryPoint {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
             out.put("op", op);
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null) { out.put("ok", false); out.put("reason", "not in game"); return out; }
             if (_selMin == null) { out.put("ok", false); out.put("reason", "no selection — call select() first"); return out; }
-            java.util.List<net.minecraft.util.math.BlockPos> cells = new java.util.ArrayList<>();
+            java.util.List<net.minecraft.core.BlockPos> cells = new java.util.ArrayList<>();
             int already = 0;
             for (int y = _selMin[1]; y <= _selMax[1]; y++) {   // bottom-up
                 for (int x = _selMin[0]; x <= _selMax[0]; x++) {
                     for (int z = _selMin[2]; z <= _selMax[2]; z++) {
                         if (!include.test(new int[]{x, y, z})) continue;
-                        net.minecraft.util.math.BlockPos p = new net.minecraft.util.math.BlockPos(x, y, z);
-                        if (!client.world.getBlockState(p).isReplaceable()) { already++; continue; }
+                        net.minecraft.core.BlockPos p = new net.minecraft.core.BlockPos(x, y, z);
+                        if (!client.level.getBlockState(p).canBeReplaced()) { already++; continue; }
                         cells.add(p);
                     }
                 }
@@ -5802,59 +5802,59 @@ public class Py4jEntryPoint {
     public Map<String, Object> getGameState() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             var me = client.player;
-            if (me == null || client.world == null) { out.put("inGame", false); return out; }
+            if (me == null || client.level == null) { out.put("inGame", false); return out; }
             out.put("inGame", true);
 
             Map<String, Object> self = new HashMap<>();
             self.put("hp", me.getHealth());
             self.put("maxHp", me.getMaxHealth());
-            self.put("armor", me.getArmor());
+            self.put("armor", me.getArmorValue());
             // Hunger and saturation: below 18 food health does not regenerate, which a full
             // playthrough showed as hp frozen at 16.2 for five minutes of diamond mining -- and
             // there was no way to see why from outside.
             // The block being broken right now and how far along (0..1), or absent when not mining.
             // Lets an observer tell "standing still, digging" from "standing still, stuck".
-            if (client.interactionManager != null && client.interactionManager.isBreakingBlock()) {
-                int p = client.interactionManager.getBlockBreakingProgress();
+            if (client.gameMode != null && client.gameMode.isDestroying()) {
+                int p = client.gameMode.getDestroyStage();
                 self.put("breakingProgress", p < 0 ? 0.0 : p / 10.0);
             }
             // Milliseconds since a block break last made progress (the signal UnstuckChain uses to
             // tell digging from being stuck); absent if nothing was ever mined.
             long lb = adris.altoclef.control.PlayerExtraController.lastBreakProgressMs;
             if (lb > 0) self.put("msSinceBreakProgress", System.currentTimeMillis() - lb);
-            self.put("food", me.getHungerManager().getFoodLevel());
-            self.put("saturation", me.getHungerManager().getSaturationLevel());
+            self.put("food", me.getFoodData().getFoodLevel());
+            self.put("saturation", me.getFoodData().getSaturationLevel());
             self.put("pos", String.format("%.1f,%.1f,%.1f", me.getX(), me.getY(), me.getZ()));
-            self.put("onGround", me.isOnGround());
+            self.put("onGround", me.onGround());
             // WHICH WORLD AM I IN? There was no way to ask over py4j at all, which a playthrough
             // needs constantly -- overworld, nether, end are three different sets of rules, and an
             // agent that cannot tell them apart cannot plan across a portal. Found while writing the
             // first End course: the course had to infer the dimension from the bot's Y coordinate,
             // which is exactly the kind of guess a primitive is supposed to remove.
             self.put("dimension", adris.altoclef.util.helpers.WorldHelper.getCurrentDimension().toString());
-            self.put("held", me.getMainHandStack().isEmpty() ? "empty"
-                    : net.minecraft.registry.Registries.ITEM.getId(me.getMainHandStack().getItem()).toString());
+            self.put("held", me.getMainHandItem().isEmpty() ? "empty"
+                    : net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(me.getMainHandItem().getItem()).toString());
             int blocks = 0;
             for (int i = 0; i < 36; i++) {
-                var st = me.getInventory().getStack(i);
-                if (st.getItem() instanceof net.minecraft.item.BlockItem) blocks += st.getCount();
+                var st = me.getInventory().getItem(i);
+                if (st.getItem() instanceof net.minecraft.world.item.BlockItem) blocks += st.getCount();
             }
             self.put("blocks", blocks);
             // Rotation + motion + look-target: reading a stall means knowing whether the bot is
             // spinning, standing still, or staring at a block it cannot reach. Added 2026-09-10
             // so a stall capture can name the cause from position AND facing, not position alone.
-            self.put("yaw", Math.round(me.getYaw() * 10.0f) / 10.0);
-            self.put("pitch", Math.round(me.getPitch() * 10.0f) / 10.0);
-            net.minecraft.util.math.Vec3d vel = me.getVelocity();
+            self.put("yaw", Math.round(me.getYRot(1.0f) * 10.0f) / 10.0);
+            self.put("pitch", Math.round(me.getXRot(1.0f) * 10.0f) / 10.0);
+            net.minecraft.world.phys.Vec3 vel = me.getDeltaMovement();
             self.put("vel", String.format("%.2f,%.2f,%.2f", vel.x, vel.y, vel.z));
-            var ct = client.crosshairTarget;
-            if (ct instanceof net.minecraft.util.hit.BlockHitResult bhr
-                    && ct.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK) {
-                net.minecraft.util.math.BlockPos lookPos = bhr.getBlockPos();
-                self.put("lookingAt", net.minecraft.registry.Registries.BLOCK.getId(
-                        client.world.getBlockState(lookPos).getBlock()).getPath()
+            var ct = client.hitResult;
+            if (ct instanceof net.minecraft.world.phys.BlockHitResult bhr
+                    && ct.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                net.minecraft.core.BlockPos lookPos = bhr.getBlockPos();
+                self.put("lookingAt", net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(
+                        client.level.getBlockState(lookPos).getBlock()).getPath()
                         + "@" + lookPos.getX() + "," + lookPos.getY() + "," + lookPos.getZ());
             } else {
                 self.put("lookingAt", ct == null ? "none" : ct.getType().toString());
@@ -5862,7 +5862,7 @@ public class Py4jEntryPoint {
             out.put("self", self);
 
             List<Map<String, Object>> players = new ArrayList<>();
-            for (net.minecraft.entity.player.PlayerEntity p : client.world.getPlayers()) {
+            for (net.minecraft.world.entity.player.Player p : client.level.players()) {
                 if (p == me) continue;
                 double dx = me.getX() - p.getX(), dy = me.getY() - p.getY(), dz = me.getZ() - p.getZ();
                 double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -5883,21 +5883,21 @@ public class Py4jEntryPoint {
             // bed scan (bedwars perception) — nearest bed blocks in a radius, so
             // the agent knows where to attack (enemy bed) / defend (own bed)
             List<Map<String, Object>> beds = new ArrayList<>();
-            net.minecraft.util.math.BlockPos base = me.getBlockPos();
+            net.minecraft.core.BlockPos base = me.blockPosition();
             int R = 40;
             for (int dx = -R; dx <= R && beds.size() < 8; dx += 1) {
                 for (int dz = -R; dz <= R && beds.size() < 8; dz += 1) {
                     for (int dy = -8; dy <= 8; dy++) {
-                        net.minecraft.util.math.BlockPos bp = base.add(dx, dy, dz);
-                        if (client.world.getBlockState(bp).getBlock() instanceof net.minecraft.block.BedBlock) {
+                        net.minecraft.core.BlockPos bp = base.offset(dx, dy, dz);
+                        if (client.level.getBlockState(bp).getBlock() instanceof net.minecraft.world.level.block.BedBlock) {
                             // count once per bed: skip the FOOT if its HEAD neighbour
                             // is also a bed (already will be / was reported)
                             try {
-                                var st = client.world.getBlockState(bp);
-                                if (st.get(net.minecraft.block.BedBlock.PART) == net.minecraft.block.enums.BedPart.FOOT) {
-                                    var facing = st.get(net.minecraft.block.HorizontalFacingBlock.FACING);
-                                    if (client.world.getBlockState(bp.offset(facing)).getBlock()
-                                            instanceof net.minecraft.block.BedBlock) break;
+                                var st = client.level.getBlockState(bp);
+                                if (st.getValue(net.minecraft.world.level.block.BedBlock.PART) == net.minecraft.world.level.block.state.properties.BedPart.FOOT) {
+                                    var facing = st.getValue(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING);
+                                    if (client.level.getBlockState(bp.relative(facing)).getBlock()
+                                            instanceof net.minecraft.world.level.block.BedBlock) break;
                                 }
                             } catch (Exception ignored) {}
                             Map<String, Object> bm = new HashMap<>();
@@ -5961,17 +5961,17 @@ public class Py4jEntryPoint {
     public Map<String, Object> inventorySpace() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            var player = MinecraftClient.getInstance().player;
+            var player = Minecraft.getInstance().player;
             if (player == null) { out.put("ok", false); return out; }
             var inv = player.getInventory();
             int free = 0, blockTotal = 0;
             Map<String, Integer> blocks = new HashMap<>();
             for (int i = 0; i < 36; i++) {
-                ItemStack st = inv.getStack(i);
+                ItemStack st = inv.getItem(i);
                 if (st.isEmpty()) { free++; continue; }
-                if (st.getItem() instanceof net.minecraft.item.BlockItem) {
+                if (st.getItem() instanceof net.minecraft.world.item.BlockItem) {
                     blockTotal += st.getCount();
-                    String id = net.minecraft.registry.Registries.ITEM.getId(st.getItem()).toString();
+                    String id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(st.getItem()).toString();
                     blocks.merge(id, st.getCount(), Integer::sum);
                 }
             }
@@ -5993,14 +5993,14 @@ public class Py4jEntryPoint {
     public Map<String, Object> getCrosshairTarget() {
         return onClientThread(() -> {
             Map<String, Object> out = new HashMap<>();
-            var hit = MinecraftClient.getInstance().crosshairTarget;
+            var hit = Minecraft.getInstance().hitResult;
             if (hit == null) { out.put("type", "none"); return out; }
             out.put("type", hit.getType().toString());
-            if (hit instanceof net.minecraft.util.hit.BlockHitResult bhr) {
-                out.put("block", MinecraftClient.getInstance().world
+            if (hit instanceof net.minecraft.world.phys.BlockHitResult bhr) {
+                out.put("block", Minecraft.getInstance().level
                         .getBlockState(bhr.getBlockPos()).getBlock().getName().getString());
                 out.put("pos", bhr.getBlockPos().toShortString());
-            } else if (hit instanceof net.minecraft.util.hit.EntityHitResult ehr) {
+            } else if (hit instanceof net.minecraft.world.phys.EntityHitResult ehr) {
                 out.put("entity", ehr.getEntity().getName().getString());
             }
             return out;

@@ -5,9 +5,9 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.chains.MobDefenseChain;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.goals.AltoGoal;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.CreeperEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,13 +56,13 @@ public class RunAwayFromCreepersTask extends CustomBaritoneGoalTask {
         // We want to run away NOW
         Nav.cancel();
         return new AltoGoal.FleeLive(
-                () -> mod.getEntityTracker().getTrackedEntities(CreeperEntity.class).stream()
+                () -> mod.getEntityTracker().getTrackedEntities(Creeper.class).stream()
                         // Same retention range as hostile retreats: keep occluded nearby
                         // threats, but do not route around every distant loaded creeper.
-                        .filter(e -> e.isInRange(mod.getPlayer(), _distanceToRun + 2))
-                        .map(e -> new Vec3d(e.getX(), e.getY(), e.getZ()))
+                        .filter(e -> e.closerThan(mod.getPlayer(), _distanceToRun + 2))
+                        .map(e -> new Vec3(e.getX(), e.getY(), e.getZ()))
                         .collect(java.util.stream.Collectors.toList()),
-                () -> mod.getPlayer() == null ? null : mod.getPlayer().getPos(),
+                () -> mod.getPlayer() == null ? null : mod.getPlayer().position(),
                 _distanceToRun);
     }
 

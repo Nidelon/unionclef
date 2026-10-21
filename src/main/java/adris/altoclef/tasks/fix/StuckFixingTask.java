@@ -32,7 +32,7 @@ public class StuckFixingTask extends Task {
     public boolean isFinished() {
         AltoClef mod = AltoClef.getInstance();
         if (mod == null || mod.getPlayer() == null) return false;
-        var cur = mod.getPlayer().getBlockPos();
+        var cur = mod.getPlayer().blockPosition();
         return cur.getX() == x && cur.getZ() == z;
     }
 

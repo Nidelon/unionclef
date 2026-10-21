@@ -10,7 +10,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 
-import net.minecraft.command.CommandSource;
+import net.minecraft.commands.SharedSuggestionProvider;
 
 public class EnumArgumentType<E extends Enum<E>> implements ArgumentType<E> {
 	 private final Class<E> enumClass;
@@ -36,7 +36,7 @@ public class EnumArgumentType<E extends Enum<E>> implements ArgumentType<E> {
     @Override
     public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
     	
-        return CommandSource.suggestMatching(Arrays.stream(enumClass.getEnumConstants())
+        return SharedSuggestionProvider.suggest(Arrays.stream(enumClass.getEnumConstants())
                 .map(Enum::name)
                 .map(String::toLowerCase), builder);
     }

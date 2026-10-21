@@ -1,6 +1,6 @@
 package adris.altoclef.multiversion.versionedfields;
 
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 
 /**
  * A helper class implementing entities that are not yet supported in certain versions
@@ -15,13 +15,13 @@ public class Entities {
         UNSUPPORTED = VersionedFieldHelper.getUnsupportedEntityClass();
 
         //#if MC >= 11904
-        WARDEN = net.minecraft.entity.mob.WardenEntity.class;
+        WARDEN = net.minecraft.world.entity.monster.warden.Warden.class;
         //#else
         //$$ WARDEN = UNSUPPORTED;
         //#endif
 
         //#if MC >= 11701
-        GLOW_SQUID = net.minecraft.entity.passive.GlowSquidEntity.class;
+        GLOW_SQUID = net.minecraft.world.entity.animal.squid.GlowSquid.class;
         //#else
         //$$ GLOW_SQUID = UNSUPPORTED;
         //#endif

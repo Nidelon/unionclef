@@ -11,11 +11,11 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.block.Blocks;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.ClipContext;
 
 import java.util.HashSet;
 import java.util.Optional;
@@ -107,7 +107,7 @@ public class PlaceObsidianFloodTask extends Task {
     private static final int RIM_NO_PLACE_LIMIT = 200;
 
     private BlockPos _rim;           // solid edge block whose TOP face we click
-    private BlockPos _waterCell;     // rim.up(): where the water source lands
+    private BlockPos _waterCell;     // rim.above(): where the water source lands
     private BlockPos _reclaimTarget; // the water source we're currently scooping back
     private boolean _placed;         // water has been placed at _waterCell
     private boolean _done;           // one flood cycle complete (converted + drained)
@@ -118,7 +118,7 @@ public class PlaceObsidianFloodTask extends Task {
         mod.getBehaviour().push();
         // Only source blocks fill a bucket; ray-trace to sources so the water click and the reclaim
         // scoop target the source, not a flowing cell.
-        mod.getBehaviour().setRayTracingFluidHandling(RaycastContext.FluidHandling.SOURCE_ONLY);
+        mod.getBehaviour().setRayTracingFluidHandling(net.minecraft.world.level.ClipContext.Fluid.SOURCE_ONLY);
         // Don't let pathing dig out the rim we stand the water on.
         mod.getBehaviour().avoidBlockBreaking(pos -> _rim != null && pos.equals(_rim));
         _progress.reset();
@@ -199,18 +199,18 @@ public class PlaceObsidianFloodTask extends Task {
                 // beside; a source buried in rock is skipped, and with none known we explore for a
                 // real lake instead of committing to an unreachable, unfloodable pocket.
                 Optional<BlockPos> lava = mod.getBlockScanner().getNearestBlock(
-                        mod.getPlayer().getPos(),
-                        p -> WorldHelper.isSourceBlock(p, false) && WorldHelper.isAir(p.up()),
+                        mod.getPlayer().position(),
+                        p -> WorldHelper.isSourceBlock(p, false) && WorldHelper.isAir(p.above()),
                         Blocks.LAVA);
-                if (lava.isPresent() && WorldHelper.canReach(lava.get().up())) {
+                if (lava.isPresent() && WorldHelper.canReach(lava.get().above())) {
                     setDebugState("Approaching lava to flood");
-                    return new GetToBlockTask(lava.get().up(), false);
+                    return new GetToBlockTask(lava.get().above(), false);
                 }
                 setDebugState("Searching for a lava lake to flood");
                 return new TimeoutWanderTask();
             }
             _rim = rim.get();
-            _waterCell = _rim.up();
+            _waterCell = _rim.above();
             _progress.reset();
             _bestApproachSq = Double.MAX_VALUE;
             _noApproachTicks = 0;
@@ -220,7 +220,7 @@ public class PlaceObsidianFloodTask extends Task {
         // Approach guard (shimmy-proof): blacklist a rim the body never gets closer to. Distance to
         // the water cell, not raw displacement, so the unstuck shimmy jiggling a wedged body in place
         // cannot fake progress. See the field comment above (the y=19-under-a-lake deadlock).
-        double approachSq = mod.getPlayer().getPos().squaredDistanceTo(
+        double approachSq = mod.getPlayer().position().distanceToSqr(
                 _waterCell.getX() + 0.5, _waterCell.getY() + 0.5, _waterCell.getZ() + 0.5);
         if (approachSq <= RIM_IN_RANGE_SQ) {
             _noApproachTicks = 0;                 // close enough; let the interact task place
@@ -291,11 +291,11 @@ public class PlaceObsidianFloodTask extends Task {
         for (int dx = -RECLAIM_RADIUS; dx <= RECLAIM_RADIUS; dx++) {
             for (int dz = -RECLAIM_RADIUS; dz <= RECLAIM_RADIUS; dz++) {
                 for (int dy = -1; dy <= 1; dy++) {
-                    BlockPos p = _waterCell.add(dx, dy, dz);
+                    BlockPos p = _waterCell.offset(dx, dy, dz);
                     if (_reclaimBlacklist.contains(p)) continue;
                     if (mod.getWorld().getBlockState(p).getBlock() != Blocks.WATER) continue;
                     if (!WorldHelper.isSourceBlock(p, true)) continue;
-                    double d = p.getSquaredDistance(mod.getPlayer().getPos());
+                    double d = p.distSqr(BlockPos.containing(mod.getPlayer().position()));
                     if (d < bestDist) {
                         bestDist = d;
                         best = p;
@@ -314,28 +314,28 @@ public class PlaceObsidianFloodTask extends Task {
      */
     private Optional<BlockPos> findFloodRim(AltoClef mod) {
         Optional<BlockPos> lava = mod.getBlockScanner().getNearestBlock(
-                mod.getPlayer().getPos(), p -> isFloodableLava(mod, p), Blocks.LAVA);
+                mod.getPlayer().position(), p -> isFloodableLava(mod, p), Blocks.LAVA);
         return lava.flatMap(pos -> rimFor(mod, pos));
     }
 
     private boolean isFloodableLava(AltoClef mod, BlockPos lava) {
-        if (!lava.isWithinDistance(mod.getPlayer().getPos(), LAVA_SEARCH_RANGE)) return false;
+        if (!lava.closerThan(BlockPos.containing(mod.getPlayer().position()), LAVA_SEARCH_RANGE)) return false;
         if (!WorldHelper.isSourceBlock(lava, false)) return false;   // must be a source (flowing lava -> cobblestone)
-        if (!WorldHelper.isAir(lava.up())) return false;             // must be surface lava (open above)
+        if (!WorldHelper.isAir(lava.above())) return false;             // must be surface lava (open above)
         return rimFor(mod, lava).isPresent();
     }
 
     private Optional<BlockPos> rimFor(AltoClef mod, BlockPos lava) {
-        for (Direction d : Direction.Type.HORIZONTAL) {
-            BlockPos rim = lava.offset(d);
+        for (Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+            BlockPos rim = lava.relative(d);
             if (_rimBlacklist.contains(rim)) continue;
             if (!WorldHelper.isSolidBlock(rim)) continue;            // solid to click
-            if (!WorldHelper.isAir(rim.up())) continue;              // air above to hold the water
+            if (!WorldHelper.isAir(rim.above())) continue;              // air above to hold the water
             // ⛔ THE CLICKABLE RIM ITSELF MUST BE REACHABLE (G108, 2026-09-19). This used to accept the
             // rim if EITHER the rim OR the water cell above it was reachable. But water is placed by
             // clicking the rim's TOP face (InteractWithBlockTask on `rim`), and that task marks `rim`
-            // -- not rim.up() -- unreachable when it cannot get there. The old OR then kept re-selecting
-            // the same rim through rim.up()'s optimism (canReach = !isUnreachable, never set on it), so
+            // -- not rim.above() -- unreachable when it cannot get there. The old OR then kept re-selecting
+            // the same rim through rim.above()'s optimism (canReach = !isUnreachable, never set on it), so
             // a rim on a lava lake the bot was stuck UNDER was chosen again and again. Require the rim
             // the bot must actually reach and click.
             if (!WorldHelper.canReach(rim)) continue;

@@ -1,6 +1,6 @@
 package adris.altoclef.multiversion;
 
-import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.world.damagesource.DamageSource;
 
 public class DamageSourceWrapper {
 
@@ -25,7 +25,7 @@ public class DamageSourceWrapper {
 
     public boolean bypassesArmor() {
         //#if MC >= 11904
-        return source.isIn(net.minecraft.registry.tag.DamageTypeTags.BYPASSES_ARMOR);
+        return source.is(net.minecraft.tags.DamageTypeTags.BYPASSES_ARMOR);
         //#else
         //$$ return source.bypassesArmor();
         //#endif
@@ -33,7 +33,7 @@ public class DamageSourceWrapper {
 
     public boolean bypassesShield() {
         //#if MC >= 11904
-        return source.isIn(net.minecraft.registry.tag.DamageTypeTags.BYPASSES_SHIELD);
+        return source.is(net.minecraft.tags.DamageTypeTags.BYPASSES_SHIELD);
         //#else
         //$$ return source.isUnblockable();
         //#endif
@@ -41,7 +41,7 @@ public class DamageSourceWrapper {
 
     public boolean isOutOfWorld() {
         //#if MC >= 11904
-        return source.isOf(net.minecraft.entity.damage.DamageTypes.OUT_OF_WORLD);
+        return source.is(net.minecraft.world.damagesource.DamageTypes.FELL_OUT_OF_WORLD);
         //#else
         //$$ return source.isOutOfWorld();
         //#endif

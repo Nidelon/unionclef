@@ -13,8 +13,8 @@ import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import kaptainwutax.tungsten.commandsystem.Arg;
 import kaptainwutax.tungsten.commandsystem.CommandException;
 import kaptainwutax.tungsten.world.Dimension;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.Vec3;
 
 public class BlockTarget implements ArgumentType<BlockTarget> {
 	private final int _x;
@@ -23,7 +23,7 @@ public class BlockTarget implements ArgumentType<BlockTarget> {
     private final Dimension _dimension;
     private final BlockTargetCoordType _type;
     static final DynamicCommandExceptionType INVALID_NUM_OF_COORD_ARGS = new DynamicCommandExceptionType(
-	    numbers -> Text.literal("Unexpected number of integers passed to coordinate: " + numbers));
+	    numbers -> Component.literal("Unexpected number of integers passed to coordinate: " + numbers));
 
     public BlockTarget(int x, int y, int z, Dimension dimension, BlockTargetCoordType type) {
 	_x = x;
@@ -33,8 +33,8 @@ public class BlockTarget implements ArgumentType<BlockTarget> {
 	_type = type;
     }
     
-    public Vec3d getVec3d() {
-    	return new Vec3d(_x, _y, _z);
+    public Vec3 getVec3d() {
+    	return new Vec3(_x, _y, _z);
     }
 
     public static BlockTarget parseRemainder(String line) throws CommandException {
@@ -137,8 +137,8 @@ public class BlockTarget implements ArgumentType<BlockTarget> {
 		    // override can't do that (fixed ArgumentType#parse signature), so it must convert
 		    // to the checked exception brigadier actually expects instead of eating it.
 		    throw new CommandSyntaxException(
-		        new com.mojang.brigadier.exceptions.SimpleCommandExceptionType(Text.literal(e1.getMessage())),
-		        Text.literal(e1.getMessage()));
+		        new com.mojang.brigadier.exceptions.SimpleCommandExceptionType(Component.literal(e1.getMessage())),
+		        Component.literal(e1.getMessage()));
 		}
 		break;
 	    }

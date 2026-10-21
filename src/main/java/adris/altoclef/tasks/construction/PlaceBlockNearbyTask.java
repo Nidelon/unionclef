@@ -16,14 +16,14 @@ import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.Block;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.Arrays;
@@ -225,12 +225,12 @@ public class PlaceBlockNearbyTask extends Task {
     }
 
     private BlockPos getCurrentlyLookingBlockPlace(AltoClef mod) {
-        HitResult hit = MinecraftClient.getInstance().crosshairTarget;
+        HitResult hit = Minecraft.getInstance().hitResult;
         if (hit instanceof BlockHitResult bhit) {
             BlockPos bpos = bhit.getBlockPos();//.subtract(bhit.getSide().getVector());
             //Debug.logMessage("TEMP: A: " + bpos);
             if (WorldHelper.canPlaceAgainst(bpos)) {
-                BlockPos placePos = bhit.getBlockPos().add(bhit.getSide().getVector());
+                BlockPos placePos = bhit.getBlockPos().offset(bhit.getDirection().getUnitVec3i());
                 // Don't place inside the player -- or any other entity. isInsidePlayer is a
                 // two-block RADIUS, not a hitbox test; this asks whether the block would fit.
                 if (WorldHelper.wouldIntersectAnEntity(placePos, toPlace.length > 0 ? toPlace[0] : null)) {
@@ -257,15 +257,15 @@ public class PlaceBlockNearbyTask extends Task {
             //mod.getInputControls().tryPress(Input.CLICK_RIGHT);
             // This appears to work on servers...
             // TODO: Helper lol
-            HitResult mouseOver = MinecraftClient.getInstance().crosshairTarget;
+            HitResult mouseOver = Minecraft.getInstance().hitResult;
             if (mouseOver == null || mouseOver.getType() != HitResult.Type.BLOCK) {
                 return false;
             }
-            Hand hand = Hand.MAIN_HAND;
-            assert MinecraftClient.getInstance().interactionManager != null;
-            if (MinecraftClient.getInstance().interactionManager.interactBlock(mod.getPlayer(),hand, (BlockHitResult) mouseOver) == ActionResult.SUCCESS &&
-                    mod.getPlayer().isSneaking()) {
-                mod.getPlayer().swingHand(hand);
+            InteractionHand hand = InteractionHand.MAIN_HAND;
+            assert Minecraft.getInstance().gameMode != null;
+            if (Minecraft.getInstance().gameMode.useItemOn(mod.getPlayer(),hand, (BlockHitResult) mouseOver) == InteractionResult.SUCCESS &&
+                    mod.getPlayer().isShiftKeyDown()) {
+                mod.getPlayer().swing(hand);
                 justPlaced = targetPlace;
                 Debug.logMessage("PRESSED");
                 return true;
@@ -291,9 +291,9 @@ public class PlaceBlockNearbyTask extends Task {
         int range = 7;
         BlockPos best = null;
         double smallestScore = Double.POSITIVE_INFINITY;
-        BlockPos start = mod.getPlayer().getBlockPos().add(-range,-range,-range);
-        BlockPos end = mod.getPlayer().getBlockPos().add(range,range,range);
-        net.minecraft.world.World world = mod.getWorld();
+        BlockPos start = mod.getPlayer().blockPosition().offset(-range,-range,-range);
+        BlockPos end = mod.getPlayer().blockPosition().offset(range,range,range);
+        net.minecraft.world.level.Level world = mod.getWorld();
         Block wanted = toPlace.length > 0 ? toPlace[0] : null;
         for (BlockPos blockPos : WorldHelper.scanRegion(start, end)) {
             // A CANDIDATE IS A CELL THE BLOCK CAN GO INTO, FULL STOP (G27, 2026-09-11).
@@ -307,7 +307,7 @@ public class PlaceBlockNearbyTask extends Task {
             //   2. the block that would appear there fits -- it overlaps no entity's box, the
             //      player's first of all;
             //   3. there is a face to click: some neighbour a block can be placed against.
-            if (!world.getBlockState(blockPos).isReplaceable()) {
+            if (!world.getBlockState(blockPos).canBeReplaced()) {
                 continue;
             }
             // We can't place here as defined by user.
@@ -324,8 +324,8 @@ public class PlaceBlockNearbyTask extends Task {
             if (!hasFaceToPlaceAgainst(blockPos)) {
                 continue;
             }
-            boolean hasBelow = WorldHelper.isSolidBlock(blockPos.down());
-            double distSq = BlockPosVer.getSquaredDistance(blockPos,mod.getPlayer().getPos());
+            boolean hasBelow = WorldHelper.isSolidBlock(blockPos.below());
+            double distSq = BlockPosVer.getSquaredDistance(blockPos,mod.getPlayer().position());
 
             double score = distSq + (hasBelow ? 0 : 10);
 
@@ -340,8 +340,8 @@ public class PlaceBlockNearbyTask extends Task {
 
     /** Vanilla needs a face to click: at least one neighbour a block can be placed against. */
     private static boolean hasFaceToPlaceAgainst(BlockPos pos) {
-        for (net.minecraft.util.math.Direction d : net.minecraft.util.math.Direction.values()) {
-            if (WorldHelper.canPlaceAgainst(pos.offset(d))) return true;
+        for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
+            if (WorldHelper.canPlaceAgainst(pos.relative(d))) return true;
         }
         return false;
     }
@@ -354,14 +354,14 @@ public class PlaceBlockNearbyTask extends Task {
      * around it may be broken.
      */
     private BlockPos locateNicheToCarve(AltoClef mod) {
-        BlockPos feet = mod.getPlayer().getBlockPos();
+        BlockPos feet = mod.getPlayer().blockPosition();
         for (int dy = 0; dy <= 1; dy++) {
-            for (net.minecraft.util.math.Direction d : net.minecraft.util.math.Direction.Type.HORIZONTAL) {
-                BlockPos wall = feet.offset(d).up(dy);
+            for (net.minecraft.core.Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                BlockPos wall = feet.relative(d).above(dy);
                 if (!WorldHelper.isSolidBlock(wall)) continue;
                 if (!WorldHelper.canBreak(wall)) continue;
                 if (!_canPlaceHere.test(wall)) continue;
-                if (!WorldHelper.isSolidBlock(wall.down())) continue;
+                if (!WorldHelper.isSolidBlock(wall.below())) continue;
                 return wall;
             }
         }

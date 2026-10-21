@@ -29,20 +29,20 @@ import com.mojang.brigadier.suggestion.Suggestions;
 
 import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.commandsystem.CommandExecutor;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ChatInputSuggestor;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.command.CommandSource;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.CommandSuggestions;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.commands.SharedSuggestionProvider;
 
-@Mixin(ChatInputSuggestor.class)
+@Mixin(CommandSuggestions.class)
 public abstract class MixinChatInputSuggestor {
-    @Shadow private ParseResults<CommandSource> parse;
-    @Shadow boolean completingSuggestions;
-    @Shadow private ChatInputSuggestor.SuggestionWindow window;
-	@Shadow private static int getStartOfCurrentWord(String input) {
+    @Shadow private ParseResults<SharedSuggestionProvider> currentParse;
+    @Shadow boolean keepSuggestions;
+    @Shadow private net.minecraft.client.gui.components.CommandSuggestions.SuggestionsList suggestions;
+	@Shadow private static int getLastWordIndex(String input) {
 		throw new AssertionError();
 	}
-	@Shadow @Final TextFieldWidget textField;
+	@Shadow @Final EditBox textField;
 	
 	@Shadow
     @Nullable
@@ -56,21 +56,21 @@ public abstract class MixinChatInputSuggestor {
     
 
     @Shadow
-    public abstract void show(boolean narrateFirstSuggestion);
+    public abstract void showSuggestions(boolean narrateFirstSuggestion);
     
 
     @Shadow
-    protected abstract void showCommandSuggestions();
+    protected abstract void updateUsageInfo();
 
     @Inject(method = "sortSuggestions", at = @At("HEAD"), cancellable = true)
 	private List<Suggestion> sortSuggestions(Suggestions suggestions, CallbackInfoReturnable<List<Suggestion>> ci) {
-		String command = textField.getText().substring(0, textField.getCursor());
+		String command = textField.getValue().substring(0, textField.getCursorPosition());
 
     	ci.cancel();
 		// To make sorting command literals work
 		if (command.startsWith("/") || command.startsWith(TungstenMod.getCommandPrefix()))
 			command = command.substring(1);
-		int startOfCurrentWord = getStartOfCurrentWord(command);
+		int startOfCurrentWord = getLastWordIndex(command);
 		String remaining = command.substring(startOfCurrentWord);
 		// To make sorting tags work
 		if (remaining.startsWith("#"))
@@ -108,7 +108,7 @@ public abstract class MixinChatInputSuggestor {
 	}
 
 
-	@Inject(method = "refresh", at = @At(value = "INVOKE", target = "Lcom/mojang/brigadier/StringReader;canRead()Z", remap = false),
+	@Inject(method = "updateCommandInfo", at = @At(value = "INVOKE", target = "Lcom/mojang/brigadier/StringReader;canRead()Z", remap = false),
 	        cancellable = true,
 	        locals = LocalCapture.CAPTURE_FAILHARD)
     private void inject(CallbackInfo ci, String string, StringReader reader) {
@@ -120,7 +120,7 @@ public abstract class MixinChatInputSuggestor {
             String message = reader.getString();
             reader.setCursor(reader.getCursor() + length);
 
-            if (this.parse == null) {
+            if (this.currentParse == null) {
             	TungstenMod.getCommandExecutor();
                 if (message.contains("|")) {
                 	// ⛔ FIXED 2026-09-05: `message.split("|")` treats "|" as a regex alternation
@@ -132,23 +132,23 @@ public abstract class MixinChatInputSuggestor {
                 	// built from "1" alone rather than ";goto 1" as intended. Same bug, same fix, as
                 	// the live one already found in MixinClientPlayNetworkHandler.onSendChatMessage.
                 	String[] segments = message.split("\\|");
-                	this.parse = CommandExecutor.DISPATCHER.parse(new StringReader(segments[segments.length-1]), TungstenMod.mc.getNetworkHandler().getCommandSource());
+                	this.currentParse = CommandExecutor.DISPATCHER.parse(new StringReader(segments[segments.length-1]), TungstenMod.mc.getConnection().getSuggestionsProvider());
                 } else
-                	this.parse = CommandExecutor.DISPATCHER.parse(reader, TungstenMod.mc.getNetworkHandler().getCommandSource());
+                	this.currentParse = CommandExecutor.DISPATCHER.parse(reader, TungstenMod.mc.getConnection().getSuggestionsProvider());
             }
 
-            int cursor = textField.getCursor();
-            if (cursor >= length && (this.window == null || !this.completingSuggestions)) {
+            int cursor = textField.getCursorPosition();
+            if (cursor >= length && (this.suggestions == null || !this.keepSuggestions)) {
             	TungstenMod.getCommandExecutor();
                 if (message.contains("|")) {
                 	// ⛔ FIXED 2026-09-05: same split("|") bug as above.
                 	String[] segments = message.split("\\|");
-                	this.pendingSuggestions = CommandExecutor.DISPATCHER.getCompletionSuggestions(this.parse, new StringReader(segments[segments.length-1]).getTotalLength());
+                	this.pendingSuggestions = CommandExecutor.DISPATCHER.getCompletionSuggestions(this.currentParse, new StringReader(segments[segments.length-1]).getTotalLength());
                 } else
-                	this.pendingSuggestions = CommandExecutor.DISPATCHER.getCompletionSuggestions(this.parse, cursor);
+                	this.pendingSuggestions = CommandExecutor.DISPATCHER.getCompletionSuggestions(this.currentParse, cursor);
                 this.pendingSuggestions.thenRun(() -> {
                     if (this.pendingSuggestions.isDone()) {
-                        this.showCommandSuggestions();
+                        this.updateUsageInfo();
                     }
                 });
             }

@@ -1,26 +1,26 @@
 package kaptainwutax.tungsten.agent;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.block.ShapeContext;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.BlockView;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.ClipContext;
 
-public class AgentRaycastContext extends RaycastContext {
+public class AgentRaycastContext extends ClipContext {
 
-	private final RaycastContext.ShapeType shapeType;
+	private final net.minecraft.world.level.ClipContext.Block shapeType;
 	private final AgentShapeContext shapeContext;
 
-	public AgentRaycastContext(Vec3d start, Vec3d end, RaycastContext.ShapeType shapeType, RaycastContext.FluidHandling fluidHandling, Agent agent) {
-		super(start, end, shapeType, fluidHandling, ShapeContext.absent());
+	public AgentRaycastContext(Vec3 start, Vec3 end, net.minecraft.world.level.ClipContext.Block shapeType, net.minecraft.world.level.ClipContext.Fluid fluidHandling, Agent agent) {
+		super(start, end, shapeType, fluidHandling, CollisionContext.empty());
 		this.shapeType = shapeType;
 		this.shapeContext = new AgentShapeContext(agent);
 	}
 
 	@Override
-	public VoxelShape getBlockShape(BlockState state, BlockView world, BlockPos pos) {
+	public VoxelShape getBlockShape(BlockState state, BlockGetter world, BlockPos pos) {
 		return this.shapeType.get(state, world, pos, this.shapeContext);
 	}
 

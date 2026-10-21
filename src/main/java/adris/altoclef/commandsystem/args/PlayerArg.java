@@ -2,8 +2,8 @@ package adris.altoclef.commandsystem.args;
 
 import adris.altoclef.commandsystem.StringReader;
 import adris.altoclef.commandsystem.exception.CommandNotFinishedException;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
 
 import java.util.stream.Stream;
 
@@ -26,14 +26,14 @@ public class PlayerArg extends Arg<String> {
     }
 
     public static Stream<String> listOnlinePlayers() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.getNetworkHandler() == null) return Stream.empty();
-        return mc.getNetworkHandler().getPlayerList().stream()
-                .map(PlayerListEntry::getProfile)
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.getConnection() == null) return Stream.empty();
+        return mc.getConnection().getOnlinePlayers().stream()
+                .map(PlayerInfo::getProfile)
                 //#if MC >= 12111
                 //$$ .map(p -> p.name())
                 //#else
-                .map(p -> p.getName())
+                .map(p -> p.name())
                 //#endif
                 .filter(name -> !name.isEmpty());
     }

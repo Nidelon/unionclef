@@ -3,13 +3,13 @@ package kaptainwutax.tungsten.task;
 import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.path.PlaceRules;
 import kaptainwutax.tungsten.util.WindMouseRotation;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Pillar up: reach a raised goal (a ledge / tree top / tower) by placing blocks
@@ -145,7 +145,7 @@ public class PillarTask {
     }
 
     public static synchronized boolean startTo(int ty, String structureBlockName, int tx, int tz) {
-        ClientPlayerEntity p = MinecraftClient.getInstance().player;
+        LocalPlayer p = Minecraft.getInstance().player;
         if (p == null) return false;
         structureBlock = structureBlockName;
         targetX = tx;
@@ -162,7 +162,7 @@ public class PillarTask {
         climbingLastTick = false;
         // The first rung is measured from where the body first RESTS: a task started mid-hop
         // would otherwise demand a rung half a block above the apex.
-        lastY = p.isOnGround() ? p.getY() : Double.NaN;
+        lastY = p.onGround() ? p.getY() : Double.NaN;
         active = true;
         Debug.logMessage("Pillaring up to y=" + ty);
         return true;
@@ -179,26 +179,26 @@ public class PillarTask {
         active = false;
         structureBlock = null;   // next pillar defaults to a throwaway climb unless told otherwise
         targetX = targetZ = Integer.MIN_VALUE;   // and to filling whatever column the body is in
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc.options != null) {
-            mc.options.jumpKey.setPressed(false);
-            mc.options.useKey.setPressed(false);
-            mc.options.forwardKey.setPressed(false);
-            mc.options.sprintKey.setPressed(false);
-            mc.options.sneakKey.setPressed(false);
+            mc.options.keyJump.setDown(false);
+            mc.options.keyUse.setDown(false);
+            mc.options.keyUp.setDown(false);
+            mc.options.keySprint.setDown(false);
+            mc.options.keyShift.setDown(false);
         }
         WindMouseRotation.INSTANCE.clearTarget();
         kaptainwutax.tungsten.TungstenModRenderContainer.PLACE_PLAN.clear();
     }
 
     /** Called every game tick from MixinClientPlayerEntity. */
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         if (!active) return;
-        MinecraftClient mc = MinecraftClient.getInstance();
-        WorldView world = player.getEntityWorld();
+        Minecraft mc = Minecraft.getInstance();
+        LevelReader world = player.level();
         var opts = mc.options;
         // The jump asked for last tick: still down, or taken away by another owner of the keys?
-        if (jumpAsked && !opts.jumpKey.isPressed()) dJumpStolen++;
+        if (jumpAsked && !opts.keyJump.isDown()) dJumpStolen++;
         jumpAsked = false;
 
         // ⛔ A TOWER NEEDS HEADROOM (G51, 2026-09-11). The wall hand-off started this task where
@@ -208,9 +208,9 @@ public class PillarTask {
         // restarts. A ceiling within the jump's reach makes this column impossible; say so at
         // once and let the navigator re-plan, instead of jumping into it for the stuck window.
         {
-            int fy = net.minecraft.util.math.MathHelper.floor(player.getY());
+            int fy = net.minecraft.util.Mth.floor(player.getY());
             BlockPos col = supportedColumnUnder(player, world);
-            if (col == null) col = BlockPos.ofFloored(player.getX(), fy, player.getZ());
+            if (col == null) col = BlockPos.containing(player.getX(), fy, player.getZ());
             BlockPos over = new BlockPos(col.getX(), fy + 2, col.getZ());
             if (!isAir(world, over) && fy + 1 < targetY) {
                 Debug.logMessage("Pillar stopped: no headroom, " + world.getBlockState(over).getBlock()
@@ -223,7 +223,7 @@ public class PillarTask {
         }
 
         // reached target height (standing on / at the target level)
-        if (player.getY() >= targetY - 0.05 && player.isOnGround()) {
+        if (player.getY() >= targetY - 0.05 && player.onGround()) {
             Debug.logMessage("Pillar done at y=" + String.format("%.1f", player.getY()) + " (placed " + placed + ")");
             clearRefusal();
             stop();
@@ -238,12 +238,12 @@ public class PillarTask {
         // asks for a tower (FastNavigator, G82); any other caller gets the refusal at once,
         // with the column remembered, instead of the hop. A climbable cell is the ladder
         // branch (G66) and is not this.
-        if (player.isOnGround() && !player.isClimbing()) {
-            int fy = net.minecraft.util.math.MathHelper.floor(player.getY());
+        if (player.onGround() && !player.onClimbable()) {
+            int fy = net.minecraft.util.Mth.floor(player.getY());
             BlockPos col = supportedColumnUnder(player, world);
-            if (col == null) col = BlockPos.ofFloored(player.getX(), fy, player.getZ());
+            if (col == null) col = BlockPos.containing(player.getX(), fy, player.getZ());
             var fst = world.getBlockState(col);
-            if (!fst.isAir() && !fst.isReplaceable() && !isAir(world, col)) {
+            if (!fst.isAir() && !fst.canBeReplaced() && !isAir(world, col)) {
                 Debug.logMessage("Pillar refused: the feet stand in " + fst.getBlock() + " at "
                         + col.toShortString() + " — a tower cannot start from inside it (clear it first)");
                 pillarThinFeet++;
@@ -273,16 +273,16 @@ public class PillarTask {
         // current level up to the target, so the full plan is visible at once.
         if (kaptainwutax.tungsten.TungstenConfig.get().renderPlacePlan
                 && !kaptainwutax.tungsten.task.FastNavigator.isActive()) {  // FastNavigator owns the overlay while it drives
-            int cx = net.minecraft.util.math.MathHelper.floor(player.getX());
-            int cz = net.minecraft.util.math.MathHelper.floor(player.getZ());
-            int fy = net.minecraft.util.math.MathHelper.floor(player.getY());
+            int cx = net.minecraft.util.Mth.floor(player.getX());
+            int cz = net.minecraft.util.Mth.floor(player.getZ());
+            int fy = net.minecraft.util.Mth.floor(player.getY());
             int top = Math.min(Math.max(targetY, climbGoalY), fy + 30);   // cap so a freak goal cannot draw an endless tower
             kaptainwutax.tungsten.TungstenModRenderContainer.PLACE_PLAN.clear();
             for (int y = fy - 1; y < top; y++) {
                 kaptainwutax.tungsten.TungstenModRenderContainer.PLACE_PLAN.add(
                         new kaptainwutax.tungsten.render.Cuboid(
-                                new Vec3d(cx + 0.1, y + 0.1, cz + 0.1),
-                                new Vec3d(0.8, 0.8, 0.8),
+                                new Vec3(cx + 0.1, y + 0.1, cz + 0.1),
+                                new Vec3(0.8, 0.8, 0.8),
                                 new kaptainwutax.tungsten.render.Color(60, 220, 120)));
             }
         }
@@ -307,16 +307,16 @@ public class PillarTask {
             double ccx = column == null ? player.getX() : column.getX() + 0.5;
             double ccz = column == null ? player.getZ() : column.getZ() + 0.5;
             double ox = ccx - player.getX(), oz = ccz - player.getZ();
-            if (column != null && player.isOnGround() && ox * ox + oz * oz > CENTER_TOL * CENTER_TOL
+            if (column != null && player.onGround() && ox * ox + oz * oz > CENTER_TOL * CENTER_TOL
                     && centerTicks < CENTER_TICKS_MAX) {
                 centerTicks++;
                 float yaw = (float) Math.toDegrees(-Math.atan2(ox, oz));
                 WindMouseRotation.INSTANCE.setTarget(yaw, 15f);
-                float err = Math.abs(net.minecraft.util.math.MathHelper.wrapDegrees(yaw - player.getYaw()));
-                opts.forwardKey.setPressed(err < 25f);
-                opts.sneakKey.setPressed(true);
-                opts.sprintKey.setPressed(false);
-                opts.jumpKey.setPressed(false);
+                float err = Math.abs(net.minecraft.util.Mth.wrapDegrees(yaw - player.getYRot(1.0f)));
+                opts.keyUp.setDown(err < 25f);
+                opts.keyShift.setDown(true);
+                opts.keySprint.setDown(false);
+                opts.keyJump.setDown(false);
                 lastY = player.getY();   // centring is not a stuck tower
                 sinceRung = 0;
                 return;
@@ -346,7 +346,7 @@ public class PillarTask {
         // the cell's top), the vine cell takes the block -- a vine is replaceable -- and the tower
         // goes up the vine at climb speed. A vine only ABOVE the feet gets the same treatment the
         // tick the rising body enters it. pillarVine=ticks/met.
-        boolean climbing = player.isClimbing();
+        boolean climbing = player.onClimbable();
         if (climbing && !climbingLastTick) pillarVineMet++;
         if (climbing) pillarVineTicks++;
         climbingLastTick = climbing;
@@ -359,31 +359,31 @@ public class PillarTask {
         // re-arm the existing land pose. The actual sneak-pose/cell/ray click gates below
         // still apply; swimming alone must not count as constructing a rung.
         boolean swimmingPillar = kaptainwutax.tungsten.TungstenConfig.get()
-                .pillarUsesSwimInputInWater && player.isTouchingWater();
+                .pillarUsesSwimInputInWater && player.isInWater();
         // Stay centred over the column (no horizontal drift) and aim straight down.
-        opts.forwardKey.setPressed(false);
-        opts.sprintKey.setPressed(false);
+        opts.keyUp.setDown(false);
+        opts.keySprint.setDown(false);
         // On land, arm sneak before the jump and retain it through the placement window.
-        // ClientPlayerEntity updates its cached sneak pose before sampling new input;
+        // LocalPlayer updates its cached sneak pose before sampling new input;
         // requesting it only at the apex misses the short window below a low roof.
-        opts.sneakKey.setPressed(!swimmingPillar);
-        WindMouseRotation.INSTANCE.setTarget(player.getYaw(), 89f); // pitch +89 = down
+        opts.keyShift.setDown(!swimmingPillar);
+        WindMouseRotation.INSTANCE.setTarget(player.getYRot(1.0f), 89f); // pitch +89 = down
 
         // Jump off the ground; release jump while airborne (single hop per block) -- unless the
         // body is climbing or swimming, where JUMP held is the ascent itself.
-        boolean jump = player.isOnGround() || climbing || swimmingPillar;
-        opts.jumpKey.setPressed(jump);
+        boolean jump = player.onGround() || climbing || swimmingPillar;
+        opts.keyJump.setDown(jump);
         jumpAsked = jump;
 
         // Find the air cell directly under the player that has a solid block below it
         // (within 2 down) — that's where the pillar block goes. Only place while
         // airborne and rising, so we don't fight our own footing.
-        if (!player.isOnGround() && player.getVelocity().y > -0.15) {
+        if (!player.onGround() && player.getDeltaMovement().y > -0.15) {
             double px = player.getX(), pz = player.getZ();
             BlockPos placeAt = null, against = null;
             for (int dy = 0; dy <= 2; dy++) {
-                BlockPos c = BlockPos.ofFloored(px, player.getY() - dy, pz);
-                BlockPos b = c.down();
+                BlockPos c = BlockPos.containing(px, player.getY() - dy, pz);
+                BlockPos b = c.below();
                 if (isAir(world, c) && !isAir(world, b)) { placeAt = c; against = b; break; }
             }
             // ⛔ A STRUCTURE PILLAR NEVER CASTS OUTSIDE ITS TARGET COLUMN (G108, 2026-09-19). The
@@ -427,8 +427,8 @@ public class PillarTask {
                 // through the mouse pipeline, and click only when the player's own crosshair
                 // agrees it would fill the cell (RealPlacement, ported from baritone's
                 // MovementHelper.attemptToPlaceABlock).
-                Vec3d faceCenter = Vec3d.ofCenter(against).add(0, 0.5, 0); // top face of the block below
-                Vec3d dv = faceCenter.subtract(player.getEyePos());
+                Vec3 faceCenter = net.minecraft.world.phys.Vec3.atCenterOf(against).add(0, 0.5, 0); // top face of the block below
+                Vec3 dv = faceCenter.subtract(player.getEyePosition());
                 float wantYaw = (float) Math.toDegrees(-Math.atan2(dv.x, dv.z));
                 float wantPitch = (float) Math.toDegrees(
                         -Math.atan2(dv.y, Math.sqrt(dv.x * dv.x + dv.z * dv.z)));
@@ -436,7 +436,7 @@ public class PillarTask {
                 BlockHitResult hit =
                         kaptainwutax.tungsten.helpers.RealPlacement.readyToPlace(mc, placeAt);
                 // Same shared rate gate as every other placement (helpers/BlockPlaceHelper).
-                if (!player.isInSneakingPose()) {
+                if (!player.isCrouching()) {
                     dSneakWait++;
                 } else if (hit == null) {
                     dReadyNull++;
@@ -454,7 +454,7 @@ public class PillarTask {
         // Progress: a RUNG is the body RESTING higher than it last rested -- on the ground, or on
         // a climbable it is going up (G66). A hop's apex is not a rung (G82): the old test
         // credited "y rose by 0.5" from mid-air and then could not see a hopping body as stuck.
-        boolean resting = player.isOnGround() || climbing;
+        boolean resting = player.onGround() || climbing;
         if (resting && Double.isNaN(lastY)) lastY = player.getY();
         if (resting && player.getY() - lastY > 0.5) {
             placed++;
@@ -469,7 +469,7 @@ public class PillarTask {
             try {
                 var lh = kaptainwutax.tungsten.path.movements.RotationHelper.liveHit(player);
                 if (lh instanceof BlockHitResult bh) {
-                    hitS = bh.getBlockPos().toShortString() + "/" + String.valueOf(bh.getSide());
+                    hitS = bh.getBlockPos().toShortString() + "/" + String.valueOf(bh.getDirection());
                 } else if (lh != null) {
                     hitS = lh.getType().name();
                 }
@@ -481,9 +481,9 @@ public class PillarTask {
                     + " pitch=%.0f onGround=%b hit=%s lastPlaceAt=%s hand=%s center=%d/%d at=(%.2f,%.2f)"
                     + " apex=%.2f jumpStolen=%d sneakWait=%d",
                     player.getY(), sinceRung, dAir, dInsideCell, dPlaceAt, dReadyNull, dTryFalse, dPlaced,
-                    player.getPitch(), player.isOnGround(), hitS,
+                    player.getXRot(1.0f), player.onGround(), hitS,
                     dLastPlaceAt == null ? "-" : dLastPlaceAt.toShortString(),
-                    player.getMainHandStack().getItem().toString(),
+                    player.getMainHandItem().getItem().toString(),
                     centerTicks, CENTER_TICKS_MAX, player.getX(), player.getZ(), dApex,
                     dJumpStolen, dSneakWait));
             pillarNoRung++;
@@ -494,7 +494,7 @@ public class PillarTask {
         }
     }
 
-    private static boolean isAir(WorldView w, BlockPos p) {
+    private static boolean isAir(LevelReader w, BlockPos p) {
         return w.getBlockState(p).getCollisionShape(w, p).isEmpty();
     }
 
@@ -506,9 +506,9 @@ public class PillarTask {
     /** The feet-level cell, among those the hitbox overlaps, that has a solid block under it and
      *  lies nearest the body -- the column a tower can be built in. Null when the body hangs over
      *  nothing (mid-bridge over a void), so the caller does not walk it anywhere. */
-    private static BlockPos supportedColumnUnder(ClientPlayerEntity player, WorldView world) {
-        net.minecraft.util.math.Box box = player.getBoundingBox();
-        int fy = net.minecraft.util.math.MathHelper.floor(player.getY());
+    private static BlockPos supportedColumnUnder(LocalPlayer player, LevelReader world) {
+        net.minecraft.world.phys.AABB box = player.getBoundingBox();
+        int fy = net.minecraft.util.Mth.floor(player.getY());
         double[][] corners = {
             {player.getX(), player.getZ()},
             {box.minX + 0.01, box.minZ + 0.01}, {box.minX + 0.01, box.maxZ - 0.01},
@@ -517,8 +517,8 @@ public class PillarTask {
         BlockPos best = null;
         double bestD = Double.MAX_VALUE;
         for (double[] c : corners) {
-            BlockPos cell = BlockPos.ofFloored(c[0], fy, c[1]);
-            if (isAir(world, cell.down())) continue;
+            BlockPos cell = BlockPos.containing(c[0], fy, c[1]);
+            if (isAir(world, cell.below())) continue;
             double dx = cell.getX() + 0.5 - player.getX(), dz = cell.getZ() + 0.5 - player.getZ();
             double d = dx * dx + dz * dz;
             if (d < bestD) { bestD = d; best = cell; }

@@ -10,11 +10,9 @@
   "client": [
     "MixinMinecraftClient",
     "MixinClientPlayerEntity",
-    "MixinDebugRenderer",
     "MixinShapeContext",
     "MixinClientPlayNetworkHandler",
     "MixinWorldChunk",
-    "MixinClientCommandSource",
     "AccessorChatInputSuggestor",
     "MixinChatInputSuggestor",
     "MixinSuggestionWindow",

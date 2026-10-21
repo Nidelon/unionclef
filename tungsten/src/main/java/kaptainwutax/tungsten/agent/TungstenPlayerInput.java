@@ -1,7 +1,7 @@
 package kaptainwutax.tungsten.agent;
 
 /**
- * Replaces net.minecraft.util.PlayerInput (record added in MC 1.21.4).
+ * Replaces net.minecraft.world.entity.player.Input (record added in MC 1.21.4).
  * In MC 1.21, player input is represented via the Input class (movementForward/Sideways floats).
  * This class holds the same logical boolean data as PlayerInput for internal Tungsten use.
  */

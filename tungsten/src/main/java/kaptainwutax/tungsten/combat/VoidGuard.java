@@ -1,9 +1,9 @@
 package kaptainwutax.tungsten.combat;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Shared void-safety movement clamp — the final word on the movement keys so no
@@ -86,8 +86,8 @@ public final class VoidGuard {
      * number rather than an accumulation over a window that catches everything else too.
      */
     public static volatile int kbImpulseMax = 0, kbImpulseSum = 0, kbImpulseN = 0;
-    private static net.minecraft.util.math.Vec3d prevVel = net.minecraft.util.math.Vec3d.ZERO;
-    private static net.minecraft.util.math.Vec3d kbAnchor = null;
+    private static net.minecraft.world.phys.Vec3 prevVel = net.minecraft.world.phys.Vec3.ZERO;
+    private static net.minecraft.world.phys.Vec3 kbAnchor = null;
     private static int kbTicksLeft = 0;
     private static boolean wasHurt = false;
     private static boolean wasAirborneOverVoid = false;
@@ -105,13 +105,13 @@ public final class VoidGuard {
         return System.currentTimeMillis() - meleeAtMs < MELEE_GUARD_MS;
     }
 
-    public static void protect(ClientPlayerEntity player, Vec3d pos, Vec3d vel, WorldView world) {
+    public static void protect(LocalPlayer player, Vec3 pos, Vec3 vel, LevelReader world) {
         // IS THE GUARD EVEN ON DUTY? Two thirds of the bot's real deaths are "fell from a high
         // place" -- six of nine in every run of a clean sweep. Either this never runs, or it runs
         // and sees no edge, or it sees one and the bot goes over anyway. Counting the three apart
         // is the only way to tell, and guessing has gone eight wrong out of nine today.
         vgCalls++;
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         double horizSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
         boolean nearVoid = VoidDetector.voidWithin(pos, world, 3, 3);
         // speed-scaled lookahead so a sprinting bot sees the rim with room to stop
@@ -123,7 +123,7 @@ public final class VoidGuard {
                 && VoidDetector.edgeAhead(pos, vel.x, vel.z, world, 3, look);
 
         if (nearVoid) {
-            mc.options.sprintKey.setPressed(false);
+            mc.options.keySprint.setDown(false);
         }
         // Jump suppression uses a LONGER lookahead: a jump carries the bot ~4
         // blocks, so a rim that's still 2-3 blocks ahead (invisible to the walk
@@ -133,7 +133,7 @@ public final class VoidGuard {
                 (keyHeading != null && VoidDetector.edgeAhead(pos, keyHeading[0], keyHeading[1], world, 3, jumpLook))
                 || (horizSpeed > 0.04 && VoidDetector.edgeAhead(pos, vel.x, vel.z, world, 3, jumpLook));
         if (jumpTowardEdge) {
-            mc.options.jumpKey.setPressed(false);
+            mc.options.keyJump.setDown(false);
         }
         // Knockback throw distance, measured from the hit rather than assumed.
         boolean hurtNow = player.hurtTime > 0;
@@ -161,7 +161,7 @@ public final class VoidGuard {
         }
 
         // Rising edge of "airborne over a void": snapshot WHY, once, before the fall buries it.
-        boolean airborneOverVoid = !player.isOnGround()
+        boolean airborneOverVoid = !player.onGround()
                 && kaptainwutax.tungsten.combat.VoidDetector.fallHeight(pos, world) > 20;
         if (airborneOverVoid && !wasAirborneOverVoid) {
             vgFallOnset++;
@@ -174,25 +174,25 @@ public final class VoidGuard {
 
         if (edgeByKey || edgeByVel) {
             vgEdgeSeen++;
-            mc.options.jumpKey.setPressed(false);
-            mc.options.sneakKey.setPressed(true);
+            mc.options.keyJump.setDown(false);
+            mc.options.keyShift.setDown(true);
             if (edgeByKey) {
-                mc.options.forwardKey.setPressed(false);
-                mc.options.backKey.setPressed(false);
-                mc.options.leftKey.setPressed(false);
-                mc.options.rightKey.setPressed(false);
-                mc.options.sprintKey.setPressed(false);
+                mc.options.keyUp.setDown(false);
+                mc.options.keyDown.setDown(false);
+                mc.options.keyLeft.setDown(false);
+                mc.options.keyRight.setDown(false);
+                mc.options.keySprint.setDown(false);
             }
         } else {
             // Clear of the rim — release the guard's edge-sneak so it can't persist (and
             // stick over the player's control after the driving task ends).
-            mc.options.sneakKey.setPressed(false);
+            mc.options.keyShift.setDown(false);
         }
     }
 
     /** Convenience overload using the player's current entity pos/velocity. */
-    public static void protect(ClientPlayerEntity player, WorldView world) {
-        protect(player, player.getEntityPos(), player.getVelocity(), world);
+    public static void protect(LocalPlayer player, LevelReader world) {
+        protect(player, player.position(), player.getDeltaMovement(), world);
     }
 
     /**
@@ -207,14 +207,14 @@ public final class VoidGuard {
      * @param pos feet position to test from
      * @param vel current velocity (for the momentum/overshoot check)
      */
-    public static void apply(CombatMoveIntent intent, ClientPlayerEntity player,
-                             Vec3d pos, Vec3d vel, WorldView world) {
+    public static void apply(CombatMoveIntent intent, LocalPlayer player,
+                             Vec3 pos, Vec3 vel, LevelReader world) {
         if (intent == null || !intent.active) return;
         double horizSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
         boolean nearVoid = VoidDetector.voidWithin(pos, world, 3, 3);
         double look = Math.max(1.4, horizSpeed * 10.0);
 
-        double[] keyHeading = intent.heading(player.getYaw());
+        double[] keyHeading = intent.heading(player.getYRot(1.0f));
         boolean edgeByKey = keyHeading != null
                 && VoidDetector.edgeAhead(pos, keyHeading[0], keyHeading[1], world, 3, look);
         boolean edgeByVel = horizSpeed > 0.04
@@ -249,11 +249,11 @@ public final class VoidGuard {
 
     /** World-space horizontal heading (dx,dz) implied by the pressed movement
      *  keys relative to yaw, or null if none. MC convention: sideways +1 = LEFT. */
-    public static double[] pressedHeading(ClientPlayerEntity player, MinecraftClient mc) {
-        double fwd = (mc.options.forwardKey.isPressed() ? 1 : 0) - (mc.options.backKey.isPressed() ? 1 : 0);
-        double strafe = (mc.options.leftKey.isPressed() ? 1 : 0) - (mc.options.rightKey.isPressed() ? 1 : 0);
+    public static double[] pressedHeading(LocalPlayer player, Minecraft mc) {
+        double fwd = (mc.options.keyUp.isDown() ? 1 : 0) - (mc.options.keyDown.isDown() ? 1 : 0);
+        double strafe = (mc.options.keyLeft.isDown() ? 1 : 0) - (mc.options.keyRight.isDown() ? 1 : 0);
         if (fwd == 0 && strafe == 0) return null;
-        double yawRad = Math.toRadians(player.getYaw());
+        double yawRad = Math.toRadians(player.getYRot(1.0f));
         double sin = Math.sin(yawRad), cos = Math.cos(yawRad);
         double dx = strafe * cos - fwd * sin;
         double dz = fwd * cos + strafe * sin;

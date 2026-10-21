@@ -8,11 +8,11 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 //#if MC >= 12100
-import net.minecraft.item.Items;
+import net.minecraft.world.item.Items;
 //#endif
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 
 public class MacePunchTask extends Task {
@@ -50,17 +50,17 @@ public class MacePunchTask extends Task {
         mod.getBehaviour().push();
     }
 
-    public static boolean canMacePunch(AltoClef mod, Vec3d pos) {
+    public static boolean canMacePunch(AltoClef mod, Vec3 pos) {
         //#if MC >= 12100
         if (!mod.getItemStorage().hasItemInventoryOnly(Items.MACE))
             return false;
         if (!LookHelper.cleanLineOfSight(pos, 400))
             return false;
-        double yDiff = mod.getPlayer().getY() - pos.getY();
+        double yDiff = mod.getPlayer().getY() - pos.y();
         if (yDiff < MACE_Y_MIN_DIFF)
             return false;
         double xzDist = pos.multiply(1, 0, 1)
-                .distanceTo(mod.getPlayer().getPos().multiply(1, 0, 1));
+                .distanceTo(mod.getPlayer().position().multiply(1, 0, 1));
         double HEIGHT_BLOCKS_PER_HORIZONTAL = 6;
         double ratio = MACE_HIT_REACH + HEIGHT_BLOCKS_PER_HORIZONTAL - (MACE_Y_MIN_DIFF - yDiff) / HEIGHT_BLOCKS_PER_HORIZONTAL;
         return ratio >= xzDist;
@@ -89,7 +89,7 @@ public class MacePunchTask extends Task {
             return null;
         }
         //#endif
-        if (mod.getPlayer().isTouchingWater()) {
+        if (mod.getPlayer().isInWater()) {
             setDebugState("IN WATER");
             _finished = true;
             return null;
@@ -101,7 +101,7 @@ public class MacePunchTask extends Task {
             return null;
         }
         // Step 3.3. Perform ATTACK
-        if (_jumped && !_maceTimeout.elapsed() && !mod.getPlayer().isOnGround()) {
+        if (_jumped && !_maceTimeout.elapsed() && !mod.getPlayer().onGround()) {
             //#if MC >= 12100
             mod.getSlotHandler().forceEquipItem(Items.MACE);
             //#endif
@@ -139,7 +139,7 @@ public class MacePunchTask extends Task {
         }
 
         if (_readyForJump) {
-            if (mod.getPlayer().isOnGround()) {
+            if (mod.getPlayer().onGround()) {
                 //#if MC >= 12100
                 mod.getSlotHandler().forceEquipItem(Items.MACE);
                 //#endif

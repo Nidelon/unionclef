@@ -8,14 +8,14 @@ import kaptainwutax.tungsten.path.Node;
 import kaptainwutax.tungsten.path.PathInput;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode;
 import kaptainwutax.tungsten.render.Color;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.LevelReader;
 
 public class ExitWaterMove {
 
 	public static Node generateMove(Node parent, BlockNode nextBlockNode) {
 	    if (!parent.agent.touchingWater) return parent;
 		double cost = 0.00002;
-		WorldView world = TungstenModDataContainer.world;
+		LevelReader world = TungstenModDataContainer.world;
 		Agent agent = parent.agent;
 		float desiredYaw = (float) DirectionHelper.calcYawFromVec3d(agent.getPos(), nextBlockNode.getPos(true));
 		float desiredPitch = (float) DirectionHelper.calcPitchFromVec3d(agent.getPos(), nextBlockNode.getPos(true));

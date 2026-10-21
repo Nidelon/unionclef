@@ -8,10 +8,10 @@ import adris.altoclef.tasks.resources.KillAndLootTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ExperienceOrbEntity;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.mob.SlimeEntity;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.ExperienceOrb;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.monster.cubemob.Slime;
 
 import java.util.Optional;
 
@@ -29,7 +29,7 @@ public class HeroTask extends Task {
             setDebugState("Eat first.");
             return null;
         }
-        Optional<Entity> experienceOrb = mod.getEntityTracker().getClosestEntity(ExperienceOrbEntity.class);
+        Optional<Entity> experienceOrb = mod.getEntityTracker().getClosestEntity(ExperienceOrb.class);
         if (experienceOrb.isPresent()) {
             setDebugState("Getting experience.");
             return new GetToEntityTask(experienceOrb.get());
@@ -41,7 +41,7 @@ public class HeroTask extends Task {
         // consider the skeleton at all, because the loop already returned on the zombie. The
         // tracker's own getClosestEntity(Class...) takes multiple types together and returns the
         // genuinely closest match across all of them -- the API this should have called directly.
-        Optional<Entity> closestHostile = mod.getEntityTracker().getClosestEntity(HostileEntity.class, SlimeEntity.class);
+        Optional<Entity> closestHostile = mod.getEntityTracker().getClosestEntity(Monster.class, Slime.class);
         if (closestHostile.isPresent()) {
             setDebugState("Killing hostiles or picking hostile drops.");
             return new KillAndLootTask(closestHostile.get().getClass(), new ItemTarget(ItemHelper.HOSTILE_MOB_DROPS));

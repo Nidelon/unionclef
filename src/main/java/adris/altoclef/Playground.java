@@ -43,23 +43,23 @@ import adris.altoclef.util.helpers.MapItemHelper;
 import adris.altoclef.util.helpers.MouseMoveHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.GhastEntity;
-import net.minecraft.entity.mob.ZombieEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3i;
-import net.minecraft.world.chunk.EmptyChunk;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.Ghast;
+import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Vec3i;
+import net.minecraft.world.level.chunk.EmptyLevelChunk;
 
 import java.io.*;
 import java.util.List;
@@ -176,12 +176,12 @@ public class Playground {
                 List<ItemStack> itemStacks = mod.getItemStorage().getItemStacksPlayerInventory(true);
                 for (ItemStack item : itemStacks) {
                     if (item.getItem() != null) {
-                        String itemName = item.getItem().getName().getString().toLowerCase();
+                        String itemName = item.getItem().getName(item).getString().toLowerCase();
                         Debug.logMessage("item" + itemName);
                         // "воздух" is the ru-client name of air.
                         if (!itemName.equals("воздух") && !itemName.equals("air")) {
-                            if (item.contains(DataComponentTypes.CUSTOM_NAME)) {
-                                String itemCustomName = removeMCFormatCodes(item.getName().getString().toLowerCase());
+                            if (item.has(DataComponents.CUSTOM_NAME)) {
+                                String itemCustomName = removeMCFormatCodes(item.getHoverName().getString().toLowerCase());
                                 Debug.logMessage("ITEM CUSTOM NAME = " + itemCustomName);
                             }
                         }
@@ -222,7 +222,7 @@ public class Playground {
                 Debug.logMessage("unset!");
                 break;
             case "captcha_dataset":
-                File choDir = new File(MinecraftClient.getInstance().runDirectory, "map_screenshots");
+                File choDir = new File(Minecraft.getInstance().gameDirectory, "map_screenshots");
                 Debug.logMessage("DEBUG COMPARE" + adris.altoclef.util.ImageComparer.compareImage(new File(choDir, "cho1.png"), new File(choDir, "cho2.png")));
                 break;
             case "savemap":
@@ -257,7 +257,7 @@ public class Playground {
             case "chunk": {
                 // We may have missed a chunk that's far away...
                 BlockPos p = new BlockPos(100000, 3, 100000);
-                Debug.logMessage("LOADED? " + (!(mod.getWorld().getChunk(p) instanceof EmptyChunk)));
+                Debug.logMessage("LOADED? " + (!(mod.getWorld().getChunk(p) instanceof EmptyLevelChunk)));
                 break;
             }
             case "structure":
@@ -271,7 +271,7 @@ public class Playground {
                 File file = new File("test.txt");
                 try {
                     FileReader reader = new FileReader(file);
-                    mod.runUserTask(new BeeMovieTask("bruh", mod.getPlayer().getBlockPos(), reader));
+                    mod.runUserTask(new BeeMovieTask("bruh", mod.getPlayer().blockPosition(), reader));
                 } catch (FileNotFoundException e) {
                     e.printStackTrace();
                 }
@@ -318,7 +318,7 @@ public class Playground {
                 mod.runUserTask(new adris.altoclef.tasks.movement.NightShelterTask());
                 break;
             case "kill":
-                List<ZombieEntity> zombs = mod.getEntityTracker().getTrackedEntities(ZombieEntity.class);
+                List<Zombie> zombs = mod.getEntityTracker().getTrackedEntities(Zombie.class);
                 if (zombs.size() == 0) {
                     Debug.logWarning("No zombs found.");
                 } else {
@@ -327,7 +327,7 @@ public class Playground {
                 }
                 break;
             // KILL THE NEAREST HOSTILE, NOT JUST A ZOMBIE.
-            // `kill` above looks for ZombieEntity specifically, so a course built around a
+            // `kill` above looks for Zombie specifically, so a course built around a
             // skeleton silently started NOTHING: no user task, an idle runner, and with no task
             // running the defence chain is never ticked either. Measured on mob_skeleton -- every
             // mdRet slot at zero for the whole fight while the bot stood there and was shot from
@@ -337,13 +337,13 @@ public class Playground {
             case "huntender": {
                 // The pearl hunt itself (KillEndermanTask, shelter included), wherever the bot is:
                 // two more pearls than it holds.
-                int have = mod.getItemStorage().getItemCount(net.minecraft.item.Items.ENDER_PEARL);
+                int have = mod.getItemStorage().getItemCount(net.minecraft.world.item.Items.ENDER_PEARL);
                 mod.runUserTask(new adris.altoclef.tasks.resources.KillEndermanTask(have + 2, true));
                 break;
             }
             case "killender":
                 mod.runUserTask(new adris.altoclef.tasks.entity.KillEntitiesTask(
-                        e -> true, net.minecraft.entity.mob.EndermanEntity.class));
+                        e -> true, net.minecraft.world.entity.monster.EnderMan.class));
                 break;
             case "killhostile": {
                 // ASK FOR THE HOSTILES LIST, NOT FOR A SUPERCLASS.
@@ -356,7 +356,7 @@ public class Playground {
                 double bestD = Double.MAX_VALUE;
                 for (LivingEntity h : hostiles) {
                     if (!h.isAlive()) continue;
-                    double d = h.squaredDistanceTo(mod.getPlayer());
+                    double d = h.distanceToSqr(mod.getPlayer());
                     if (d < bestD) { bestD = d; best = h; }
                 }
                 if (best == null) {
@@ -404,18 +404,18 @@ public class Playground {
                     int total = 0;
                     File f = new File(fname);
                     FileWriter fw = new FileWriter(f);
-                    for (Identifier id : Registries.ITEM.getIds()) {
+                    for (Identifier id : BuiltInRegistries.ITEM.keySet()) {
                         //#if MC >= 12111
-                        //$$ var optItem = Registries.ITEM.getEntry(id);
+                        //$$ var optItem = BuiltInRegistries.ITEM.getEntry(id);
                         //$$ if (optItem.isEmpty()) continue;
                         //$$ Item item = optItem.get().value();
                         //#else
-                        Item item = Registries.ITEM.get(id);
+                        Item item = BuiltInRegistries.ITEM.getValue(id);
                         //#endif
                         if (item == null) continue;
                         if (!TaskCatalogue.isObtainable(item)) {
                             ++unobtainable;
-                            fw.write(item.getTranslationKey() + "\n");
+                            fw.write(item.getDescriptionId() + "\n");
                         }
                         total++;
                     }
@@ -433,7 +433,7 @@ public class Playground {
                 mod.runUserTask(new GoToStrongholdPortalTask(12));
                 break;
             case "terminate":
-                mod.runUserTask(new TerminatorTask(mod.getPlayer().getBlockPos(), 900));
+                mod.runUserTask(new TerminatorTask(mod.getPlayer().blockPosition(), 900));
                 break;
             case "stoprot":
                 MouseMoveHelper.RotationEnabled = false;
@@ -447,12 +447,12 @@ public class Playground {
             case "tt":
                 break;
             case "sw":
-                mod.runUserTask(new SkyWarsTask(mod.getPlayer().getBlockPos(), 300, false));
+                mod.runUserTask(new SkyWarsTask(mod.getPlayer().blockPosition(), 300, false));
                 break;
             case "swt":
                 mod.getButler().ClearTeammates();
                 mod.getButler().AddNearestPlayerToFriends(mod, 5);
-                mod.runUserTask(new SkyWarsTask(mod.getPlayer().getBlockPos(), 300, false));
+                mod.runUserTask(new SkyWarsTask(mod.getPlayer().blockPosition(), 300, false));
                 break;
             case "mm": {
                 mod.getInfoSender().UpdateServerInfo("serverMode", "murdermystery");
@@ -466,10 +466,10 @@ public class Playground {
                 break;
             }
             case "kpvp":
-                mod.runUserTask(new KitPVPTask(mod.getPlayer().getBlockPos(), 900, false));
+                mod.runUserTask(new KitPVPTask(mod.getPlayer().blockPosition(), 900, false));
                 break;
             case "thepit":
-                mod.runUserTask(new SkyWarsTask(mod.getPlayer().getBlockPos(), true, false));
+                mod.runUserTask(new SkyWarsTask(mod.getPlayer().blockPosition(), true, false));
                 break;
             case "networktest":
                 Debug.logMessage("GLOBAL RECEIVERS" + ClientPlayNetworking.getGlobalReceivers() + " rc " + ClientPlayNetworking.getReceived());
@@ -495,9 +495,9 @@ public class Playground {
                     Debug.logWarning("No value given, so UNKNOWN");
                 }
                 Optional<Entity> closestTarget = mod.getEntityTracker().getClosestEntity(
-                        mod.getPlayer().getPos(),
+                        mod.getPlayer().position(),
                         entity -> true,
-                        PlayerEntity.class, net.minecraft.entity.mob.MobEntity.class);
+                        Player.class, net.minecraft.world.entity.Mob.class);
                 if (closestTarget.isPresent()) {
                     Debug.logMessage("Testing shift task , ent:" + closestTarget.get().getName().getString() + ", type: " + actualShiftType.toString());
                     mod.runUserTask(new ShiftEntityTask(closestTarget.get(), actualShiftType));
@@ -522,38 +522,38 @@ public class Playground {
                 mod.runUserTask(new BattleRoyaleTask());
                 break;
             case "bow": {
-                List<PlayerEntity> players = mod.getEntityTracker().getTrackedEntities(PlayerEntity.class);
+                List<Player> players = mod.getEntityTracker().getTrackedEntities(Player.class);
                 if (players.isEmpty()) {
                     Debug.logWarning("No targets found.");
                     break;
                 }
-                PlayerEntity target_ply = players.get(0);
+                Player target_ply = players.get(0);
                 mod.runUserTask(new ShootArrowSimpleProjectileTask(target_ply));
                 break;
             }
             case "mace": {
-                List<PlayerEntity> playerss = mod.getEntityTracker().getTrackedEntities(PlayerEntity.class);
+                List<Player> playerss = mod.getEntityTracker().getTrackedEntities(Player.class);
                 if (playerss.isEmpty()) {
                     Debug.logWarning("No targets found.");
                     break;
                 }
-                PlayerEntity target_plyy = playerss.getFirst();
+                Player target_plyy = playerss.getFirst();
                 mod.runUserTask(new MacePunchTask(target_plyy, 8));
                 break;
             }
             case "itemthreat": {
-                List<PlayerEntity> players2 = mod.getEntityTracker().getTrackedEntities(PlayerEntity.class);
+                List<Player> players2 = mod.getEntityTracker().getTrackedEntities(Player.class);
                 if (players2.size() == 0) {
                     Debug.logWarning("No targets found.");
                     break;
                 }
-                PlayerEntity target_ply2 = players2.get(0);
+                Player target_ply2 = players2.get(0);
                 Debug.logMessage(target_ply2.getName().getString() + ": " + ItemHelper.getWeaponThreat(mod, target_ply2).toString());
                 break;
             }
             case "replace": {
-                BlockPos from = mod.getPlayer().getBlockPos().add(new Vec3i(-100, -20, -100));
-                BlockPos to = mod.getPlayer().getBlockPos().add(new Vec3i(100, 255, 100));
+                BlockPos from = mod.getPlayer().blockPosition().offset(new Vec3i(-100, -20, -100));
+                BlockPos to = mod.getPlayer().blockPosition().offset(new Vec3i(100, 255, 100));
                 Block[] toFind = new Block[]{Blocks.GRASS_BLOCK};
                 ItemTarget toReplace = new ItemTarget("crafting_table");
                 mod.runUserTask(new ReplaceBlocksTask(toReplace, from, to, toFind));
@@ -590,12 +590,12 @@ public class Playground {
                         new ItemTarget("netherite_boots", 1)));
                 break;
             case "arrow": {
-                List<GhastEntity> ghasts = mod.getEntityTracker().getTrackedEntities(GhastEntity.class);
+                List<Ghast> ghasts = mod.getEntityTracker().getTrackedEntities(Ghast.class);
                 if (ghasts.size() == 0) {
                     Debug.logWarning("No ghasts found.");
                     break;
                 }
-                GhastEntity ghast = ghasts.get(0);
+                Ghast ghast = ghasts.get(0);
                 mod.runUserTask(new ShootArrowSimpleProjectileTask(ghast));
                 break;
             }

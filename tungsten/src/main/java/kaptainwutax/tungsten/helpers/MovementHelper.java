@@ -1,13 +1,13 @@
 package kaptainwutax.tungsten.helpers;
 
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.LeavesBlock;
-import net.minecraft.block.SlabBlock;
-import net.minecraft.block.StairsBlock;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Helper class for a few standalone movement predicates.
@@ -41,10 +41,10 @@ import net.minecraft.world.WorldView;
  */
 public class MovementHelper {
 
-    public static boolean isObscured(WorldView world, BlockPos pos, boolean isJumpingUp, boolean isJumpingOneBlock) {
-    	BlockState stateBelow = world.getBlockState(pos.down());
+    public static boolean isObscured(LevelReader world, BlockPos pos, boolean isJumpingUp, boolean isJumpingOneBlock) {
+    	BlockState stateBelow = world.getBlockState(pos.below());
     	BlockState state = world.getBlockState(pos);
-	    BlockState aboveState = world.getBlockState(pos.up());
+	    BlockState aboveState = world.getBlockState(pos.above());
 
 	    Block belowBlock = stateBelow.getBlock();
 	    Block block = state.getBlock();
@@ -52,27 +52,27 @@ public class MovementHelper {
 
 	    boolean isSlabBelow = belowBlock instanceof SlabBlock;
 
-	    boolean isFullCube = state.isFullCube(world, pos);
+	    boolean isFullCube = state.isCollisionShapeFullBlock(world, pos);
 	    boolean isLeaves = block instanceof LeavesBlock;
-	    boolean isStairs = block instanceof StairsBlock;
+	    boolean isStairs = block instanceof StairBlock;
 	    boolean isLava = block == Blocks.LAVA;
 
 	    boolean isBlockConnected = BlockStateChecker.isConnected(pos, world);
 
-        boolean isAboveFullCube = aboveState.isFullCube(world, pos.up());
+        boolean isAboveFullCube = aboveState.isCollisionShapeFullBlock(world, pos.above());
         boolean isAboveSlab = aboveBlock instanceof SlabBlock;
         boolean isAboveLeaves = aboveBlock instanceof LeavesBlock;
-	    boolean isAboveStairs = aboveBlock instanceof StairsBlock;
-	    boolean isAboveBlockConnected = BlockStateChecker.isConnected(pos.up(), world);
+	    boolean isAboveStairs = aboveBlock instanceof StairBlock;
+	    boolean isAboveBlockConnected = BlockStateChecker.isConnected(pos.above(), world);
 
-	    boolean isAboveX2Leaves =  world.getBlockState(pos.up(2)).getBlock() instanceof LeavesBlock;
+	    boolean isAboveX2Leaves =  world.getBlockState(pos.above(2)).getBlock() instanceof LeavesBlock;
 
-    	if (isJumpingUp && !world.getBlockState(pos.up(2)).isAir()) return true;
+    	if (isJumpingUp && !world.getBlockState(pos.above(2)).isAir()) return true;
 
 	    if (isJumpingUp && isJumpingOneBlock && BlockStateChecker.isBottomSlab(stateBelow) && state.isAir() && aboveState.isAir()) return false;
 
-	    if (isJumpingUp && isJumpingOneBlock && isStairs && aboveState.isAir() && !isAboveLeaves && !isAboveX2Leaves && world.getBlockState(pos.up(2)).isAir()) return false;
-	    if (isJumpingUp && isJumpingOneBlock && isFullCube && aboveState.isAir() && world.getBlockState(pos.up(2)).isAir()) return false;
+	    if (isJumpingUp && isJumpingOneBlock && isStairs && aboveState.isAir() && !isAboveLeaves && !isAboveX2Leaves && world.getBlockState(pos.above(2)).isAir()) return false;
+	    if (isJumpingUp && isJumpingOneBlock && isFullCube && aboveState.isAir() && world.getBlockState(pos.above(2)).isAir()) return false;
 
 
 	    if (isLava || isLeaves || isAboveLeaves || isFullCube || isAboveFullCube
@@ -98,14 +98,14 @@ public class MovementHelper {
      * collidable block in the column is a slime block. Landing there is
      * fall-damage-free (bounce), so fall-height pruning must not apply.
      */
-    public static boolean isSlimeColumnBelow(WorldView world, BlockPos feet, int maxScan) {
+    public static boolean isSlimeColumnBelow(LevelReader world, BlockPos feet, int maxScan) {
     	BlockPos pos = feet;
     	for (int i = 0; i < maxScan; i++) {
     		BlockState state = world.getBlockState(pos);
     		if (!state.isAir() && BlockShapeChecker.getShapeVolume(pos, world) > 0) {
-    			return state.getBlock() instanceof net.minecraft.block.SlimeBlock;
+    			return state.getBlock() instanceof net.minecraft.world.level.block.SlimeBlock;
     		}
-    		pos = pos.down();
+    		pos = pos.below();
     	}
     	return false;
     }

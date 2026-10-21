@@ -14,14 +14,18 @@ import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.*;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.FlowerBlock;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Optional;
@@ -52,7 +56,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
             Blocks.SHORT_GRASS,
             Blocks.SWEET_BERRY_BUSH
     };
-    private Vec3d origin;
+    private Vec3 origin;
     /** Wander destinations chosen for tungsten, and those it accepted. Proof this fired. */
     public static volatile int wanderTungPicked = 0, wanderTungDriven = 0;
     /** Of those picks, how many named a cell the bot cannot stand in. Read as wanderTung=p/d/u. */
@@ -75,21 +79,21 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
      * a mountain 120 blocks away is not where a wander wants to go, and a cave mouth at the
      * requested height often is. Nearest-first keeps the leg the length the spiral intended.
      */
-    private static net.minecraft.util.math.Vec3d groundedNear(
-            adris.altoclef.AltoClef mod, net.minecraft.util.math.Vec3d dest) {
+    private static net.minecraft.world.phys.Vec3 groundedNear(
+            adris.altoclef.AltoClef mod, net.minecraft.world.phys.Vec3 dest) {
         try {
-            net.minecraft.world.World w = mod.getWorld();
+            net.minecraft.world.level.Level w = mod.getWorld();
             if (w == null) return dest;
             int x = (int) Math.floor(dest.x), z = (int) Math.floor(dest.z);
             int y0 = (int) Math.floor(dest.y);
             for (int d = 0; d <= Math.max(GROUND_SCAN_UP, GROUND_SCAN_DOWN); d++) {
                 if (d <= GROUND_SCAN_DOWN
                         && adris.altoclef.tasks.movement.CustomBaritoneGoalTask.standable(w, x, y0 - d, z)) {
-                    return new net.minecraft.util.math.Vec3d(dest.x, y0 - d, dest.z);
+                    return new net.minecraft.world.phys.Vec3(dest.x, y0 - d, dest.z);
                 }
                 if (d != 0 && d <= GROUND_SCAN_UP
                         && adris.altoclef.tasks.movement.CustomBaritoneGoalTask.standable(w, x, y0 + d, z)) {
-                    return new net.minecraft.util.math.Vec3d(dest.x, y0 + d, dest.z);
+                    return new net.minecraft.world.phys.Vec3(dest.x, y0 + d, dest.z);
                 }
             }
         } catch (Exception ignored) {
@@ -124,14 +128,14 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
 
     private static BlockPos[] generateSides(BlockPos pos) {
         return new BlockPos[]{
-                pos.add(1,0,0),
-                pos.add(-1,0,0),
-                pos.add(0,0,1),
-                pos.add(0,0,-1),
-                pos.add(1,0,-1),
-                pos.add(1,0,1),
-                pos.add(-1,0,-1),
-                pos.add(-1,0,1)
+                pos.offset(1,0,0),
+                pos.offset(-1,0,0),
+                pos.offset(0,0,1),
+                pos.offset(0,0,-1),
+                pos.offset(1,0,-1),
+                pos.offset(1,0,1),
+                pos.offset(-1,0,-1),
+                pos.offset(-1,0,1)
         };
     }
 
@@ -154,16 +158,16 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
 
     // This happens all the time in mineshafts and swamps/jungles
     private BlockPos stuckInBlock(AltoClef mod) {
-        BlockPos p = mod.getPlayer().getBlockPos();
+        BlockPos p = mod.getPlayer().blockPosition();
         if (isAnnoying(mod, p)) return p;
-        if (isAnnoying(mod, p.up())) return p.up();
+        if (isAnnoying(mod, p.above())) return p.above();
         BlockPos[] toCheck = generateSides(p);
         for (BlockPos check : toCheck) {
             if (isAnnoying(mod, check)) {
                 return check;
             }
         }
-        BlockPos[] toCheckHigh = generateSides(p.up());
+        BlockPos[] toCheckHigh = generateSides(p.above());
         for (BlockPos check : toCheckHigh) {
             if (isAnnoying(mod, check)) {
                 return check;
@@ -182,7 +186,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
 
         timer.reset();
         Nav.cancel();
-        origin = mod.getPlayer().getPos();
+        origin = mod.getPlayer().position();
         // No carry-over between legs: the gap between two wanders is not ground this task covered.
         lastTickPos = null;
         progressChecker.reset();
@@ -191,14 +195,14 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
         if (!cursorStack.isEmpty()) {
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
-            moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
+            moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
             if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             }
             Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
             // Try throwing away cursor slot if it's garbage
-            garbage.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, SlotActionType.PICKUP));
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, SlotActionType.PICKUP);
+            garbage.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
         } else {
             StorageHelper.closeScreen();
         }
@@ -221,14 +225,14 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
         // reassurance, and it is what makes the course able to FAIL on a build where wandering
         // issues no movement of its own.
         wanderTicks++;
-        ClientPlayerEntity self = mod.getPlayer();
+        LocalPlayer self = mod.getPlayer();
         if (self != null) {
             if (lastTickPos != null) {
                 double dx = self.getX() - lastTickPos.x;
                 double dz = self.getZ() - lastTickPos.z;
                 wanderMovedCm += (int) Math.round(Math.sqrt(dx * dx + dz * dz) * 100);
             }
-            lastTickPos = self.getPos();
+            lastTickPos = self.position();
         }
 
         // ⛔ PATHING IS NOT PROGRESS. See TungstenConfig.stallCheckNeedsMovement: a stall IS the
@@ -237,12 +241,12 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
         // that covered 10.6 blocks is what that looks like from the outside.
         if (self != null) {
             if (_lastMoveTickPos != null
-                    && self.getPos().squaredDistanceTo(_lastMoveTickPos) > 0.0004) {
+                    && self.position().distanceToSqr(_lastMoveTickPos) > 0.0004) {
                 _ticksSinceMoved = 0;
-                _lastMoveTickPos = self.getPos();
+                _lastMoveTickPos = self.position();
             } else {
                 _ticksSinceMoved++;
-                if (_lastMoveTickPos == null) _lastMoveTickPos = self.getPos();
+                if (_lastMoveTickPos == null) _lastMoveTickPos = self.position();
             }
         }
         if (Nav.isPathing()) {
@@ -326,8 +330,8 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
         if (!progressChecker.check(mod) || !stuckCheck.check(mod)) {
             List<Entity> closeEntities = mod.getEntityTracker().getCloseEntities();
             for (Entity CloseEntities : closeEntities) {
-                if (CloseEntities instanceof MobEntity &&
-                        CloseEntities.getPos().isInRange(mod.getPlayer().getPos(), 1)) {
+                if (CloseEntities instanceof Mob &&
+                        CloseEntities.position().closerThan(mod.getPlayer().position(), 1)) {
                     setDebugState("Killing annoying entity.");
                     return new KillEntitiesTask(CloseEntities.getClass());
                 }
@@ -438,12 +442,12 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
                 // and the comment right below already stated the intent the code was missing.
                 // Anchor the spiral where the wandering STARTED and the radius genuinely
                 // accumulates, which is what an expanding search is.
-                net.minecraft.util.math.Vec3d feet = mod.getPlayer().getPos();
+                net.minecraft.world.phys.Vec3 feet = mod.getPlayer().position();
                 if (wanderAnchor == null
                         || !kaptainwutax.tungsten.TungstenConfig.get().wanderSpiralsFromItsAnchor) {
                     wanderAnchor = feet;
                 }
-                net.minecraft.util.math.Vec3d from = wanderAnchor;
+                net.minecraft.world.phys.Vec3 from = wanderAnchor;
                 double ang = ((wanderTungPicked * 137) % 360) * Math.PI / 180.0;
                 // ⛔ distanceToWander CAN BE INFINITE, AND THAT POISONED THE WHOLE SEARCH.
                 //
@@ -463,7 +467,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
                 if (!Double.isFinite(base)) base = 32.0;
                 double r = Math.max(8.0, Math.min(base, 96.0))
                         + Math.min(24.0, wanderTungPicked * 2.0);
-                net.minecraft.util.math.Vec3d dest = new net.minecraft.util.math.Vec3d(
+                net.minecraft.world.phys.Vec3 dest = new net.minecraft.world.phys.Vec3(
                         from.x + Math.cos(ang) * r, from.y, from.z + Math.sin(ang) * r);
                 // AIM AT A CELL THAT EXISTS. The Y above is the ANCHOR's, while the XZ walks a
                 // spiral of up to 120 blocks over real terrain -- so the point is inside rock or in
@@ -500,7 +504,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
                 // what happens is a question about the TARGET, and it has never been asked.
                 // Counted, not assumed: wanderTargetUnstandable against wanderTungPicked.
                 try {
-                    net.minecraft.world.World w = mod.getWorld();
+                    net.minecraft.world.level.Level w = mod.getWorld();
                     if (w != null && !adris.altoclef.tasks.movement.CustomBaritoneGoalTask.standable(
                             w, (int) Math.floor(dest.x), (int) Math.floor(dest.y),
                             (int) Math.floor(dest.z))) {
@@ -549,13 +553,13 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
 
     /** Ticks this task spent running. Read as wander. */
     /** Where the outward spiral is measured from; null until the first pick of a wander. */
-    private net.minecraft.util.math.Vec3d wanderAnchor = null;
+    private net.minecraft.world.phys.Vec3 wanderAnchor = null;
 
     public static volatile int wanderTicks;
 
     /** Ticks the body has not moved; the odometer that replaces "Nav says it is pathing". */
     private int _ticksSinceMoved = 0;
-    private net.minecraft.util.math.Vec3d _lastMoveTickPos = null;
+    private net.minecraft.world.phys.Vec3 _lastMoveTickPos = null;
 
     /** How long the body may be still before a pathing claim stops counting as progress. */
     private static final int STALL_MOVE_GRACE = 40;
@@ -594,7 +598,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
      */
     public static volatile int wanderMovedCm;
 
-    private Vec3d lastTickPos;
+    private Vec3 lastTickPos;
 
     @Override
     protected void onStop(Task interruptTask) {
@@ -636,11 +640,11 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
 
         if (Float.isInfinite(distanceToWander)) return false;
 
-        ClientPlayerEntity player = AltoClef.getInstance().getPlayer();
+        LocalPlayer player = AltoClef.getInstance().getPlayer();
 
-        if (player != null && player.getPos() != null && (player.isOnGround() ||
-                player.isTouchingWater())) {
-            double sqDist = player.getPos().squaredDistanceTo(origin);
+        if (player != null && player.position() != null && (player.onGround() ||
+                player.isInWater())) {
+            double sqDist = player.position().distanceToSqr(origin);
             double toWander = distanceToWander + _wanderDistanceExtension;
             return sqDist > toWander * toWander;
         } else {

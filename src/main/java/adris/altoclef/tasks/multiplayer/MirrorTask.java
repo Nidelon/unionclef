@@ -4,8 +4,8 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.LookHelper;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,9 +26,9 @@ public class MirrorTask extends Task {
     public enum Mode { RECORD, REPLAY, RECORD_THEN_REPLAY }
 
     private static final class Frame {
-        final Vec3d rel;     // position relative to the recording's start
+        final Vec3 rel;     // position relative to the recording's start
         final boolean jump;  // target jumped on this frame
-        Frame(Vec3d rel, boolean jump) { this.rel = rel; this.jump = jump; }
+        Frame(Vec3 rel, boolean jump) { this.rel = rel; this.jump = jump; }
     }
 
     // last recording, shared so a separate "@mirror play" can replay a prior "@mirror <p> rec".
@@ -39,9 +39,9 @@ public class MirrorTask extends Task {
     private final int _recordTicksMax;
 
     private final List<Frame> _rec = new ArrayList<>();
-    private Vec3d _targetStart;
-    private Vec3d _lastTargetPos;
-    private Vec3d _botStart;
+    private Vec3 _targetStart;
+    private Vec3 _lastTargetPos;
+    private Vec3 _botStart;
     private int _recordTicks;
     private int _replayIndex;
     private boolean _replaying;
@@ -64,7 +64,7 @@ public class MirrorTask extends Task {
         _replaying = (_mode == Mode.REPLAY);
         AltoClef mod = AltoClef.getInstance();
         if (_replaying && mod.getPlayer() != null) {
-            _botStart = mod.getPlayer().getPos();
+            _botStart = mod.getPlayer().position();
         }
     }
 
@@ -75,15 +75,15 @@ public class MirrorTask extends Task {
 
         if (!_replaying) {
             // ---- RECORD ----
-            Optional<PlayerEntity> opt = mod.getEntityTracker().getPlayerEntity(_targetName);
+            Optional<Player> opt = mod.getEntityTracker().getPlayerEntity(_targetName);
             if (opt.isEmpty()) {
                 // target left render: if we have something, move on; else wait briefly then give up
                 if (!_rec.isEmpty()) { finishRecording(mod); }
                 else if (_recordTicks++ > 60) { _done = true; }
                 return null;
             }
-            PlayerEntity target = opt.get();
-            Vec3d pos = target.getPos();
+            Player target = opt.get();
+            Vec3 pos = target.position();
             if (_targetStart == null) { _targetStart = pos; _lastTargetPos = pos; }
             double dy = pos.y - _lastTargetPos.y;
             boolean jump = dy > 0.20; // rose noticeably this tick => a jump/step-up
@@ -96,18 +96,18 @@ public class MirrorTask extends Task {
         // ---- REPLAY ----
         List<Frame> frames = (_mode == Mode.REPLAY) ? SAVED : _rec;
         if (frames.isEmpty()) { _done = true; return null; }
-        if (_botStart == null) _botStart = mod.getPlayer().getPos();
+        if (_botStart == null) _botStart = mod.getPlayer().position();
         if (_replayIndex >= frames.size()) { releaseAll(mod); _done = true; return null; }
 
         Frame f = frames.get(_replayIndex);
-        Vec3d desired = _botStart.add(f.rel);
-        Vec3d botPos = mod.getPlayer().getPos();
+        Vec3 desired = _botStart.add(f.rel);
+        Vec3 botPos = mod.getPlayer().position();
         double dx = desired.x - botPos.x;
         double dz = desired.z - botPos.z;
         double horiz = Math.sqrt(dx * dx + dz * dz);
 
         // face the waypoint (~eye level) and walk toward it
-        LookHelper.smoothLookAt(mod, new Vec3d(desired.x, botPos.y + 1.5, desired.z), 0.6f);
+        LookHelper.smoothLookAt(mod, new Vec3(desired.x, botPos.y + 1.5, desired.z), 0.6f);
         mod.getInputControls().hold(Input.MOVE_FORWARD);
         // jump where the target jumped, or when the next waypoint is clearly higher (a ledge)
         if (f.jump || (desired.y - botPos.y) > 0.45) {
@@ -123,7 +123,7 @@ public class MirrorTask extends Task {
         SAVED.addAll(_rec);
         if (_mode == Mode.RECORD_THEN_REPLAY) {
             _replaying = true;
-            _botStart = mod.getPlayer().getPos();
+            _botStart = mod.getPlayer().position();
         } else {
             _done = true; // RECORD-only
         }

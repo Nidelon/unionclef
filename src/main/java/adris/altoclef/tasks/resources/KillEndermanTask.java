@@ -11,11 +11,11 @@ import adris.altoclef.util.Dimension;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.EndermanEntity;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
 
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -53,7 +53,7 @@ public class KillEndermanTask extends ResourceTask {
     @Override
     protected Task onResourceTick(AltoClef mod) {
         // Dimension
-        if (!mod.getEntityTracker().entityFound(EndermanEntity.class)) {
+        if (!mod.getEntityTracker().entityFound(EnderMan.class)) {
             if (WorldHelper.getCurrentDimension() != Dimension.NETHER) {
                 if (_anyDimension) {
                     setDebugState("Waiting for endermen");
@@ -64,7 +64,7 @@ public class KillEndermanTask extends ResourceTask {
             //nearest warped forest related block
             Optional<BlockPos> nearest = mod.getBlockScanner().getNearestBlock(Blocks.TWISTING_VINES, Blocks.TWISTING_VINES_PLANT, Blocks.WARPED_HYPHAE, Blocks.WARPED_NYLIUM);
             if (nearest.isPresent()) {
-                if (WorldHelper.inRangeXZ(nearest.get(), mod.getPlayer().getBlockPos(), 40)) {
+                if (WorldHelper.inRangeXZ(nearest.get(), mod.getPlayer().blockPosition(), 40)) {
                     setDebugState("Waiting for endermen to spawn...");
                     return null;
                 }
@@ -88,8 +88,8 @@ public class KillEndermanTask extends ResourceTask {
         // geometry. Healing still comes first: the shelter is where the next fight starts.
         boolean shelter = adris.altoclef.tasks.entity.EndermanShelterTask.hasBlocks(mod);
         boolean anyAngry = false;
-        for (EndermanEntity entity : mod.getEntityTracker().getTrackedEntities(EndermanEntity.class)) {
-            if (belowNetherRoof.test(entity) && entity.isAngry() && entity.getPos().isInRange(mod.getPlayer().getPos(), TOO_FAR_AWAY)) {
+        for (EnderMan entity : mod.getEntityTracker().getTrackedEntities(EnderMan.class)) {
+            if (belowNetherRoof.test(entity) && entity.isAngry() && entity.position().closerThan(mod.getPlayer().position(), TOO_FAR_AWAY)) {
                 anyAngry = true;
             }
         }
@@ -99,9 +99,9 @@ public class KillEndermanTask extends ResourceTask {
         }
 
         // Kill the angry one
-        for (EndermanEntity entity : mod.getEntityTracker().getTrackedEntities(EndermanEntity.class)) {
+        for (EnderMan entity : mod.getEntityTracker().getTrackedEntities(EnderMan.class)) {
 
-            if (belowNetherRoof.test(entity) && entity.isAngry() && entity.getPos().isInRange(mod.getPlayer().getPos(), TOO_FAR_AWAY)) {
+            if (belowNetherRoof.test(entity) && entity.isAngry() && entity.position().closerThan(mod.getPlayer().position(), TOO_FAR_AWAY)) {
                 return new KillEntityTask(entity);
             }
         }
@@ -115,7 +115,7 @@ public class KillEndermanTask extends ResourceTask {
         // a little food if there is none.
         float hp = mod.getPlayer().getHealth();
         if (hp <= 2 * endermanHit(mod) + 1) {
-            int hunger = mod.getPlayer().getHungerManager().getFoodLevel();
+            int hunger = mod.getPlayer().getFoodData().getFoodLevel();
             if (hunger >= 18 || mod.getFoodChain().hasFood()) {
                 setDebugState("Healing before provoking the next enderman (hp " + (int) hp + ")");
                 return null;
@@ -125,7 +125,7 @@ public class KillEndermanTask extends ResourceTask {
         }
 
         // Attack the closest one
-        return new KillEntitiesTask(belowNetherRoof, EndermanEntity.class);
+        return new KillEntitiesTask(belowNetherRoof, EnderMan.class);
     }
 
     /** An enderman's melee damage at the world's difficulty (vanilla: 7 on normal, x1.5 hard, easy 4.5). */

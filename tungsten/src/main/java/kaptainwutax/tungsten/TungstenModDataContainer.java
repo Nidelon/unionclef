@@ -2,12 +2,12 @@ package kaptainwutax.tungsten;
 
 import kaptainwutax.tungsten.path.PathExecutor;
 import kaptainwutax.tungsten.path.PathFinder;
-import net.minecraft.client.render.GameRenderer;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.world.World;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
 
 public class TungstenModDataContainer {
-	public static PlayerEntity player;
+	public static Player player;
     public static final boolean LOG_DEBUG_DATA = false;
     public static PathExecutor EXECUTOR;
 
@@ -67,7 +67,7 @@ public class TungstenModDataContainer {
     public static boolean isExecutorRunning() {
         return EXECUTOR != null && EXECUTOR.isRunning();
     }
-	public static World world;
+	public static Level world;
     public static boolean ignoreFallDamage = true;
 
     /**
@@ -118,7 +118,7 @@ public class TungstenModDataContainer {
      * a block so the inventory side can equip the best tool for it. Tungsten
      * itself never touches the inventory.
      */
-    public static java.util.function.BiConsumer<net.minecraft.util.math.BlockPos, net.minecraft.block.BlockState> equipToolHook = null;
+    public static java.util.function.BiConsumer<net.minecraft.core.BlockPos, net.minecraft.world.level.block.state.BlockState> equipToolHook = null;
 
     /**
      * Equip-a-build-block hook: altoclef equips a cheap placeable block into the main
@@ -128,21 +128,21 @@ public class TungstenModDataContainer {
     public static Runnable equipBlockHook = null;
 
     /** Inventory policy for disposable scaffold stacks; recipe reservations are owned by the brain. */
-    public static java.util.function.Predicate<net.minecraft.item.ItemStack> canUseScaffoldHook = null;
+    public static java.util.function.Predicate<net.minecraft.world.item.ItemStack> canUseScaffoldHook = null;
 
     /**
      * Protection hook: returns false when the inventory/brain side (altoclef)
      * forbids mining a position — bridges its break-avoiders/protected zones
      * into BreakRules. Registered at altoclef init.
      */
-    public static java.util.function.Predicate<net.minecraft.util.math.BlockPos> canBreakHook = null;
+    public static java.util.function.Predicate<net.minecraft.core.BlockPos> canBreakHook = null;
 
     /**
      * Protection hook: returns false when altoclef forbids PLACING at a position
      * — bridges its place-avoiders/protected zones into PlaceRules. Registered
      * at altoclef init (symmetric to canBreakHook).
      */
-    public static java.util.function.Predicate<net.minecraft.util.math.BlockPos> canPlaceHook = null;
+    public static java.util.function.Predicate<net.minecraft.core.BlockPos> canPlaceHook = null;
 
     /**
      * Best-owned-tool pricing hook (docs/BARITONE-GAPS.md G8): returns the mining-speed
@@ -153,9 +153,9 @@ public class TungstenModDataContainer {
      * price whatever happens to be in the main hand at search time, which is only correct at
      * execution: it refuses reachable ore held with a sword and over-costs a route a stone axe
      * in the pack would cut in a third of the time. Called from the planner's own background
-     * search thread, at most once per distinct {@link net.minecraft.block.BlockState} per search
+     * search thread, at most once per distinct {@link net.minecraft.world.level.block.state.BlockState} per search
      * (see {@code MovementHelperB.bestOwnedToolSpeed}'s cache) — the same background-thread
      * live-inventory read every other per-node lookup this planner makes of the world already is.
      */
-    public static java.util.function.ToDoubleFunction<net.minecraft.block.BlockState> bestToolSpeedHook = null;
+    public static java.util.function.ToDoubleFunction<net.minecraft.world.level.block.state.BlockState> bestToolSpeedHook = null;
 }

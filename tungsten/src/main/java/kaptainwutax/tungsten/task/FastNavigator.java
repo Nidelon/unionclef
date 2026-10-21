@@ -6,9 +6,9 @@ import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.path.fast.FastPlanner;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Pipelined navigation: walk the current leg while the NEXT leg is already being
@@ -59,7 +59,7 @@ public final class FastNavigator {
             new java.util.concurrent.atomic.AtomicLong();
     /** Completed calculations applied to the live route, or discarded after cancellation. */
     public static volatile int navPlansApplied, navPlansDiscarded;
-    private static Vec3d goal = null;
+    private static Vec3 goal = null;
     /**
      * When set, arrival means STANDING IN THIS CELL, not "within {@link #ARRIVE_DIST} of it" —
      * baritone's {@code GoalBlock}, whose {@code isInGoal} compares block coordinates and nothing
@@ -110,27 +110,27 @@ public final class FastNavigator {
 
     /** Water in the feet cell AND the one above: a column there is something to swim up in.
      *  baritone's MovementPillar condition for "ascend by swimming" (MovementPillar.java:86-90). */
-    private static boolean inWaterColumn(net.minecraft.world.WorldView world, ClientPlayerEntity player) {
+    private static boolean inWaterColumn(net.minecraft.world.level.LevelReader world, LocalPlayer player) {
         BlockPos feet = kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(player);
-        return world.getFluidState(feet).isIn(net.minecraft.registry.tag.FluidTags.WATER)
-                && world.getFluidState(feet.up()).isIn(net.minecraft.registry.tag.FluidTags.WATER);
+        return world.getFluidState(feet).is(net.minecraft.tags.FluidTags.WATER)
+                && world.getFluidState(feet.above()).is(net.minecraft.tags.FluidTags.WATER);
     }
 
     /** Releasing input does not remove momentum. Do not finish an exact goal if
      * vanilla ground drag will carry the body into the next cell after release.
      * Summing v + v*drag + ... also covers slippery supporting blocks.
      */
-    private static boolean coastStaysInCell(ClientPlayerEntity player, BlockPos cell) {
-        if (!player.isOnGround()) return true;
+    private static boolean coastStaysInCell(LocalPlayer player, BlockPos cell) {
+        if (!player.onGround()) return true;
         BlockPos support = ((kaptainwutax.tungsten.mixin.AccessorEntity) player).tungsten$getVelocityAffectingPos();
         //#if MC < 12111
         //$$ double drag = player.getWorld().getBlockState(support).getBlock().getSlipperiness() * 0.91F;
         //#else
-        double drag = player.getEntityWorld().getBlockState(support).getBlock().getSlipperiness() * 0.91F;
+        double drag = player.level().getBlockState(support).getBlock().getFriction() * 0.91F;
         //#endif
-        if (drag >= 1.0) return player.getVelocity().horizontalLengthSquared() == 0.0;
-        double x = player.getX() + player.getVelocity().x / (1.0 - drag);
-        double z = player.getZ() + player.getVelocity().z / (1.0 - drag);
+        if (drag >= 1.0) return player.getDeltaMovement().horizontalDistanceSqr() == 0.0;
+        double x = player.getX() + player.getDeltaMovement().x / (1.0 - drag);
+        double z = player.getZ() + player.getDeltaMovement().z / (1.0 - drag);
         return Math.floor(x) == cell.getX() && Math.floor(z) == cell.getZ();
     }
 
@@ -139,7 +139,7 @@ public final class FastNavigator {
     /** Walk until standing IN {@code cell} — baritone's GoalBlock. For callers that need a
      *  position rather than a neighbourhood, such as the builder standing where it will pillar. */
     public static void startExact(BlockPos cell) {
-        startWithGoal(new Vec3d(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5),
+        startWithGoal(new Vec3(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5),
                 null, cell, null, false);
     }
 
@@ -147,7 +147,7 @@ public final class FastNavigator {
      *  DUG INTO (baritone's GoalBlock), so the planner completes only on the exact cell and the
      *  arrival test is the exact cell too. */
     public static void startExactForDrive(BlockPos cell) {
-        startWithGoal(new Vec3d(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5),
+        startWithGoal(new Vec3(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5),
                 null, cell, null, true);
     }
 
@@ -186,7 +186,7 @@ public final class FastNavigator {
     private static final long PHYSICS_FAILURE_MS = 2000L;
     private static final long PHYSICS_REFUSAL_MS = 60_000L;
     /** The hand-off in flight: where the body stood when it was sent, and to what. */
-    private static Vec3d physicsHandoffFrom = null;
+    private static Vec3 physicsHandoffFrom = null;
     private static BlockPos physicsHandoffTarget = null;
     /** Hand-offs to the same cell, in a row, that moved the body nowhere. */
     private static int physicsFailStreak = 0;
@@ -212,13 +212,13 @@ public final class FastNavigator {
      * Among the cells the hitbox overlaps, take the nearest one with a solid block under it --
      * the same test PillarTask uses before it builds -- and let the route begin from a floor.
      */
-    public static BlockPos supportedFeet(ClientPlayerEntity player) {
+    public static BlockPos supportedFeet(LocalPlayer player) {
         BlockPos centre = kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(player);
-        if (!TungstenConfig.get().planFromSupportedCell || !player.isOnGround()) return centre;
-        var world = player.getEntityWorld();
-        BlockPos under = centre.down();
+        if (!TungstenConfig.get().planFromSupportedCell || !player.onGround()) return centre;
+        var world = player.level();
+        BlockPos under = centre.below();
         if (!world.getBlockState(under).getCollisionShape(world, under).isEmpty()) return centre;
-        net.minecraft.util.math.Box box = player.getBoundingBox();
+        net.minecraft.world.phys.AABB box = player.getBoundingBox();
         double[][] corners = {
             {box.minX + 0.01, box.minZ + 0.01}, {box.minX + 0.01, box.maxZ - 0.01},
             {box.maxX - 0.01, box.minZ + 0.01}, {box.maxX - 0.01, box.maxZ - 0.01},
@@ -226,10 +226,10 @@ public final class FastNavigator {
         BlockPos best = null;
         double bestD = Double.MAX_VALUE;
         for (double[] c : corners) {
-            BlockPos cell = new BlockPos(net.minecraft.util.math.MathHelper.floor(c[0]), centre.getY(),
-                    net.minecraft.util.math.MathHelper.floor(c[1]));
+            BlockPos cell = new BlockPos(net.minecraft.util.Mth.floor(c[0]), centre.getY(),
+                    net.minecraft.util.Mth.floor(c[1]));
             if (cell.equals(centre)) continue;
-            BlockPos b = cell.down();
+            BlockPos b = cell.below();
             if (world.getBlockState(b).getCollisionShape(world, b).isEmpty()) continue;
             double dx = cell.getX() + 0.5 - player.getX(), dz = cell.getZ() + 0.5 - player.getZ();
             double d = dx * dx + dz * dz;
@@ -332,13 +332,13 @@ public final class FastNavigator {
     private static void releaseMovementKeys() {
         var o = TungstenMod.mc == null ? null : TungstenMod.mc.options;
         if (o == null) return;
-        o.forwardKey.setPressed(false);
-        o.backKey.setPressed(false);
-        o.leftKey.setPressed(false);
-        o.rightKey.setPressed(false);
-        o.jumpKey.setPressed(false);
-        o.sneakKey.setPressed(false);
-        o.sprintKey.setPressed(false);
+        o.keyUp.setDown(false);
+        o.keyDown.setDown(false);
+        o.keyLeft.setDown(false);
+        o.keyRight.setDown(false);
+        o.keyJump.setDown(false);
+        o.keyShift.setDown(false);
+        o.keySprint.setDown(false);
     }
 
     /** True while this navigator is mining a planned break run (PathExecutor asks, so that its
@@ -346,7 +346,7 @@ public final class FastNavigator {
     public static boolean ownsBreakRun() { return active && awaitingBreak; }
 
     /** Feet in the cell and within 0.3 of its centre horizontally. */
-    private static boolean centeredOn(ClientPlayerEntity player, BlockPos cell) {
+    private static boolean centeredOn(LocalPlayer player, BlockPos cell) {
         BlockPos feet = kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(player);
         if (!feet.equals(cell)) return false;
         double dx = cell.getX() + 0.5 - player.getX(), dz = cell.getZ() + 0.5 - player.getZ();
@@ -355,24 +355,24 @@ public final class FastNavigator {
 
     /** Face the cell's centre (mouse pipeline, no gaze teleport) and walk to it, sneaking for
      *  the last block so the body cannot overshoot an edge. */
-    private static void steerTo(ClientPlayerEntity player, BlockPos cell) {
+    private static void steerTo(LocalPlayer player, BlockPos cell) {
         double dx = cell.getX() + 0.5 - player.getX(), dz = cell.getZ() + 0.5 - player.getZ();
         float yaw = (float) Math.toDegrees(-Math.atan2(dx, dz));
-        kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.setTarget(yaw, player.getPitch());
+        kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.setTarget(yaw, player.getXRot(1.0f));
         var o = TungstenMod.mc.options;
         if (o == null) return;
         // only push once the body faces roughly the right way, or a wide yaw error walks it off
-        float err = Math.abs(net.minecraft.util.math.MathHelper.wrapDegrees(yaw - player.getYaw()));
-        o.forwardKey.setPressed(err < 25f);
-        o.sneakKey.setPressed(dx * dx + dz * dz < 1.0);
-        o.sprintKey.setPressed(false);
+        float err = Math.abs(net.minecraft.util.Mth.wrapDegrees(yaw - player.getYRot(1.0f)));
+        o.keyUp.setDown(err < 25f);
+        o.keyShift.setDown(dx * dx + dz * dz < 1.0);
+        o.keySprint.setDown(false);
     }
 
     private static void releaseSteer() {
         var o = TungstenMod.mc == null ? null : TungstenMod.mc.options;
         if (o == null) return;
-        o.forwardKey.setPressed(false);
-        o.sneakKey.setPressed(false);
+        o.keyUp.setDown(false);
+        o.keyShift.setDown(false);
     }
 
     /** The block a running reach route serves, or null. Lets the drive tell "armed for this
@@ -381,15 +381,15 @@ public final class FastNavigator {
 
     /** The reach route has arrived: the same test the planner completed on, evaluated for the
      *  body's real feet cell against the live world. */
-    private static boolean reachArrived(ClientPlayerEntity player, BlockPos block) {
+    private static boolean reachArrived(LocalPlayer player, BlockPos block) {
         BlockPos feet = kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(player);
-        return FastPlanner.reachGoalSatisfied(player.getEntityWorld(), feet.getX(), feet.getY(),
+        return FastPlanner.reachGoalSatisfied(player.level(), feet.getX(), feet.getY(),
                 feet.getZ(), block);
     }
 
     /** Route to a NEIGHBOUR of {@code block} (baritone's GoalGetToBlock), digging if needed.
      *  {@code target} is the block's centre, which the heuristic and the stall watchdog steer by. */
-    public static void start(Vec3d target, BlockPos block) {
+    public static void start(Vec3 target, BlockPos block) {
         startWithGoal(target, block, null, null, false);
     }
 
@@ -408,7 +408,7 @@ public final class FastNavigator {
      * @param reached the caller's own arrival test on the feet cell; the two-block sphere stays
      *                the default for callers without one (the goto command, chases).
      */
-    public static void start(Vec3d target, java.util.function.Predicate<BlockPos> reached) {
+    public static void start(Vec3 target, java.util.function.Predicate<BlockPos> reached) {
         startWithGoal(target, null, null, reached, false);
     }
 
@@ -418,7 +418,7 @@ public final class FastNavigator {
     /** G69: arrivals the sphere would have declared that the goal's own test refused. */
     public static volatile int navArrivalRefusedByGoal;
 
-    public static void start(Vec3d target) {
+    public static void start(Vec3 target) {
         startWithGoal(target, null, null, null, false);
     }
 
@@ -445,7 +445,7 @@ public final class FastNavigator {
         java.util.Objects.requireNonNull(reached, "reached");
         java.util.Objects.requireNonNull(owner, "owner");
         nearestHeuristic = heuristic;
-        startWithGoal(TungstenMod.mc.player.getEntityPos(), null, null, reached, false, true);
+        startWithGoal(TungstenMod.mc.player.position(), null, null, reached, false, true);
         nearestOwner = owner;
     }
 
@@ -466,13 +466,13 @@ public final class FastNavigator {
 
     private static volatile boolean searchForArrival;
 
-    private static void startWithGoal(Vec3d target, BlockPos reach, BlockPos exactGoal,
+    private static void startWithGoal(Vec3 target, BlockPos reach, BlockPos exactGoal,
                                       java.util.function.Predicate<BlockPos> reached,
                                       boolean fromDrive) {
         startWithGoal(target, reach, exactGoal, reached, fromDrive, false);
     }
 
-    private static void startWithGoal(Vec3d target, BlockPos reach, BlockPos exactGoal,
+    private static void startWithGoal(Vec3 target, BlockPos reach, BlockPos exactGoal,
                                       java.util.function.Predicate<BlockPos> reached,
                                       boolean fromDrive, boolean nearest) {
         stop();
@@ -496,7 +496,7 @@ public final class FastNavigator {
         stallTicks = 0;
         lastDist = Double.MAX_VALUE;
         planAhead(TungstenMod.mc.player != null
-                ? TungstenMod.mc.player.getBlockPos() : BlockPos.ofFloored(target));
+                ? TungstenMod.mc.player.blockPosition() : BlockPos.containing(target));
     }
 
     /**
@@ -508,14 +508,14 @@ public final class FastNavigator {
      * printed next to the route.
      */
     public static String goalDescription() {
-        Vec3d g = goal;
+        Vec3 g = goal;
         return g == null ? "-" : String.format("(%.1f,%.1f,%.1f)", g.x, g.y, g.z);
     }
 
     /** The goal being served right now, or null when idle. The altoclef drive asks, so a route
      *  armed by an earlier task instance can be ADOPTED when it serves the same goal and STOPPED
      *  when it does not, instead of running underneath a second driver (G40). */
-    public static Vec3d currentGoal() { return active ? goal : null; }
+    public static Vec3 currentGoal() { return active ? goal : null; }
 
     /** True while a caller asked to stand IN one exact cell (the builder positioning itself). */
     public static boolean hasExactCell() { return active && exactCell != null && !exactFromDrive; }
@@ -563,7 +563,7 @@ public final class FastNavigator {
     }
 
     /** Ticked from the client mixin alongside the other tungsten tasks. */
-    public static void tick(ClientPlayerEntity player) {
+    public static void tick(LocalPlayer player) {
         if (!active || player == null || goal == null) return;
         if (pendingGiveUp) {
             pendingGiveUp = false;
@@ -573,7 +573,7 @@ public final class FastNavigator {
             return;
         }
 
-        double dist = player.getEntityPos().distanceTo(goal);
+        double dist = player.position().distanceTo(goal);
         // ARRIVAL IS NOT A 3D QUESTION WHEN THE GOAL IS ABOVE YOU. This test was a plain sphere
         // of radius 2, and this file already knows why that is wrong — the pillar hand-off below
         // carries the same finding in its own words: "you cannot walk upwards; a cell above your
@@ -604,12 +604,12 @@ public final class FastNavigator {
         // at (901.1,-61.0) -- 1.6 from the goal, 0.95 below it for one tick -- and this test
         // said "arrived", stopped the queue mid-stroke, and the body floated with no inputs
         // until it drowned. Water counts as settled only when the goal itself is in water.
-        var worldA = TungstenMod.mc.world;
+        var worldA = TungstenMod.mc.level;
         boolean goalWet = worldA != null
-                && !worldA.getFluidState(BlockPos.ofFloored(goal)).isEmpty();
+                && !worldA.getFluidState(BlockPos.containing(goal)).isEmpty();
         boolean settledBody = !TungstenConfig.get().arrivalNeedsSettledBody
-                || ((player.isOnGround() || (player.isTouchingWater() && goalWet) || player.isClimbing())
-                    && player.getVelocity().horizontalLengthSquared() < 0.05
+                || ((player.onGround() || (player.isInWater() && goalWet) || player.onClimbable())
+                    && player.getDeltaMovement().horizontalDistanceSqr() < 0.05
                     && kaptainwutax.tungsten.path.movements.MovementQueue.safeToCancel());
         // G55: the feet cell with baritone's +0.1251 -- on a chest or a slab the naive block
         // position reads the cell BELOW the one the body stands in, and an exact arrival on the
@@ -701,8 +701,8 @@ public final class FastNavigator {
         // is genuinely working looks like that.
         boolean bodyMoved = true;
         if (kaptainwutax.tungsten.TungstenConfig.get().stallWatchdogNeedsMotion) {
-            double px = player.getEntityPos().x;
-            double pz = player.getEntityPos().z;
+            double px = player.position().x;
+            double pz = player.position().z;
             if (Math.abs(px - lastBodyX) < 0.05 && Math.abs(pz - lastBodyZ) < 0.05) {
                 bodyMoved = ++stillTicks <= STILL_LIMIT;
             } else {
@@ -727,7 +727,7 @@ public final class FastNavigator {
             // actually in, with everything the planner has (dig, pillar, bridge). Only when a
             // fresh plan from this same cell ALSO goes nowhere is the goal unreachable from here,
             // and that is said out loud so the caller can blacklist with a reason.
-            BlockPos here = player.getBlockPos();
+            BlockPos here = player.blockPosition();
             if (stallReplanCell == null || !stallReplanCell.equals(here)) {
                 stallReplanCell = here;
                 stallTicks = 0;
@@ -826,7 +826,7 @@ public final class FastNavigator {
             legTail = null;
             navBreakResumed++;
             digDoneMs = System.currentTimeMillis();
-            planAhead(player.getBlockPos());   // the dig moved the body; plan from where it is
+            planAhead(player.blockPosition());   // the dig moved the body; plan from where it is
             return;
         }
         if (pendingBreakCells != null && !BlockPathWalker.isRunning()
@@ -847,7 +847,7 @@ public final class FastNavigator {
             pendingBreakStand = null;
             List<BlockPos> cells = pendingBreakCells;
             pendingBreakCells = null;
-            double dig = player.getEyePos().distanceTo(Vec3d.ofCenter(cells.get(0)));
+            double dig = player.getEyePosition().distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(cells.get(0)));
             if (exB != null && dig < 4.5) {
                 navBreakStarted++;
                 Debug.logMessage("FastNavigator: at the dig — mining " + cells.size()
@@ -863,7 +863,7 @@ public final class FastNavigator {
             // The walker stopped short of the dig: fall back to the physics hand-off, which is
             // what every break run went through before.
             navBreakTooFar++;
-            pendingPhysicsTarget = BlockPos.ofFloored(goal);
+            pendingPhysicsTarget = BlockPos.containing(goal);
         }
 
         if (awaitingPhysics) {
@@ -878,8 +878,8 @@ public final class FastNavigator {
             // if nothing had been tried. Baritone: the first failure re-plans with the longer
             // failure timeout, the second gives the route up.
             if (physicsHandoffTarget != null && physicsHandoffFrom != null) {
-                Vec3d now = player.getEntityPos();
-                Vec3d tc = Vec3d.ofBottomCenter(physicsHandoffTarget);
+                Vec3 now = player.position();
+                Vec3 tc = Vec3.atBottomCenterOf(physicsHandoffTarget);
                 boolean progressed = now.distanceTo(physicsHandoffFrom) >= 1.0
                         || now.distanceTo(tc) < physicsHandoffFrom.distanceTo(tc) - 0.5;
                 if (progressed) {
@@ -905,7 +905,7 @@ public final class FastNavigator {
                             physicsHandoffTarget.toShortString(), PHYSICS_PRIMARY_MS, PHYSICS_FAILURE_MS));
                 }
             }
-            planAhead(player.getBlockPos());   // continue from wherever we actually landed
+            planAhead(player.blockPosition());   // continue from wherever we actually landed
             return;
         }
 
@@ -922,7 +922,7 @@ public final class FastNavigator {
             // navigator replanned 26 legs while the bot stood 7.5 blocks short at the foot of
             // its wall. The course used to pass because a 2-block climb landed 2.2 away and
             // survived this test by 0.7 of a block — it was never right, just lucky.
-            Vec3d here = player.getEntityPos();
+            Vec3 here = player.position();
             double horiz = Math.hypot((jump.getX() + 0.5) - here.x, (jump.getZ() + 0.5) - here.z);
             double rise = (jump.getY() + 0.5) - here.y;
             if (horiz < 1.5 && Math.abs(rise) < 1.0) {
@@ -947,15 +947,15 @@ public final class FastNavigator {
             // placed=0" sixteen times on canopy_drop. Walk to the column first (the same steer a
             // dig gets in G34), then pillar; the target is kept until the body is on it.
             {
-                Vec3d hereP = player.getEntityPos();
+                Vec3 hereP = player.position();
                 double riseP = (jump.getY() + 0.5) - hereP.y;
                 double horizP = Math.hypot(jump.getX() + 0.5 - hereP.x, jump.getZ() + 0.5 - hereP.z);
                 if (riseP > PlayerFitJumpHeight() && horizP < 2.5 && TungstenConfig.get().planPlaceMoves
                         && TungstenConfig.get().pillarInPlannedColumn
                         && !kaptainwutax.tungsten.task.PillarTask.isActive()
-                        && !player.isTouchingWater()
+                        && !player.isInWater()
                         && FastPlanner.countPlaceable(player) > 0) {
-                    BlockPos column = new BlockPos(jump.getX(), player.getBlockPos().getY(), jump.getZ());
+                    BlockPos column = new BlockPos(jump.getX(), player.blockPosition().getY(), jump.getZ());
                     if (!centeredOn(player, column)) {
                         if (++pillarSteerTicks <= 80) {
                             steerTo(player, column);
@@ -970,14 +970,14 @@ public final class FastNavigator {
                 }
             }
             pendingPhysicsTarget = null;
-            var world = TungstenMod.mc.world;
+            var world = TungstenMod.mc.level;
             if (world != null) {
                 // DIAGNOSTIC: four attempts to hook pillaring here failed with no output at
                 // all, so print the actual numbers this branch sees instead of guessing.
                 if (TungstenConfig.get().verboseDebugLogging) {
-                    double dRise = (jump.getY() + 0.5) - player.getEntityPos().y;
-                    double dHoriz = Math.hypot(jump.getX() + 0.5 - player.getEntityPos().x,
-                                               jump.getZ() + 0.5 - player.getEntityPos().z);
+                    double dRise = (jump.getY() + 0.5) - player.position().y;
+                    double dHoriz = Math.hypot(jump.getX() + 0.5 - player.position().x,
+                                               jump.getZ() + 0.5 - player.position().z);
                     Debug.logMessage(String.format(
                             "HANDOFF target=(%d,%d,%d) rise=%.2f horiz=%.2f planPlace=%b",
                             jump.getX(), jump.getY(), jump.getZ(), dRise, dHoriz,
@@ -990,9 +990,9 @@ public final class FastNavigator {
                 // exposed over py4j — the capability was complete, navigation simply never
                 // asked for it. By the time we reach here the walker has already delivered
                 // us to the foot of the wall. Measured on nav_wall2: rise=1.48 horiz=2.18.
-                double rise = (jump.getY() + 0.5) - player.getEntityPos().y;
-                double horiz = Math.hypot(jump.getX() + 0.5 - player.getEntityPos().x,
-                                          jump.getZ() + 0.5 - player.getEntityPos().z);
+                double rise = (jump.getY() + 0.5) - player.position().y;
+                double horiz = Math.hypot(jump.getX() + 0.5 - player.position().x,
+                                          jump.getZ() + 0.5 - player.position().z);
                 // ROUTING A BUILD RUN TO BridgeTask — TRIED THREE TIMES, WORSE EVERY TIME,
                 // AND THE SPRINT HYPOTHESIS IS REFUTED. Wired at the lip: 22.5, void fall, 3 of
                 // 3. Wired one cell earlier: 22.5, 3 of 3. With BridgeTask paced two cells ahead
@@ -1009,7 +1009,7 @@ public final class FastNavigator {
                 // @gamer run of the reach goal (2026-09-11): "Pillaring up to y=118" -> "Pillar:
                 // out of blocks" -> stop -> replan -> the same hand-off, for 150 s under a tree.
                 // Swimming out needs none; a tower does, so ask the pocket first.
-                boolean canPillar = player.isTouchingWater()
+                boolean canPillar = player.isInWater()
                         || FastPlanner.countPlaceable(player) > 0;
                 // ⛔ A TOWER TOWARD A GOAL THAT IS BELOW YOU IS THE PLAN GOING THE WRONG WAY (G60,
                 // 2026-09-12). The 19:57 recording, 5:20: coal at (631,67,724), two blocks UNDER
@@ -1036,13 +1036,13 @@ public final class FastNavigator {
                         : Math.hypot(goal.x - player.getX(), goal.z - player.getZ());
                 if (TungstenConfig.get().noTowerWhenGoalIsBelow && goal != null
                         && goal.y < player.getY() - 2.0
-                        && jump.getY() > player.getBlockPos().getY() + 2
+                        && jump.getY() > player.blockPosition().getY() + 2
                         && goalHoriz > TungstenConfig.get().noTowerWhenGoalIsBelowRadius) {
                     navTowerAllowedFarGoal++;
                 }
                 if (TungstenConfig.get().noTowerWhenGoalIsBelow && goal != null
                         && goal.y < player.getY() - 2.0
-                        && jump.getY() > player.getBlockPos().getY() + 2
+                        && jump.getY() > player.blockPosition().getY() + 2
                         && goalHoriz <= TungstenConfig.get().noTowerWhenGoalIsBelowRadius) {
                     Debug.logWarning(String.format(
                             "Wall too high to jump, but the goal is %.0f below — not towering up",
@@ -1057,7 +1057,7 @@ public final class FastNavigator {
                 // recording spent seven and a half minutes at (259.5, 68, -539.5) in that loop,
                 // ten towers, nothing placed, azalea in the hand. A refusal that does not outlive
                 // the task that made it is not a refusal.
-                if (canPillar && !player.isTouchingWater()
+                if (canPillar && !player.isInWater()
                         && kaptainwutax.tungsten.task.PillarTask.refusedRecently(
                                 kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(player))) {
                     Debug.logWarning("Wall too high to jump and this column has already refused a tower"
@@ -1078,12 +1078,12 @@ public final class FastNavigator {
                 // that branch, through the navigator's own dig -- the same run the ceiling gets
                 // below -- and the re-plan after it brings the tower back on bare floor.
                 if (rise > PlayerFitJumpHeight() && horiz < 2.5 && TungstenConfig.get().planPlaceMoves
-                        && canPillar && !player.isTouchingWater()
+                        && canPillar && !player.isInWater()
                         && !kaptainwutax.tungsten.task.PillarTask.isActive()) {
                     BlockPos feetC = kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(player);
                     var fst = world.getBlockState(feetC);
-                    if (!fst.isAir() && !fst.isReplaceable()
-                            && !fst.getCollisionShape(world, feetC).isEmpty() && !player.isClimbing()) {
+                    if (!fst.isAir() && !fst.canBeReplaced()
+                            && !fst.getCollisionShape(world, feetC).isEmpty() && !player.onClimbable()) {
                         if (!kaptainwutax.tungsten.path.BreakRules.canBreak(world, feetC, fst)) {
                             Debug.logWarning("Wall too high to jump and the " + fst.getBlock()
                                     + " the feet stand in cannot be broken — giving the route up");
@@ -1111,7 +1111,7 @@ public final class FastNavigator {
                 // break run, "at the dig"), and only a ceiling that cannot be broken refuses
                 // the route.
                 if (rise > PlayerFitJumpHeight() && horiz < 2.5 && TungstenConfig.get().planPlaceMoves
-                        && canPillar && !player.isTouchingWater()
+                        && canPillar && !player.isInWater()
                         && TungstenConfig.get().towerMinesItsCeiling
                         && !kaptainwutax.tungsten.task.PillarTask.isActive()) {
                     BlockPos feetC = kaptainwutax.tungsten.path.movements.RotationHelper.playerFeet(player);
@@ -1194,9 +1194,9 @@ public final class FastNavigator {
                 // 0.02 on the ground) before the root is taken. Water and ladders never settle
                 // and are not asked to.
                 if (TungstenConfig.get().physicsHandoffFromRest
-                        && !player.isTouchingWater() && !player.isClimbing()) {
-                    double vh = Math.hypot(player.getVelocity().x, player.getVelocity().z);
-                    boolean atRest = vh < HANDOFF_REST_SPEED && player.isOnGround();
+                        && !player.isInWater() && !player.onClimbable()) {
+                    double vh = Math.hypot(player.getDeltaMovement().x, player.getDeltaMovement().z);
+                    boolean atRest = vh < HANDOFF_REST_SPEED && player.onGround();
                     if (!atRest && handoffSettleTicks < HANDOFF_SETTLE_MAX_TICKS) {
                         handoffSettleTicks++;
                         BlockPathWalker.stop();
@@ -1219,10 +1219,10 @@ public final class FastNavigator {
                 // silently — so we would sit in awaitingPhysics for a jump nobody was
                 // computing, and the run stalled at the lip of the gap.
                 boolean accepted = kaptainwutax.tungsten.TungstenModDataContainer.PATHFINDER.find(
-                        world, Vec3d.ofBottomCenter(jump), player, budget);
+                        world, Vec3.atBottomCenterOf(jump), player, budget);
                 if (accepted) {
                     awaitingPhysics = true;
-                    physicsHandoffFrom = player.getEntityPos();
+                    physicsHandoffFrom = player.position();
                     if (!jump.equals(physicsHandoffTarget)) physicsFailStreak = 0;
                     physicsHandoffTarget = jump;
                 } else {
@@ -1312,7 +1312,7 @@ public final class FastNavigator {
             // reached the queue at all. The queue types liquid edges as MovementSwim and is the
             // one component here that can cross a pond; ask it first whenever the body is in
             // water, and if it refuses, re-plan rather than sprint at the water.
-            if (!queued && TungstenConfig.get().wetLegGoesToTheQueue && player.isTouchingWater()
+            if (!queued && TungstenConfig.get().wetLegGoesToTheQueue && player.isInWater()
                     && !nextLegBridge) {
                 boolean tookIt = kaptainwutax.tungsten.path.movements.MovementQueue.start(leg) > 0;
                 if (tookIt) {
@@ -1343,7 +1343,7 @@ public final class FastNavigator {
             return;
         }
         if (!planning) {
-            planAhead(player.getBlockPos());
+            planAhead(player.blockPosition());
         }
     }
 
@@ -1383,7 +1383,7 @@ public final class FastNavigator {
         pendingPhysicsTarget = null;
         awaitingPhysics = false;
         var p = TungstenMod.mc.player;
-        if (p != null && !planning) planAhead(p.getBlockPos());
+        if (p != null && !planning) planAhead(p.blockPosition());
     }
 
     /**
@@ -1468,7 +1468,7 @@ public final class FastNavigator {
         // promise (see FastPlanner.placeBudget).
         final FastPlanner.StartState startState = FastPlanner.captureStartState();
         final BlockPos start = from;
-        final Vec3d target = goal;
+        final Vec3 target = goal;
         final BlockPos reach = reachBlock;
         // G55: an exact-cell route completes IN the cell, never one above it (the planner's
         // one-block height tolerance is for "go over there" goals only).
@@ -1479,10 +1479,10 @@ public final class FastNavigator {
         final boolean boost = budgetBoostNext;
         if (boost) { budgetBoostNext = false; budgetBoostedThisRoute = true; }
         final long budgetMs = TungstenConfig.get().fastPlanBudgetMs * (boost ? 4 : 1);
-        final var world = TungstenMod.mc.world;
+        final var world = TungstenMod.mc.level;
         if (world == null) { planning = false; return; }
         final long generation = planGeneration.incrementAndGet();
-        final BlockPos goalCell = BlockPos.ofFloored(target);
+        final BlockPos goalCell = BlockPos.containing(target);
         Thread t = new Thread(() -> {
             try {
                 FastPlanner.Result result = condition != null
@@ -1491,7 +1491,7 @@ public final class FastNavigator {
                 // Applying a result can stop the walker and change its input ownership.
                 // Serialize that transition with game ticks; the worker must only calculate.
                 TungstenMod.mc.execute(() -> {
-                    if (generation != planGeneration.get() || !active || TungstenMod.mc.world != world) {
+                    if (generation != planGeneration.get() || !active || TungstenMod.mc.level != world) {
                         navPlansDiscarded++;
                         if (generation == planGeneration.get()) planning = false;
                         return;
@@ -1522,7 +1522,7 @@ public final class FastNavigator {
                                 nearestPartialWalked++;
                             }
                             resolvedGoal = result.path.get(result.path.size() - 1).pos;
-                            goal = new Vec3d(resolvedGoal.getX() + 0.5,
+                            goal = new Vec3(resolvedGoal.getX() + 0.5,
                                     resolvedGoal.getY(), resolvedGoal.getZ() + 0.5);
                         }
                         applyPlan(world, start, resolvedGoal, budgetMs, result);
@@ -1549,7 +1549,7 @@ public final class FastNavigator {
     }
 
     /** Publish one current calculation on the client thread, including any walker handoff. */
-    private static void applyPlan(net.minecraft.world.World world, BlockPos start,
+    private static void applyPlan(net.minecraft.world.level.Level world, BlockPos start,
                                   BlockPos goalCell, long budgetMs, FastPlanner.Result res) {
         if (res.isEmpty()) { navEmptyRes++; return; }
         if (res.path.size() == 1) {
@@ -1578,14 +1578,14 @@ public final class FastNavigator {
                 if (w.toPlace != null) for (BlockPos p : w.toPlace)
                     kaptainwutax.tungsten.TungstenModRenderContainer.PLACE_PLAN.add(
                             new kaptainwutax.tungsten.render.Cuboid(
-                                    new Vec3d(p.getX() + 0.1, p.getY() + 0.1, p.getZ() + 0.1),
-                                    new Vec3d(0.8, 0.8, 0.8),
+                                    new Vec3(p.getX() + 0.1, p.getY() + 0.1, p.getZ() + 0.1),
+                                    new Vec3(0.8, 0.8, 0.8),
                                     new kaptainwutax.tungsten.render.Color(60, 220, 120)));
                 if (w.toBreak != null) for (BlockPos p : w.toBreak)
                     kaptainwutax.tungsten.TungstenModRenderContainer.BREAK_PLAN.add(
                             new kaptainwutax.tungsten.render.Cuboid(
-                                    new Vec3d(p.getX() + 0.05, p.getY() + 0.05, p.getZ() + 0.05),
-                                    new Vec3d(0.9, 0.9, 0.9),
+                                    new Vec3(p.getX() + 0.05, p.getY() + 0.05, p.getZ() + 0.05),
+                                    new Vec3(0.9, 0.9, 0.9),
                                     new kaptainwutax.tungsten.render.Color(255, 170, 40)));
             }
         }
@@ -1595,8 +1595,8 @@ public final class FastNavigator {
         if (!res.complete) {
             navIncomplete++;
             BlockPos tail = res.path.get(res.path.size() - 1).pos;
-            double before = Math.sqrt(start.getSquaredDistance(goalCell));
-            double after = Math.sqrt(tail.getSquaredDistance(goalCell));
+            double before = Math.sqrt(start.distSqr(goalCell));
+            double after = Math.sqrt(tail.distSqr(goalCell));
             // (Refusing to hand off a LONG incomplete route — "nineteen waypoints the
             // walker could have walked" — was tried here and did not move the number:
             // nav_water sat at 2-3 passes in 4 either way. Reverted rather than kept on
@@ -1621,7 +1621,7 @@ public final class FastNavigator {
             // partial at least MIN_DIST_PATH from the start is a leg; and a goal below
             // that yields no such partial is given up out loud, never handed to an engine
             // without a shovel.
-            double partialLen = Math.sqrt(tail.getSquaredDistance(start));
+            double partialLen = Math.sqrt(tail.distSqr(start));
             // ⛔ A SHORT PARTIAL THAT BUILDS OR DIGS IS A LEG, NOT A DEAD END (G98, 2026-09-16).
             // The 60-minute run ended with twenty minutes at the bottom of its own shaft,
             // (1508,52,-1516), the goal nine blocks straight up: every plan was partial --
@@ -1826,9 +1826,9 @@ public final class FastNavigator {
             // route knows, since a truncated leg ends on the slime.
             int padStart = -1, padExit = -1;
             for (int i = 0; i < cells.size(); i++) {
-                BlockPos below = cells.get(i).down();
+                BlockPos below = cells.get(i).below();
                 var st = world.getBlockState(below);
-                boolean slime = st.getBlock() instanceof net.minecraft.block.SlimeBlock;
+                boolean slime = st.getBlock() instanceof net.minecraft.world.level.block.SlimeBlock;
                 if (slime && padStart < 0) padStart = i;
                 // "NOT SLIME" IS NOT THE SAME AS "SOMEWHERE TO STAND". The exit has to
                 // be a cell with a real floor under it: the first version took the

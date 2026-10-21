@@ -8,9 +8,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
-import net.minecraft.item.Item;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
+import net.minecraft.world.item.Item;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -37,17 +37,17 @@ public class ItemDeserializer extends StdDeserializer<Object> {
             if (p.getCurrentToken() == JsonToken.VALUE_NUMBER_INT) {
                 // Old raw id (ew stinky)
                 int rawId = p.getIntValue();
-                item = Item.byRawId(rawId);
+                item = Item.byId(rawId);
             } else {
                 // Translation key (the proper way)
                 String itemKey = p.getText();
                 itemKey = ItemHelper.trimItemName(itemKey);
-                Identifier identifier = Identifier.of(itemKey);
-                if (Registries.ITEM.containsId(identifier)) {
+                Identifier identifier = Identifier.parse(itemKey);
+                if (BuiltInRegistries.ITEM.containsKey(identifier)) {
                     //#if MC >= 12111
-                    //$$ item = Registries.ITEM.get(identifier);
+                    //$$ item = BuiltInRegistries.ITEM.getValue(identifier);
                     //#else
-                    item = Registries.ITEM.get(identifier);
+                    item = BuiltInRegistries.ITEM.getValue(identifier);
                     //#endif
                 } else {
                     Debug.logWarning("Invalid item name:" + itemKey + " at " + p.getCurrentLocation().toString());

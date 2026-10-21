@@ -2,10 +2,10 @@ package kaptainwutax.tungsten.path;
 
 import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.TungstenModDataContainer;
-import net.minecraft.block.BlockState;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Central "may we mine this block" policy. Consulted by the block-space
@@ -25,21 +25,21 @@ public final class BreakRules {
     public static volatile int refusedNextToLava = 0;
 
     /** Lava directly above or beside {@code pos} (not below -- lava does not flow up). */
-    public static boolean holdsLavaBack(WorldView world, BlockPos pos) {
+    public static boolean holdsLavaBack(LevelReader world, BlockPos pos) {
         int x = pos.getX(), y = pos.getY(), z = pos.getZ();
         return lavaAt(world, x, y + 1, z) || lavaAt(world, x + 1, y, z) || lavaAt(world, x - 1, y, z)
                 || lavaAt(world, x, y, z + 1) || lavaAt(world, x, y, z - 1);
     }
 
-    private static boolean lavaAt(WorldView world, int x, int y, int z) {
-        return world.getFluidState(new BlockPos(x, y, z)).isIn(net.minecraft.registry.tag.FluidTags.LAVA);
+    private static boolean lavaAt(LevelReader world, int x, int y, int z) {
+        return world.getFluidState(new BlockPos(x, y, z)).is(net.minecraft.tags.FluidTags.LAVA);
     }
 
-    public static boolean canBreak(WorldView world, BlockPos pos, BlockState state) {
+    public static boolean canBreak(LevelReader world, BlockPos pos, BlockState state) {
         TungstenConfig cfg = TungstenConfig.get();
         if (!cfg.allowBreak) return false;
         if (state.isAir()) return true;
-        if (state.getHardness(world, pos) < 0) return false;
+        if (state.getDestroySpeed(world, pos) < 0) return false;
         if (!world.getFluidState(pos).isEmpty()) return false;
         if (state.hasBlockEntity()) return false;
         // ⛔ NOT A BLOCK THAT IS HOLDING LAVA BACK -- baritone MovementHelper.avoidAdjacentBreaking
@@ -58,7 +58,7 @@ public final class BreakRules {
         }
 
         if (!cfg.breakDenyBlocks.isEmpty()) {
-            String id = Registries.BLOCK.getId(state.getBlock()).toString();
+            String id = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
             if (cfg.breakDenyBlocks.contains(id)) return false;
         }
         for (int[] zone : cfg.breakDenyZones) {

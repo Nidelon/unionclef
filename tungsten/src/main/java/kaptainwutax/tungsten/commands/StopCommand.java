@@ -10,7 +10,7 @@ import kaptainwutax.tungsten.path.PathFinder;
 import kaptainwutax.tungsten.task.FollowEntityTask;
 import kaptainwutax.tungsten.task.FollowPlayerTask;
 import kaptainwutax.tungsten.task.PunkPlayerTask;
-import net.minecraft.command.CommandSource;
+import net.minecraft.commands.SharedSuggestionProvider;
 
 public class StopCommand extends Command {
 	public StopCommand(TungstenMod mod) {
@@ -18,7 +18,7 @@ public class StopCommand extends Command {
     }
 
 	@Override
-	public void build(LiteralArgumentBuilder<CommandSource> builder) {
+	public void build(LiteralArgumentBuilder<SharedSuggestionProvider> builder) {
 
 		builder.executes(context -> {
 	        try {

@@ -95,7 +95,7 @@ public abstract class KillAuraHelper {
         mod.getInputControls().hold(Input.MOVE_FORWARD);
 
         // Jump for crits when on ground
-        if (jump && mod.getPlayer().isOnGround()) {
+        if (jump && mod.getPlayer().onGround()) {
             mod.getInputControls().hold(Input.JUMP);
         }
 

@@ -1,6 +1,6 @@
 package kaptainwutax.tungsten.combat;
 
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 /**
  * A movement request for one combat tick — what a subsystem WANTS the legs to do,
@@ -67,14 +67,14 @@ public final class CombatMoveIntent {
      * The ONE place combat is allowed to touch the movement keys. Everything not
      * requested is explicitly released, so a stale press can never survive a tick.
      */
-    public void writeKeys(MinecraftClient mc) {
-        mc.options.forwardKey.setPressed(forward);
-        mc.options.backKey.setPressed(back);
-        mc.options.leftKey.setPressed(left);
-        mc.options.rightKey.setPressed(right);
-        mc.options.sprintKey.setPressed(sprint);
-        mc.options.jumpKey.setPressed(jump);
-        mc.options.sneakKey.setPressed(sneak);
+    public void writeKeys(Minecraft mc) {
+        mc.options.keyUp.setDown(forward);
+        mc.options.keyDown.setDown(back);
+        mc.options.keyLeft.setDown(left);
+        mc.options.keyRight.setDown(right);
+        mc.options.keySprint.setDown(sprint);
+        mc.options.keyJump.setDown(jump);
+        mc.options.keyShift.setDown(sneak);
     }
 
     /** World-space horizontal heading (dx,dz) implied by this intent's keys, or null

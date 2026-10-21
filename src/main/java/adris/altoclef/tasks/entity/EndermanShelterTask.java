@@ -8,12 +8,12 @@ import adris.altoclef.util.helpers.LookHelper;
 import kaptainwutax.tungsten.helpers.PlayerFit;
 import kaptainwutax.tungsten.path.RouteHazards;
 import kaptainwutax.tungsten.task.PillarTask;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.EndermanEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -130,7 +130,7 @@ public class EndermanShelterTask extends Task {
     protected void onStart() {
         AltoClef mod = AltoClef.getInstance();
         BlockPos b = lastBase;
-        BlockPos feet = mod.getPlayer().getBlockPos();
+        BlockPos feet = mod.getPlayer().blockPosition();
         base = b != null && feet.getX() == b.getX() && feet.getZ() == b.getZ()
                 && feet.getY() >= b.getY() && feet.getY() <= b.getY() + HEIGHT ? b : null;
         lastInRangeMs = System.currentTimeMillis();
@@ -142,9 +142,9 @@ public class EndermanShelterTask extends Task {
     @Override
     protected Task onTick() {
         AltoClef mod = AltoClef.getInstance();
-        World world = mod.getWorld();
+        Level world = mod.getWorld();
         holding = false;
-        BlockPos feet = mod.getPlayer().getBlockPos();
+        BlockPos feet = mod.getPlayer().blockPosition();
 
         if (base != null && onTop(mod, base) && !relocate) {
             holding = true;
@@ -153,10 +153,10 @@ public class EndermanShelterTask extends Task {
         }
         if (relocate) {
             // An unused pillar: walk to within 16 of the nearest enderman, then build again there.
-            EndermanEntity near = null;
-            for (EndermanEntity e : mod.getEntityTracker().getTrackedEntities(EndermanEntity.class)) {
+            EnderMan near = null;
+            for (EnderMan e : mod.getEntityTracker().getTrackedEntities(EnderMan.class)) {
                 if (e.isAlive() && accept.test(e) && (near == null
-                        || e.squaredDistanceTo(mod.getPlayer()) < near.squaredDistanceTo(mod.getPlayer()))) near = e;
+                        || e.distanceToSqr(mod.getPlayer()) < near.distanceToSqr(mod.getPlayer()))) near = e;
             }
             if (near != null && near.distanceTo(mod.getPlayer()) > 16) {
                 setDebugState("No enderman near the pillar: moving towards one");
@@ -202,7 +202,7 @@ public class EndermanShelterTask extends Task {
         if (base == null) {
             // Standing still is the one wrong answer: fight as before and look again later.
             setDebugState("No site for a pillar here: fighting on the ground");
-            return new KillEntitiesTask(accept, EndermanEntity.class);
+            return new KillEntitiesTask(accept, EnderMan.class);
         }
         if (!feet.equals(base)) {
             setDebugState("Going to the pillar site " + base.toShortString());
@@ -233,8 +233,8 @@ public class EndermanShelterTask extends Task {
     }
 
     private static boolean onTop(AltoClef mod, BlockPos base) {
-        BlockPos feet = mod.getPlayer().getBlockPos();
-        return mod.getPlayer().isOnGround() && feet.getX() == base.getX() && feet.getZ() == base.getZ()
+        BlockPos feet = mod.getPlayer().blockPosition();
+        return mod.getPlayer().onGround() && feet.getX() == base.getX() && feet.getZ() == base.getZ()
                 && feet.getY() >= base.getY() + HEIGHT;
     }
 
@@ -243,15 +243,15 @@ public class EndermanShelterTask extends Task {
             relocate = true;
             return null;
         }
-        EndermanEntity angry = null;
-        EndermanEntity calm = null;
+        EnderMan angry = null;
+        EnderMan calm = null;
         double angryD = Double.MAX_VALUE, calmD = Double.MAX_VALUE;
-        for (EndermanEntity e : mod.getEntityTracker().getTrackedEntities(EndermanEntity.class)) {
+        for (EnderMan e : mod.getEntityTracker().getTrackedEntities(EnderMan.class)) {
             if (!e.isAlive() || !accept.test(e)) continue;
-            double d = e.squaredDistanceTo(mod.getPlayer());
+            double d = e.distanceToSqr(mod.getPlayer());
             if (e.isAngry()) {
                 if (d < angryD) { angryD = d; angry = e; }
-            } else if (d < calmD && d < PROVOKE_RANGE * PROVOKE_RANGE && mod.getPlayer().canSee(e)) {
+            } else if (d < calmD && d < PROVOKE_RANGE * PROVOKE_RANGE && mod.getPlayer().hasLineOfSight(e)) {
                 // Vanilla angers an enderman only when the player sees it and looks within about
                 // 0.025/distance of its eyes; one behind a fungus cannot be provoked (n44 spent most
                 // of its samples "provoking" and got 3 pearls in 16 minutes).
@@ -279,7 +279,7 @@ public class EndermanShelterTask extends Task {
             // (n46: nine minutes "waiting for it to come in reach"). Build the next pillar where it
             // can: next to it. Fighting it on the ground instead was tried and is what put n48 in
             // the lava sea, knocked off a rim in the melee.
-            searchFrom = angry.getBlockPos();
+            searchFrom = angry.blockPosition();
             rejected.add(base);
             lastReachableMs = System.currentTimeMillis();
             base = null;
@@ -294,19 +294,19 @@ public class EndermanShelterTask extends Task {
             if (LookHelper.canHitEntity(mod, angry)) {
                 // Its head: from the top of the pillar the rest of an enderman at the foot hides
                 // behind the pillar's own edge. Staring freezes it, which is welcome once in reach.
-                LookHelper.lookAt(mod, angry.getEyePos());
-                if (mod.getPlayer().getAttackCooldownProgress(0) >= 1) {
+                LookHelper.lookAt(mod, angry.getEyePosition());
+                if (mod.getPlayer().getAttackStrengthScale(0) >= 1) {
                     mod.getControllerExtras().attack(angry);
                 }
                 setDebugState("Hitting the enderman from the pillar");
             } else {
-                LookHelper.lookAt(mod, angry.getPos());
+                LookHelper.lookAt(mod, angry.position());
                 setDebugState("Waiting on the pillar for the enderman to come in reach");
             }
             return null;
         }
         if (calm != null && healthyEnoughToProvoke(mod)) {
-            LookHelper.lookAt(mod, calm.getEyePos());
+            LookHelper.lookAt(mod, calm.getEyePosition());
             setDebugState("Provoking an enderman from the pillar");
             return null;
         }
@@ -316,18 +316,18 @@ public class EndermanShelterTask extends Task {
     }
 
     /** The nearest acceptable site, the feet cell first. */
-    private BlockPos pickSite(World world, BlockPos from) {
+    private BlockPos pickSite(Level world, BlockPos from) {
         List<BlockPos> candidates = new ArrayList<>();
         for (int dx = -SITE_SEARCH_RADIUS; dx <= SITE_SEARCH_RADIUS; dx++) {
             for (int dz = -SITE_SEARCH_RADIUS; dz <= SITE_SEARCH_RADIUS; dz++) {
                 // ±1 only: a site two blocks up or down is usually one the route has to dig to, and
                 // the dig is how n45 opened a lava pocket on itself (dead at 4:21).
                 for (int dy = -1; dy <= 1; dy++) {
-                    candidates.add(from.add(dx, dy, dz));
+                    candidates.add(from.offset(dx, dy, dz));
                 }
             }
         }
-        candidates.sort(Comparator.comparingDouble(p -> p.getSquaredDistance(from)));
+        candidates.sort(Comparator.comparingDouble(p -> p.distSqr(from)));
         for (BlockPos p : candidates) {
             if (rejected.contains(p)) continue;
             if (siteHolds(world, p)) return p;
@@ -344,12 +344,12 @@ public class EndermanShelterTask extends Task {
      * SUCH PLACE: 30 minutes from rung-ender logged "No site for a pillar" and 1 pearl in 9 minutes.
      * A wall, a trunk or a canopy is harmless unless something can stand on it at those heights.
      */
-    static boolean siteHolds(World world, BlockPos b) {
-        BlockPos.Mutable s = new BlockPos.Mutable();
+    static boolean siteHolds(Level world, BlockPos b) {
+        net.minecraft.core.BlockPos.MutableBlockPos s = new net.minecraft.core.BlockPos.MutableBlockPos();
         if (!PlayerFit.standable(world, b)) return false;
         if (RouteHazards.lethalColumn(world, b.getX(), b.getY(), b.getZ(), s)) return false;
         for (int dy = 1; dy <= HEIGHT + 2; dy++) {
-            if (solid(world, b.up(dy))) return false;
+            if (solid(world, b.above(dy))) return false;
         }
         // Ground on every side, at most two blocks down: stepping off the pillar must be a short
         // drop, never a cliff (n48: a pillar by a drop, the body stepped off its top and fell 29
@@ -359,9 +359,9 @@ public class EndermanShelterTask extends Task {
         for (int dx = -2; dx <= 2; dx++) {
             for (int dz = -2; dz <= 2; dz++) {
                 if (dx == 0 && dz == 0) continue;
-                BlockPos n = b.add(dx, 0, dz);
-                if (!solid(world, n) && !solid(world, n.down()) && !solid(world, n.down(2))
-                        && !solid(world, n.down(3))) return false;
+                BlockPos n = b.offset(dx, 0, dz);
+                if (!solid(world, n) && !solid(world, n.below()) && !solid(world, n.below(2))
+                        && !solid(world, n.below(3))) return false;
                 if (RouteHazards.lethalColumn(world, n.getX(), n.getY(), n.getZ(), s) && !solid(world, n)) return false;
             }
         }
@@ -369,16 +369,16 @@ public class EndermanShelterTask extends Task {
             for (int dz = -2; dz <= 2; dz++) {
                 if (dx == 0 && dz == 0) continue;
                 for (int h = 1; h <= HEIGHT + 1; h++) {
-                    BlockPos feet = b.add(dx, h, dz);
-                    if (solid(world, feet.down()) && !solid(world, feet)
-                            && !solid(world, feet.up()) && !solid(world, feet.up(2))) return false;
+                    BlockPos feet = b.offset(dx, h, dz);
+                    if (solid(world, feet.below()) && !solid(world, feet)
+                            && !solid(world, feet.above()) && !solid(world, feet.above(2))) return false;
                 }
             }
         }
         return true;
     }
 
-    private static boolean solid(World world, BlockPos p) {
+    private static boolean solid(Level world, BlockPos p) {
         return !world.getBlockState(p).getCollisionShape(world, p).isEmpty();
     }
 

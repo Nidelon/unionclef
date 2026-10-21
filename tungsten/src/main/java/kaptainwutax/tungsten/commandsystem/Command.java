@@ -9,17 +9,17 @@ import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 
 import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.TungstenMod;
-import net.minecraft.command.CommandRegistryAccess;
-import net.minecraft.command.CommandSource;
-import net.minecraft.registry.BuiltinRegistries;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.text.Text;
+import net.minecraft.commands.CommandBuildContext;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.data.registries.VanillaRegistries;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 
 public abstract class Command {
 
-	protected static final CommandRegistryAccess REGISTRY_ACCESS = CommandManager.createRegistryAccess(BuiltinRegistries.createWrapperLookup());
+	protected static final CommandBuildContext REGISTRY_ACCESS = Commands.createValidationContext(VanillaRegistries.createLookup());
     protected static final int SINGLE_SUCCESS = com.mojang.brigadier.Command.SINGLE_SUCCESS;
-    protected final static SimpleCommandExceptionType INCORRECT_USE = new SimpleCommandExceptionType(Text.literal("Incorrect command use!"));
+    protected final static SimpleCommandExceptionType INCORRECT_USE = new SimpleCommandExceptionType(Component.literal("Incorrect command use!"));
     
     private final String _name;
     private final String _description;
@@ -48,23 +48,23 @@ public abstract class Command {
             _onFinish.run();
     }
     
-    public abstract void build(LiteralArgumentBuilder<CommandSource> builder);
+    public abstract void build(LiteralArgumentBuilder<SharedSuggestionProvider> builder);
     
-    // Helper methods to painlessly infer the CommandSource generic type argument
-    protected static <T> RequiredArgumentBuilder<CommandSource, T> argument(final String name, final ArgumentType<T> type) {
+    // Helper methods to painlessly infer the SharedSuggestionProvider generic type argument
+    protected static <T> RequiredArgumentBuilder<SharedSuggestionProvider, T> argument(final String name, final ArgumentType<T> type) {
         return RequiredArgumentBuilder.argument(name, type);
     }
 
-    protected static LiteralArgumentBuilder<CommandSource> literal(final String name) {
+    protected static LiteralArgumentBuilder<SharedSuggestionProvider> literal(final String name) {
         return LiteralArgumentBuilder.literal(name);
     }
     
-    public final void registerTo(CommandDispatcher<CommandSource> dispatcher) {
+    public final void registerTo(CommandDispatcher<SharedSuggestionProvider> dispatcher) {
         register(dispatcher, _name);
     }
     
-    public void register(CommandDispatcher<CommandSource> dispatcher, String name) {
-        LiteralArgumentBuilder<CommandSource> builder = LiteralArgumentBuilder.literal(name);
+    public void register(CommandDispatcher<SharedSuggestionProvider> dispatcher, String name) {
+        LiteralArgumentBuilder<SharedSuggestionProvider> builder = LiteralArgumentBuilder.literal(name);
         build(builder);
         dispatcher.register(builder);
     }

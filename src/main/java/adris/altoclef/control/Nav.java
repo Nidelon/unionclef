@@ -410,8 +410,8 @@ public final class Nav {
                 || kaptainwutax.tungsten.path.movements.MovementQueue.isRunning()
                 || kaptainwutax.tungsten.task.BlockPathWalker.isRunning();
         if (tungstenDriving) {
-            net.minecraft.client.network.ClientPlayerEntity p =
-                    net.minecraft.client.MinecraftClient.getInstance().player;
+            net.minecraft.client.player.LocalPlayer p =
+                    net.minecraft.client.Minecraft.getInstance().player;
             // ⛔ A HOP IS NOT A FALL, AND THE BOT HOPS CONSTANTLY BY DESIGN.
             //
             // This used to refuse for ANY airborne tick while tungsten drove. The bot jumps for
@@ -439,16 +439,16 @@ public final class Nav {
             // fix is a collision-shape test instead of !isAir(), plus treating lava as never
             // ground; it wants a course that actually falls toward a hazard before it can be
             // measured, which nav_hazard may already provide.
-            if (p != null && !p.isOnGround() && !p.isTouchingWater()) {
+            if (p != null && !p.onGround() && !p.isInWater()) {
                 boolean groundClose = false;
-                net.minecraft.util.math.BlockPos below = p.getBlockPos();
+                net.minecraft.core.BlockPos below = p.blockPosition();
                 boolean useCollision = kaptainwutax.tungsten.TungstenConfig.get()
                         .navGroundCollisionCheck;
                 for (int d = 1; d <= 3 && !groundClose; d++) {
-                    net.minecraft.util.math.BlockPos gp = below.down(d);
-                    net.minecraft.block.BlockState st = p.getEntityWorld().getBlockState(gp);
+                    net.minecraft.core.BlockPos gp = below.below(d);
+                    net.minecraft.world.level.block.state.BlockState st = p.level().getBlockState(gp);
                     groundClose = useCollision
-                            ? !st.getCollisionShape(p.getEntityWorld(), gp).isEmpty()
+                            ? !st.getCollisionShape(p.level(), gp).isEmpty()
                             : !st.isAir();
                 }
                 if (!groundClose) {
@@ -523,19 +523,19 @@ public final class Nav {
             AltoClef mod = AltoClef.getInstance();
             if (mod == null || mod.getPlayer() == null || mod.getWorld() == null) return;
             oreSample++;
-            var self = mod.getPlayer().getPos();
+            var self = mod.getPlayer().position();
             var coal = mod.getBlockScanner().getNearestBlock(
-                    net.minecraft.block.Blocks.COAL_ORE, net.minecraft.block.Blocks.DEEPSLATE_COAL_ORE);
+                    net.minecraft.world.level.block.Blocks.COAL_ORE, net.minecraft.world.level.block.Blocks.DEEPSLATE_COAL_ORE);
             if (coal.isPresent()) {
                 oreCoalSeen++;
-                double d = self.distanceTo(net.minecraft.util.math.Vec3d.ofCenter(coal.get()));
+                double d = self.distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(coal.get()));
                 if (oreCoalNearest < 0 || d < oreCoalNearest) oreCoalNearest = d;
             }
             var iron = mod.getBlockScanner().getNearestBlock(
-                    net.minecraft.block.Blocks.IRON_ORE, net.minecraft.block.Blocks.DEEPSLATE_IRON_ORE);
+                    net.minecraft.world.level.block.Blocks.IRON_ORE, net.minecraft.world.level.block.Blocks.DEEPSLATE_IRON_ORE);
             if (iron.isPresent()) {
                 oreIronSeen++;
-                double d = self.distanceTo(net.minecraft.util.math.Vec3d.ofCenter(iron.get()));
+                double d = self.distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(iron.get()));
                 if (oreIronNearest < 0 || d < oreIronNearest) oreIronNearest = d;
             }
         } catch (Throwable ignored) {

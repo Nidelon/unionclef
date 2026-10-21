@@ -1,14 +1,9 @@
 package adris.altoclef.multiversion.item;
 
-import adris.altoclef.mixins.AxeItemAccessor;
-import adris.altoclef.mixins.MiningToolItemAccessor;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.item.AxeItem;
-import net.minecraft.item.Item;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.Item;
 //#if MC < 12111
-import net.minecraft.item.MiningToolItem;
-import net.minecraft.item.PickaxeItem;
 //#endif
 
 import java.util.Set;
@@ -22,10 +17,10 @@ public class ItemHelper {
     //$$         return pickaxe.isSuitableFor(state);
     //$$     }
     //$$
-    //$$     if (item instanceof MiningToolItem) {
+    //$$     if (item instanceof DiggerItem) {
     //$$         boolean isInEffectiveBlocks = ((MiningToolItemAccessor)item).getEffectiveBlocks().contains(state.getBlock());
     //$$
-    //$$         if (item instanceof AxeItem) {
+    //$$         if (item.components().has(net.minecraft.core.component.DataComponents.TOOL)) {
     //$$             return isInEffectiveBlocks || ((AxeItemAccessor)item).getEffectiveMaterials().contains(state.getMaterial());
     //$$         }
     //$$         return isInEffectiveBlocks;

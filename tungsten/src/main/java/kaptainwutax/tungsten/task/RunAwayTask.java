@@ -4,12 +4,12 @@ import kaptainwutax.tungsten.Debug;
 import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.TungstenModDataContainer;
 import kaptainwutax.tungsten.combat.VoidDetector;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Flee a named player, keeping at least {@code keepDistance} blocks. The mirror
@@ -58,7 +58,7 @@ public class RunAwayTask {
     /** Of the in-reach ticks: how many were spent sprinting, and how many moving away. */
     public static volatile int reachSprintTicks;
     public static volatile int reachAwayTicks;
-    private static PlayerEntity threat  = null;
+    private static Player threat  = null;
     private static int     tickCounter  = 0;
 
     /**
@@ -168,22 +168,22 @@ public class RunAwayTask {
      * were reverted for changing which keys the drive presses; if the guard clears them afterwards,
      * all six were editing a value nobody reads.
      */
-    public static void countKeysAfterGuard(ClientPlayerEntity player) {
+    public static void countKeysAfterGuard(LocalPlayer player) {
         if (player == null || threat == null || !threat.isAlive() || threat.isRemoved()) return;
-        if (player.getEntityPos().distanceTo(threat.getEntityPos()) > 5.0) return;
-        Vec3d hv = player.getVelocity();
+        if (player.position().distanceTo(threat.position()) > 5.0) return;
+        Vec3 hv = player.getDeltaMovement();
         if (Math.sqrt(hv.x * hv.x + hv.z * hv.z) >= 0.02) return;
-        var o = MinecraftClient.getInstance().options;
-        if (o.forwardKey.isPressed() || o.backKey.isPressed()
-                || o.leftKey.isPressed() || o.rightKey.isPressed()) {
+        var o = Minecraft.getInstance().options;
+        if (o.keyUp.isDown() || o.keyDown.isDown()
+                || o.keyLeft.isDown() || o.keyRight.isDown()) {
             keysDownAfterGuardTicks++;
         }
         stalledSeenAfterGuard++;
     }
 
-    public static void countExposure(ClientPlayerEntity player) {
+    public static void countExposure(LocalPlayer player) {
         if (player == null || threat == null || !threat.isAlive() || threat.isRemoved()) return;
-        double d = player.getEntityPos().distanceTo(threat.getEntityPos());
+        double d = player.position().distanceTo(threat.position());
 
         // CALIBRATE THE REACH BY THE BLOWS, not by arguing about hitbox widths. 3.0 was wrong, the
         // 3.6 I "corrected" it to is wrong too -- 19 blows landed in a run where only 5 ticks were
@@ -204,7 +204,7 @@ public class RunAwayTask {
         // moves the bot without the flee steering. Horizontal speed cannot be argued with: under
         // 0.02 blocks/tick nothing is going anywhere, whoever is nominally driving.
         if (d <= 5.0) {
-            Vec3d hv = player.getVelocity();
+            Vec3 hv = player.getDeltaMovement();
             if (Math.sqrt(hv.x * hv.x + hv.z * hv.z) < 0.02) {
                 stillNearThreatTicks++;
                 // WHICH STATE IS HOLDING IT. Three candidates were listed and none guessed at:
@@ -225,10 +225,10 @@ public class RunAwayTask {
                     // the victim or geometry. If they are NOT, something clears them after the
                     // drive presses them, and VoidGuard runs immediately after and zeroes movement
                     // keys when it sees an edge. Recorded, not assumed.
-                    if (MinecraftClient.getInstance().options.forwardKey.isPressed()
-                            || MinecraftClient.getInstance().options.backKey.isPressed()
-                            || MinecraftClient.getInstance().options.leftKey.isPressed()
-                            || MinecraftClient.getInstance().options.rightKey.isPressed()) {
+                    if (Minecraft.getInstance().options.keyUp.isDown()
+                            || Minecraft.getInstance().options.keyDown.isDown()
+                            || Minecraft.getInstance().options.keyLeft.isDown()
+                            || Minecraft.getInstance().options.keyRight.isDown()) {
                         stillKeysDownTicks++;
                         // IS THE BLOCKER THE CHASER? I have been asserting it from "flat arena,
                         // what else is there", which is an inference, and inferences have cost me
@@ -265,8 +265,8 @@ public class RunAwayTask {
         // a sixfold exposure reduction bought no survival: it was reducing a quantity that
         // described a quarter of the danger.
         if (d <= REACH_BAND) {
-            Vec3d v = player.getVelocity();
-            Vec3d away = player.getEntityPos().subtract(threat.getEntityPos());
+            Vec3 v = player.getDeltaMovement();
+            Vec3 away = player.position().subtract(threat.position());
             if (player.isSprinting()) reachSprintTicks++;
             if ((v.x * away.x + v.z * away.z) > 0) reachAwayTicks++;
             if (BowShooter.isDrawing()) reachDrawingTicks++;
@@ -285,9 +285,9 @@ public class RunAwayTask {
     }
 
     /** Current gap to the threat, or -1 when there is no live threat to measure against. */
-    public static double gapTo(ClientPlayerEntity player) {
+    public static double gapTo(LocalPlayer player) {
         return (active && threat != null && threat.isAlive() && !threat.isRemoved())
-                ? player.getEntityPos().distanceTo(threat.getEntityPos()) : -1;
+                ? player.position().distanceTo(threat.position()) : -1;
     }
 
     /** Name of the threat currently tracked (null if not visible). */
@@ -355,7 +355,7 @@ public class RunAwayTask {
     public static final double NEAR_BAND = 7.0;
     private static boolean wasHurtForReach = false;
 
-    public static void tick(WorldView world, ClientPlayerEntity player) {
+    public static void tick(LevelReader world, LocalPlayer player) {
         // WHERE THE OTHER TWO THIRDS GO. The flee drives 345 ticks and holds 72 of a 1200-tick
         // course; four fixes to how it DRIVES all left the exposure profile unchanged, because
         // they could only touch 29% of the run. These two counters itemise the rest.
@@ -369,7 +369,7 @@ public class RunAwayTask {
         threat = resolve(player);
         if (threat == null) { fleeIdleNoThreat++; return; } // gone / out of view — idle
 
-        double dist = player.getEntityPos().distanceTo(threat.getEntityPos());
+        double dist = player.position().distanceTo(threat.position());
         // DO NOT HOLD WHILE THE THREAT IS CLOSING.
         //
         // The hold exists to save effort once the gap is safe, and it stops the bot dead AND
@@ -427,7 +427,7 @@ public class RunAwayTask {
         boolean pathing = searching || executing;
         if (!pathing || tickCounter >= RECALC) {
             tickCounter = 0;
-            Vec3d flee = safeFleePoint(world, player);
+            Vec3 flee = safeFleePoint(world, player);
             if (flee != null) {
                 fleePlans++;
                 kaptainwutax.tungsten.path.PathFinder.noteStop("RunAwayTask@423");
@@ -447,11 +447,11 @@ public class RunAwayTask {
      * sits furthest from the threat. Null if nothing safe (cornered — hold, don't
      * flee off the edge).
      */
-    private static Vec3d safeFleePoint(WorldView world, ClientPlayerEntity player) {
-        Vec3d p = player.getEntityPos();
-        Vec3d away = p.subtract(threat.getEntityPos());
-        away = new Vec3d(away.x, 0, away.z);
-        if (away.lengthSquared() < 1e-4) away = new Vec3d(1, 0, 0);
+    private static Vec3 safeFleePoint(LevelReader world, LocalPlayer player) {
+        Vec3 p = player.position();
+        Vec3 away = p.subtract(threat.position());
+        away = new Vec3(away.x, 0, away.z);
+        if (away.lengthSqr() < 1e-4) away = new Vec3(1, 0, 0);
         away = away.normalize();
 
         // TWO TIERS, NOT ONE SCORE. "Furthest from the threat" is a corner-seeking objective in any
@@ -470,7 +470,7 @@ public class RunAwayTask {
         // else exists. Expressed as a tier rather than a weighted penalty on purpose: a weight
         // would be a number invented to trade blocks against escape room, and there is no honest
         // exchange rate between them.
-        Vec3d best = null, bestDeadEnd = null;
+        Vec3 best = null, bestDeadEnd = null;
         double bestScore = -1, bestDeadEndScore = -1;
         // THE CANDIDATE SET COULD NOT EXPRESS "RUN ALONG THE RIM". It stopped at +-80 degrees from
         // straight-away, so at a boundary every candidate points outward, every one is a dead end,
@@ -490,10 +490,10 @@ public class RunAwayTask {
             double dx = away.x * cos - away.z * sin;
             double dz = away.x * sin + away.z * cos;
             for (double step : dists) {
-                Vec3d cand = new Vec3d(p.x + dx * step, p.y, p.z + dz * step);
-                Vec3d ground = snapGround(world, cand);
+                Vec3 cand = new Vec3(p.x + dx * step, p.y, p.z + dz * step);
+                Vec3 ground = snapGround(world, cand);
                 if (ground == null) continue;
-                double score = ground.distanceTo(threat.getEntityPos());
+                double score = ground.distanceTo(threat.position());
                 if (hasRoomBeyond(world, ground, dx, dz)) {
                     if (score > bestScore) { bestScore = score; best = ground; }
                 } else if (score > bestDeadEndScore) {
@@ -524,11 +524,11 @@ public class RunAwayTask {
      * is requested only when the motion is mostly FORWARD, because vanilla refuses it otherwise —
      * {@code canStartSprinting()} requires {@code input.hasForwardMovement()}.
      */
-    public static void driveAwayRaw(WorldView world, ClientPlayerEntity player) {
+    public static void driveAwayRaw(LevelReader world, LocalPlayer player) {
         if (!active || threat == null || !threat.isAlive() || threat.isRemoved()) return;
-        Vec3d away = player.getEntityPos().subtract(threat.getEntityPos());
-        away = new Vec3d(away.x, 0, away.z);
-        if (away.lengthSquared() < 1e-6) return;
+        Vec3 away = player.position().subtract(threat.position());
+        away = new Vec3(away.x, 0, away.z);
+        if (away.lengthSqr() < 1e-6) return;
         away = away.normalize();
 
         // ONLY WHERE THERE IS GROUND TO RUN ONTO. Blind key-driving cost a self-fall on
@@ -579,11 +579,11 @@ public class RunAwayTask {
             // setYaw, which this codebase bans -- so if the 64 are mostly turning, the ceiling is
             // structural rather than a defect, and the honest move is to say so instead of
             // hunting a fifteenth culprit.
-            double yawNow = Math.toRadians(player.getYaw());
-            Vec3d f = new Vec3d(-Math.sin(yawNow), 0, Math.cos(yawNow));
-            Vec3d aw = player.getEntityPos().subtract(threat.getEntityPos());
-            if (aw.horizontalLengthSquared() > 1e-6) {
-                Vec3d awN = new Vec3d(aw.x, 0, aw.z).normalize();
+            double yawNow = Math.toRadians(player.getYRot(1.0f));
+            Vec3 f = new Vec3(-Math.sin(yawNow), 0, Math.cos(yawNow));
+            Vec3 aw = player.position().subtract(threat.position());
+            if (aw.horizontalDistanceSqr() > 1e-6) {
+                Vec3 awN = new Vec3(aw.x, 0, aw.z).normalize();
                 if (awN.x * f.x + awN.z * f.z < 0.6) fleeNoSprintTurningTicks++;
                 else {
                     // KEY SHOULD BE DOWN AND VANILLA STILL REFUSES. fwd >= 0.6 means the sprint key
@@ -593,11 +593,11 @@ public class RunAwayTask {
                     // is what spends it. Recorded rather than assumed -- it is the last of the
                     // three idle buckets and the only one still open.
                     fleeNoSprintUnexplained++;
-                    if (player.getHungerManager().getFoodLevel() <= 6) fleeNoSprintHungryTicks++;
+                    if (player.getFoodData().getFoodLevel() <= 6) fleeNoSprintHungryTicks++;
                     // SNEAK CANCELS SPRINT, and VoidGuard presses sneak at an edge -- which on a
                     // bounded platform is exactly where a flee ends up. Counted rather than
                     // asserted: hunger looked just as reasonable and came back zero.
-                    if (MinecraftClient.getInstance().options.sneakKey.isPressed()) fleeNoSprintSneakTicks++;
+                    if (Minecraft.getInstance().options.keyShift.isDown()) fleeNoSprintSneakTicks++;
                     // The last of vanilla's refusal conditions: canStartSprinting also wants no
                     // horizontal collision. Mid-flight bumps would cancel the sprint tick by tick.
                     // Related to the rim collision measured earlier but NOT the same event -- those
@@ -610,7 +610,7 @@ public class RunAwayTask {
                         // centre; 1.5 leaves margin. The rim was already ruled out for the STALLS
                         // (TOUCHING 0 there) but these ticks are in motion, so the question is open
                         // again and gets its own count rather than the earlier answer reused.
-                        double dd = player.getEntityPos().distanceTo(threat.getEntityPos());
+                        double dd = player.position().distanceTo(threat.position());
                         if (dd < 1.5) fleeCollideWithThreatTicks++;
                         int r = (int) Math.round(Math.max(Math.abs(player.getX()),
                                                           Math.abs(player.getZ())) * 10.0);
@@ -629,13 +629,13 @@ public class RunAwayTask {
         // !isDrawing() while the bow claims the camera on isActive(); the guard is now correct AND
         // the bow actually releases when the gap is gone, so there is a camera to take. Through
         // WindMouse, never setYaw -- instant rotation is banned across this codebase.
-        if (!BowShooter.isActive() && away.horizontalLengthSquared() > 1e-6) {
+        if (!BowShooter.isActive() && away.horizontalDistanceSqr() > 1e-6) {
             float fleeYaw = (float) Math.toDegrees(Math.atan2(-away.x, away.z));
-            kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.setTargetFast(fleeYaw, player.getPitch());
+            kaptainwutax.tungsten.util.WindMouseRotation.INSTANCE.setTargetFast(fleeYaw, player.getXRot(1.0f));
         }
 
-        double yaw = Math.toRadians(player.getYaw());
-        Vec3d facing = new Vec3d(-Math.sin(yaw), 0, Math.cos(yaw));
+        double yaw = Math.toRadians(player.getYRot(1.0f));
+        Vec3 facing = new Vec3(-Math.sin(yaw), 0, Math.cos(yaw));
         // ⛔ FIXED 2026-09-05: this was (cos(yaw), sin(yaw)), which is the LEFT world direction,
         // not right -- it is bit-for-bit the same formula CombatMoveIntent.heading() uses for its
         // LEFT vector (strafe=+1, forward=0), and the negation of ProjectileDodge's own confirmed
@@ -644,38 +644,38 @@ public class RunAwayTask {
         // left/right swap class already found and fixed once in CombatController.kite(). Whatever
         // way "away" pointed, this fallback pressed the wrong strafe key -- on the narrow bridges
         // this exact fallback exists to cross without falling.
-        Vec3d right  = new Vec3d(-Math.cos(yaw), 0, -Math.sin(yaw));
-        double fwd = away.dotProduct(facing);
-        double str = away.dotProduct(right);
+        Vec3 right  = new Vec3(-Math.cos(yaw), 0, -Math.sin(yaw));
+        double fwd = away.dot(facing);
+        double str = away.dot(right);
 
-        var options = MinecraftClient.getInstance().options;
-        options.forwardKey.setPressed(fwd > 0.35);
-        options.backKey.setPressed(fwd < -0.35);
-        options.rightKey.setPressed(str > 0.35);
-        options.leftKey.setPressed(str < -0.35);
-        options.sprintKey.setPressed(fwd > 0.6);
+        var options = Minecraft.getInstance().options;
+        options.keyUp.setDown(fwd > 0.35);
+        options.keyDown.setDown(fwd < -0.35);
+        options.keyRight.setDown(str > 0.35);
+        options.keyLeft.setDown(str < -0.35);
+        options.keySprint.setDown(fwd > 0.6);
     }
 
 
     /** Can the flee CONTINUE past {@code from} in the same direction? One more standable step is
      *  enough to tell a corner from open ground, and it costs one snapGround call. */
-    private static boolean hasRoomBeyond(WorldView world, Vec3d from, double dx, double dz) {
-        return snapGround(world, new Vec3d(from.x + dx * STEP, from.y, from.z + dz * STEP)) != null;
+    private static boolean hasRoomBeyond(LevelReader world, Vec3 from, double dx, double dz) {
+        return snapGround(world, new Vec3(from.x + dx * STEP, from.y, from.z + dz * STEP)) != null;
     }
 
     /** Nearest standable INTERIOR cell around {@code pos} (scan a few blocks
      *  up/down); null if none. Interior = solid, 2 air above, and no serious drop
      *  within 2 blocks — fleeing to the very rim let the executor sprint-overshoot
      *  off the edge, so a flee target must keep a safety margin from the void. */
-    private static Vec3d snapGround(WorldView world, Vec3d pos) {
+    private static Vec3 snapGround(LevelReader world, Vec3 pos) {
         int x = (int) Math.floor(pos.x), z = (int) Math.floor(pos.z), y0 = (int) Math.floor(pos.y);
         for (int dy = 2; dy >= -4; dy--) {
             BlockPos bp = new BlockPos(x, y0 + dy, z);
             boolean solid = !world.getBlockState(bp).getCollisionShape(world, bp).isEmpty();
-            boolean airAbove = world.getBlockState(bp.up()).getCollisionShape(world, bp.up()).isEmpty()
-                    && world.getBlockState(bp.up(2)).getCollisionShape(world, bp.up(2)).isEmpty();
+            boolean airAbove = world.getBlockState(bp.above()).getCollisionShape(world, bp.above()).isEmpty()
+                    && world.getBlockState(bp.above(2)).getCollisionShape(world, bp.above(2)).isEmpty();
             if (solid && airAbove) {
-                Vec3d stand = new Vec3d(x + 0.5, bp.getY() + 1.0, z + 0.5);
+                Vec3 stand = new Vec3(x + 0.5, bp.getY() + 1.0, z + 0.5);
                 boolean safe = VoidDetector.fallHeight(stand, world) <= 3
                         && !VoidDetector.voidWithin(stand, world, 2, 3);
                 return safe ? stand : null;
@@ -684,24 +684,24 @@ public class RunAwayTask {
         return null;
     }
 
-    private static PlayerEntity resolve(ClientPlayerEntity player) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.world == null || threatName == null) return null;
+    private static Player resolve(LocalPlayer player) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || threatName == null) return null;
         if (threat != null && !threat.isRemoved() && threat.isAlive()
-                && mc.world.getEntityById(threat.getId()) == threat) {
+                && mc.level.getEntity(threat.getId()) == threat) {
             return threat;
         }
-        for (PlayerEntity pl : mc.world.getPlayers()) {
+        for (Player pl : mc.level.players()) {
             if (pl != player && pl.getName().getString().equalsIgnoreCase(threatName)) return pl;
         }
         return null;
     }
 
     private static void releaseKeys() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        mc.options.forwardKey.setPressed(false);
-        mc.options.sprintKey.setPressed(false);
-        mc.options.jumpKey.setPressed(false);
-        mc.options.sneakKey.setPressed(false);
+        Minecraft mc = Minecraft.getInstance();
+        mc.options.keyUp.setDown(false);
+        mc.options.keySprint.setDown(false);
+        mc.options.keyJump.setDown(false);
+        mc.options.keyShift.setDown(false);
     }
 }

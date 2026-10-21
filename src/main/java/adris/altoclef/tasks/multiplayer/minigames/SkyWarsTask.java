@@ -16,16 +16,16 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.*;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 import java.util.function.Predicate;
@@ -33,10 +33,10 @@ import java.util.stream.Stream;
 
 public class SkyWarsTask extends Task {
 
-    private final Predicate<PlayerEntity> _canTerminate;
+    private final Predicate<Player> _canTerminate;
     private final ScanChunksInRadius _scanTask;
-    private Vec3d _closestPlayerLastPos;
-    private Vec3d _closestPlayerLastObservePos;
+    private Vec3 _closestPlayerLastPos;
+    private Vec3 _closestPlayerLastObservePos;
     private boolean _forceWait = false;
     boolean _thePitTask = false;
     private BlockPos _startedPos;
@@ -86,7 +86,7 @@ public class SkyWarsTask extends Task {
             Arrays.stream(new Block[]{Blocks.CHEST, Blocks.TRAPPED_CHEST, Blocks.BARREL}),
             Arrays.stream(ItemHelper.itemsToBlocks(ItemHelper.SHULKER_BOXES))).toArray(Block[]::new);
 
-    public SkyWarsTask(BlockPos center, double scanRadius, Predicate<PlayerEntity> canTerminate, boolean finishOnKilled, boolean thePitTask) {
+    public SkyWarsTask(BlockPos center, double scanRadius, Predicate<Player> canTerminate, boolean finishOnKilled, boolean thePitTask) {
         _thePitTask = thePitTask;
         _canTerminate = canTerminate;
         _finishOnKilled = finishOnKilled;
@@ -99,7 +99,7 @@ public class SkyWarsTask extends Task {
         _scanTask = new ScanChunksInRadius(center, scanRadius);
     }
 
-    public SkyWarsTask(BlockPos center, double scanRadius, Predicate<PlayerEntity> canTerminate, boolean finishOnKilled) {
+    public SkyWarsTask(BlockPos center, double scanRadius, Predicate<Player> canTerminate, boolean finishOnKilled) {
         this(center, scanRadius, canTerminate, finishOnKilled, false);
     }
 
@@ -144,7 +144,7 @@ public class SkyWarsTask extends Task {
 
         if (_thePitTask) {
             setDebugState("ThePit");
-            if (mod.getPlayer().getPos().getY() > 85) {
+            if (mod.getPlayer().position().y() > 85) {
                 setDebugState("On the spawn island, need to get out");
                 mod.getInputControls().tryPress(Input.JUMP);
                 mod.getInputControls().tryPress(Input.MOVE_FORWARD);
@@ -177,16 +177,16 @@ public class SkyWarsTask extends Task {
         }
 
         Optional<Entity> target = mod.getEntityTracker().getClosestEntity(
-                mod.getPlayer().getPos(),
-                toPunk -> shouldPunk(mod, (PlayerEntity) toPunk),
-                PlayerEntity.class);
+                mod.getPlayer().position(),
+                toPunk -> shouldPunk(mod, (Player) toPunk),
+                Player.class);
 
-        Vec3d pos = mod.getPlayer().getPos();
+        Vec3 pos = mod.getPlayer().position();
         float minCost = Float.POSITIVE_INFINITY;
 
         Optional<BlockPos> closestCont = mod.getBlockScanner().getNearestBlock(
                 blockPos -> WorldHelper.isUnopenedChest(blockPos)
-                        && mod.getPlayer().getBlockPos().isWithinDistance(blockPos, 50)
+                        && mod.getPlayer().blockPosition().closerThan(blockPos, 50)
                         && WorldHelper.canReach(blockPos),
                 Blocks.CHEST);
 
@@ -203,10 +203,10 @@ public class SkyWarsTask extends Task {
             costContainer = getPathCost(mod, pos, closestCont.get());
         }
         if (target.isPresent()) {
-            costTarget = getPathCost(mod, pos, target.get().getPos());
+            costTarget = getPathCost(mod, pos, target.get().position());
         }
         if (closestDrop.isPresent()) {
-            costDrop = getPathCost(mod, pos, closestDrop.get().getPos());
+            costDrop = getPathCost(mod, pos, closestDrop.get().position());
         }
 
         if (costContainer < minCost) minCost = costContainer;
@@ -215,16 +215,16 @@ public class SkyWarsTask extends Task {
 
         // Handle combat
         if (target.isPresent()) {
-            PlayerEntity player = (PlayerEntity) target.get();
+            Player player = (Player) target.get();
             boolean alert = mod.getPlayer().distanceTo(player) <= 10;
             if (alert) {
                 setDebugState("Attack now");
                 return swKillPlayerTask(player);
             }
-            if (LookHelper.cleanLineOfSight(player.getPos(), 100)) {
+            if (LookHelper.cleanLineOfSight(player.position(), 100)) {
                 if (mod.getItemStorage().getItemCount(Items.ENDER_PEARL) > 2) {
                     setDebugState("Throw a pearl");
-                    return new ThrowEnderPearlSimpleProjectileTask(player.getBlockPos().add(0, -1, 0));
+                    return new ThrowEnderPearlSimpleProjectileTask(player.blockPosition().offset(0, -1, 0));
                 }
             }
             if (canUseRangedWeapon(mod) && ShootArrowSimpleProjectileTask.canUseRanged(mod, player)) {
@@ -246,7 +246,7 @@ public class SkyWarsTask extends Task {
 
         if (minCost != Float.POSITIVE_INFINITY) {
             if (minCost == costTarget && target.isPresent()
-                    && target.get() instanceof PlayerEntity player) {
+                    && target.get() instanceof Player player) {
                 setDebugState("Attack");
                 return swKillPlayerTask(player);
             } else if (minCost == costDrop) {
@@ -257,7 +257,7 @@ public class SkyWarsTask extends Task {
                 _lastLootPos = closestCont.get();
                 boolean startLoot = WorldHelper.canReach(closestCont.get());
                 if (!startLoot) {
-                    _lootTask = new GetCloseToBlockTask(closestCont.get().up());
+                    _lootTask = new GetCloseToBlockTask(closestCont.get().above());
                 } else {
                     _lootTask = new LootContainerTask(closestCont.get(), lootableItems(mod));
                 }
@@ -268,8 +268,8 @@ public class SkyWarsTask extends Task {
         return null;
     }
 
-    public Task swKillPlayerTask(PlayerEntity player) {
-        if (player.isInvulnerable() || player.isInCreativeMode() || player.isSneaking()) {
+    public Task swKillPlayerTask(Player player) {
+        if (player.isInvulnerable() || player.hasInfiniteMaterials() || player.isShiftKeyDown()) {
             return new ShiftEntityTask(player, ShiftEntityTask.ShiftType.Forward);
         } else {
             return new TungstenPunkTask(player.getName().getString());
@@ -294,11 +294,11 @@ public class SkyWarsTask extends Task {
         return new ItemTarget[]{new ItemTarget(item, count)};
     }
 
-    public float getPathCost(AltoClef mod, Vec3d startPos, Vec3d goalPos) {
+    public float getPathCost(AltoClef mod, Vec3 startPos, Vec3 goalPos) {
         return (float) BaritoneHelper.calculateGenericHeuristic(startPos, goalPos);
     }
 
-    public float getPathCost(AltoClef mod, Vec3d startPos, BlockPos goalPos) {
+    public float getPathCost(AltoClef mod, Vec3 startPos, BlockPos goalPos) {
         return getPathCost(mod, WorldHelper.toVec3d(goalPos), startPos);
     }
 
@@ -405,7 +405,7 @@ public class SkyWarsTask extends Task {
                 ? bestAvailable : -1;
     }
 
-    private boolean shouldPunk(AltoClef mod, PlayerEntity player) {
+    private boolean shouldPunk(AltoClef mod, Player player) {
         return player != null
                 && player.isAlive()
                 && !player.isCreative()
@@ -434,8 +434,8 @@ public class SkyWarsTask extends Task {
 
         @Override
         protected boolean isChunkWithinSearchSpace(AltoClef mod, ChunkPos pos) {
-            double cx = (pos.getStartX() + pos.getEndX()) / 2.0;
-            double cz = (pos.getStartZ() + pos.getEndZ()) / 2.0;
+            double cx = (pos.getMinBlockX() + pos.getMaxBlockX()) / 2.0;
+            double cz = (pos.getMinBlockZ() + pos.getMaxBlockZ()) / 2.0;
             double dx = _center.getX() - cx;
             double dz = _center.getZ() - cz;
             return dx * dx + dz * dz < _radius * _radius;
@@ -447,15 +447,15 @@ public class SkyWarsTask extends Task {
                 double lowestScore = Double.POSITIVE_INFINITY;
                 ChunkPos bestChunk = null;
                 for (ChunkPos toSearch : chunks) {
-                    double cx = (toSearch.getStartX() + toSearch.getEndX() + 1) / 2.0;
-                    double cz = (toSearch.getStartZ() + toSearch.getEndZ() + 1) / 2.0;
+                    double cx = (toSearch.getMinBlockX() + toSearch.getMaxBlockX() + 1) / 2.0;
+                    double cz = (toSearch.getMinBlockZ() + toSearch.getMaxBlockZ() + 1) / 2.0;
                     double px = mod.getPlayer().getX();
                     double pz = mod.getPlayer().getZ();
                     double distanceSq = (cx - px) * (cx - px) + (cz - pz) * (cz - pz);
-                    double pdx = _closestPlayerLastPos.getX() - cx;
-                    double pdz = _closestPlayerLastPos.getZ() - cz;
+                    double pdx = _closestPlayerLastPos.x() - cx;
+                    double pdz = _closestPlayerLastPos.z() - cz;
                     double distanceToLastPlayerPos = pdx * pdx + pdz * pdz;
-                    Vec3d direction = _closestPlayerLastPos
+                    Vec3 direction = _closestPlayerLastPos
                             .subtract(_closestPlayerLastObservePos).multiply(1, 0, 1).normalize();
                     double dirx = direction.x, dirz = direction.z;
                     double correctDistance = pdx * dirx + pdz * dirz;

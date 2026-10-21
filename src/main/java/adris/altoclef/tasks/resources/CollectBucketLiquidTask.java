@@ -19,15 +19,15 @@ import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
 import kaptainwutax.tungsten.path.movements.Input;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3i;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
+import net.minecraft.world.level.ClipContext;
 
 import java.util.HashSet;
 import java.util.function.Predicate;
@@ -64,11 +64,11 @@ public class CollectBucketLiquidTask extends ResourceTask {
     protected void onResourceStart(AltoClef mod) {
         // Track fluids
         mod.getBehaviour().push();
-        mod.getBehaviour().setRayTracingFluidHandling(RaycastContext.FluidHandling.SOURCE_ONLY);
+        mod.getBehaviour().setRayTracingFluidHandling(net.minecraft.world.level.ClipContext.Fluid.SOURCE_ONLY);
 
         // Avoid breaking / placing blocks at our liquid
-        mod.getBehaviour().avoidBlockBreaking((pos) -> MinecraftClient.getInstance().world.getBlockState(pos).getBlock() == toCollect);
-        mod.getBehaviour().avoidBlockPlacing((pos) -> MinecraftClient.getInstance().world.getBlockState(pos).getBlock() == toCollect);
+        mod.getBehaviour().avoidBlockBreaking((pos) -> Minecraft.getInstance().level.getBlockState(pos).getBlock() == toCollect);
+        mod.getBehaviour().avoidBlockPlacing((pos) -> Minecraft.getInstance().level.getBlockState(pos).getBlock() == toCollect);
 
         mod.setAvoidUpdatingFallingBlocks(true);
         //_blacklist.clear();
@@ -95,8 +95,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
         progressChecker.resetIfPathingWithGrace(mod, Nav.isPathing());
         // If we're standing inside a liquid, go pick it up.
         if (tryImmediatePickupTimer.elapsed() && !mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
-            Block standingInside = mod.getWorld().getBlockState(mod.getPlayer().getBlockPos()).getBlock();
-            if (standingInside == toCollect && WorldHelper.isSourceBlock(mod.getPlayer().getBlockPos(), false)) {
+            Block standingInside = mod.getWorld().getBlockState(mod.getPlayer().blockPosition()).getBlock();
+            if (standingInside == toCollect && WorldHelper.isSourceBlock(mod.getPlayer().blockPosition(), false)) {
                 setDebugState("Trying to collect (we are in it)");
                 mod.getInputControls().forceLook(0, 90);
                 // (G-0: the legacy look behaviour that stood here is gone.)
@@ -129,10 +129,10 @@ public class CollectBucketLiquidTask extends ResourceTask {
         Predicate<BlockPos> isSafeSourceLiquid = blockPos -> {
             if (blacklist.contains(blockPos)) return false;
             if (!WorldHelper.canReach(blockPos)) return false;
-            if (!WorldHelper.canReach(blockPos.up())) return false; // We may try reaching the block above.
-            assert MinecraftClient.getInstance().world != null;
+            if (!WorldHelper.canReach(blockPos.above())) return false; // We may try reaching the block above.
+            assert Minecraft.getInstance().level != null;
 
-            Block above = mod.getWorld().getBlockState(blockPos.up()).getBlock();
+            Block above = mod.getWorld().getBlockState(blockPos.above()).getBlock();
             // We break the block above. If it's bedrock, ignore.
             if (above == Blocks.BEDROCK || above == Blocks.WATER) {
                 return false;
@@ -142,7 +142,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
             for (Direction direction : Direction.values()) {
                 if (direction.getAxis().isVertical()) continue;
 
-                if (mod.getWorld().getBlockState(blockPos.up().offset(direction)).getBlock() == Blocks.WATER) {
+                if (mod.getWorld().getBlockState(blockPos.above().relative(direction)).getBlock() == Blocks.WATER) {
                     return false;
                 }
             }
@@ -159,7 +159,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
             return new DoToClosestBlockTask(blockPos -> {
                 // Clear above if lava because we can't enter.
                 // but NOT if we're standing right above.
-                if (mod.getWorld().getBlockState(blockPos.up()).isSolid()) {
+                if (mod.getWorld().getBlockState(blockPos.above()).isSolid()) {
                     if (!progressChecker.check(mod)) {
                         Nav.cancelEverything();
                         Nav.cancel();
@@ -169,7 +169,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
                         mod.getBlockScanner().requestBlockUnreachable(blockPos);
                         blacklist.add(blockPos);
                     }
-                    return new DestroyBlockTask(blockPos.up());
+                    return new DestroyBlockTask(blockPos.above());
                 }
 
                 if (tries > 75) {
@@ -190,10 +190,10 @@ public class CollectBucketLiquidTask extends ResourceTask {
                 // Get close enough.
                 // up because if we go below we'll try to move next to the liquid (for lava, not a good move)
                 if (this.thisOrChildAreTimedOut() && !wasWandering) {
-                    mod.getBlockScanner().requestBlockUnreachable(blockPos.up());
+                    mod.getBlockScanner().requestBlockUnreachable(blockPos.above());
                     wasWandering = true;
                 }
-                return new GetCloseToBlockTask(blockPos.up());
+                return new GetCloseToBlockTask(blockPos.above());
             }, isSafeSourceLiquid, toCollect);
         }
 

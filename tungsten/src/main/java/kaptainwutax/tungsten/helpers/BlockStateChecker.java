@@ -6,31 +6,31 @@ import static kaptainwutax.tungsten.path.blockSpaceSearchAssist.Ternary.YES;
 import kaptainwutax.tungsten.TungstenConfig;
 import kaptainwutax.tungsten.TungstenMod;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.Ternary;
-import net.minecraft.block.AirBlock;
-import net.minecraft.block.AnvilBlock;
-import net.minecraft.block.AzaleaBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.DoorBlock;
-import net.minecraft.block.EndPortalBlock;
-import net.minecraft.block.FenceBlock;
-import net.minecraft.block.FenceGateBlock;
-import net.minecraft.block.FireBlock;
-import net.minecraft.block.PaneBlock;
-import net.minecraft.block.ShulkerBoxBlock;
-import net.minecraft.block.SkullBlock;
-import net.minecraft.block.SlabBlock;
-import net.minecraft.block.TrapdoorBlock;
-import net.minecraft.block.WallBlock;
-import net.minecraft.block.enums.BlockHalf;
-import net.minecraft.block.enums.SlabType;
-import net.minecraft.block.enums.WallShape;
-import net.minecraft.fluid.Fluids;
-import net.minecraft.registry.tag.BlockTags;
-import net.minecraft.state.property.Properties;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.AirBlock;
+import net.minecraft.world.level.block.AnvilBlock;
+import net.minecraft.world.level.block.AzaleaBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.EndPortalBlock;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.FireBlock;
+import net.minecraft.world.level.block.IronBarsBlock;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
+import net.minecraft.world.level.block.SkullBlock;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.TrapDoorBlock;
+import net.minecraft.world.level.block.WallBlock;
+import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.world.level.block.state.properties.WallSide;
+import net.minecraft.world.level.material.Fluids;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.LevelReader;
 
 /**
  * Helper class to easily check block state.
@@ -53,7 +53,7 @@ public class BlockStateChecker {
                 || block instanceof DoorBlock
                 || block instanceof FenceGateBlock
                 || !state.getFluidState().isEmpty()
-                || block instanceof TrapdoorBlock
+                || block instanceof TrapDoorBlock
                 || block instanceof EndPortalBlock
                 || block instanceof SkullBlock
                 || block instanceof ShulkerBoxBlock) {
@@ -68,7 +68,7 @@ public class BlockStateChecker {
      * @param pos Position of the block
      * @return true if a block is connected to another of its type. Example: fence to fence
      */
-	public static boolean isConnected(BlockPos pos, WorldView world) {
+	public static boolean isConnected(BlockPos pos, LevelReader world) {
 	    BlockState state = world.getBlockState(pos);
 	    // Off-thread planning reads a live world that can return null mid chunk-swap; a block that
 	    // is not there is not connected to anything. See Agent.isClimbing for the full note.
@@ -94,7 +94,7 @@ public class BlockStateChecker {
 	    }
 
 	    // Check for Glass Pane connections
-	    if (block instanceof PaneBlock) {
+	    if (block instanceof IronBarsBlock) {
 	        return isGlassPaneConnected(state, world, pos);
 	    }
 
@@ -103,11 +103,11 @@ public class BlockStateChecker {
 
 	private static boolean isFenceLikeBlock(BlockState state) {
 	    if (state == null) return false;   // off-thread null read (see Agent.isClimbing)
-	    return state.isIn(BlockTags.FENCES) || state.isIn(BlockTags.WALLS)
-	            || state.getBlock() instanceof PaneBlock;
+	    return state.is(BlockTags.FENCES) || state.is(BlockTags.WALLS)
+	            || state.getBlock() instanceof IronBarsBlock;
 	}
 
-	private static boolean hasFenceLikeNeighbor(WorldView world, BlockPos pos) {
+	private static boolean hasFenceLikeNeighbor(LevelReader world, BlockPos pos) {
 	    return isFenceLikeBlock(world.getBlockState(pos.north()))
 	        || isFenceLikeBlock(world.getBlockState(pos.south()))
 	        || isFenceLikeBlock(world.getBlockState(pos.east()))
@@ -122,28 +122,28 @@ public class BlockStateChecker {
      * @param pos Position of the block
      * @return true if a block is connected to another of its type. Example: fence to fence
      */
-	public static boolean isFenceConnected(BlockState state, WorldView world, BlockPos pos) {
-	    return state.get(Properties.NORTH) && isFence(world, pos.north())
-	        || state.get(Properties.SOUTH) && isFence(world, pos.south())
-	        || state.get(Properties.EAST) && isFence(world, pos.east())
-	        || state.get(Properties.WEST) && isFence(world, pos.west());
+	public static boolean isFenceConnected(BlockState state, LevelReader world, BlockPos pos) {
+	    return state.getValue(BlockStateProperties.NORTH) && isFence(world, pos.north())
+	        || state.getValue(BlockStateProperties.SOUTH) && isFence(world, pos.south())
+	        || state.getValue(BlockStateProperties.EAST) && isFence(world, pos.east())
+	        || state.getValue(BlockStateProperties.WEST) && isFence(world, pos.west());
 	}
 
-	public static boolean isFence(WorldView world, BlockPos pos) {
+	public static boolean isFence(LevelReader world, BlockPos pos) {
 	    Block block = world.getBlockState(pos).getBlock();
 	    return block instanceof FenceBlock;
 	}
 
 	/** Fence, wall, iron bars, glass pane — any block that forms
 	 *  thin connection bars to adjacent blocks of the same type. */
-	public static boolean isFenceOrWall(WorldView world, BlockPos pos) {
+	public static boolean isFenceOrWall(LevelReader world, BlockPos pos) {
 	    BlockState state = world.getBlockState(pos);
 	    if (state == null) return false;   // off-thread null read (see Agent.isClimbing)
-	    return state.isIn(BlockTags.FENCES) || state.isIn(BlockTags.WALLS)
-	            || state.getBlock() instanceof PaneBlock;
+	    return state.is(BlockTags.FENCES) || state.is(BlockTags.WALLS)
+	            || state.getBlock() instanceof IronBarsBlock;
 	}
 
-	public static boolean isAnvil(WorldView world, BlockPos pos) {
+	public static boolean isAnvil(LevelReader world, BlockPos pos) {
 	    return world.getBlockState(pos).getBlock() instanceof AnvilBlock;
 	}
 
@@ -154,25 +154,25 @@ public class BlockStateChecker {
      * @return true if wall block is connected to anything.
      */
 	public static boolean isWallConnected(BlockState state) {
-	    return state.get(Properties.NORTH_WALL_SHAPE) != WallShape.NONE
-	        || state.get(Properties.SOUTH_WALL_SHAPE) != WallShape.NONE
-	        || state.get(Properties.EAST_WALL_SHAPE) != WallShape.NONE
-	        || state.get(Properties.WEST_WALL_SHAPE) != WallShape.NONE;
+	    return state.getValue(BlockStateProperties.NORTH_WALL) != WallSide.NONE
+	        || state.getValue(BlockStateProperties.SOUTH_WALL) != WallSide.NONE
+	        || state.getValue(BlockStateProperties.EAST_WALL) != WallSide.NONE
+	        || state.getValue(BlockStateProperties.WEST_WALL) != WallSide.NONE;
 	}
 
-	public static boolean isGlassPaneConnected(BlockState state, WorldView world, BlockPos pos) {
-	    return state.get(Properties.NORTH)
-	        || state.get(Properties.SOUTH)
-	        || state.get(Properties.EAST)
-	        || state.get(Properties.WEST);
+	public static boolean isGlassPaneConnected(BlockState state, LevelReader world, BlockPos pos) {
+	    return state.getValue(BlockStateProperties.NORTH)
+	        || state.getValue(BlockStateProperties.SOUTH)
+	        || state.getValue(BlockStateProperties.EAST)
+	        || state.getValue(BlockStateProperties.WEST);
 	}
 
-	public static boolean isPane(WorldView world, BlockPos pos) {
+	public static boolean isPane(LevelReader world, BlockPos pos) {
 	    Block block = world.getBlockState(pos).getBlock();
-	    return block instanceof PaneBlock;
+	    return block instanceof IronBarsBlock;
 	}
 	
-	public static boolean isSlab(WorldView world, BlockPos pos) {
+	public static boolean isSlab(LevelReader world, BlockPos pos) {
 	    return world.getBlockState(pos).getBlock() instanceof SlabBlock;
 	}
 
@@ -183,47 +183,47 @@ public class BlockStateChecker {
      * @param pos Position of the block
      * @return true if a block is a double slab.
      */
-	public static boolean isDoubleSlab(WorldView world, BlockPos pos) {
+	public static boolean isDoubleSlab(LevelReader world, BlockPos pos) {
 	    BlockState state = world.getBlockState(pos);
 	    Block block = state.getBlock();
-	    return block instanceof SlabBlock && state.get(Properties.SLAB_TYPE) == SlabType.DOUBLE;
+	    return block instanceof SlabBlock && state.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.DOUBLE;
 	}
 	
 	public static boolean isTrapdoor(BlockState state) {
-        return state.getBlock() instanceof TrapdoorBlock;
+        return state.getBlock() instanceof TrapDoorBlock;
     }
 	
 	public static boolean isTrapdoor(Block block) {
-        return block instanceof TrapdoorBlock;
+        return block instanceof TrapDoorBlock;
     }
 
     // Helper method to check if the block is an open trapdoor
 	public static boolean isOpenTrapdoor(BlockState state) {
-        return isTrapdoor(state) && state.get(Properties.OPEN);
+        return isTrapdoor(state) && state.getValue(BlockStateProperties.OPEN);
     }
 	
 	public static boolean isClosedBottomTrapdoor(BlockState state) {
-        return isTrapdoor(state) && state.get(Properties.BLOCK_HALF) == BlockHalf.BOTTOM && !state.get(Properties.OPEN);
+        return isTrapdoor(state) && state.getValue(BlockStateProperties.HALF) == Half.BOTTOM && !state.getValue(BlockStateProperties.OPEN);
     }
 
     // Helper method to check if the block is a bottom slab
 	public static boolean isBottomSlab(BlockState state) {
-        return state.getBlock() instanceof SlabBlock && state.get(Properties.SLAB_TYPE) == SlabType.BOTTOM;
+        return state.getBlock() instanceof SlabBlock && state.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.BOTTOM;
     }
 	
     // Helper method to check if the block is a top slab
 	public static boolean isTopSlab(BlockState state) {
-        return state.getBlock() instanceof SlabBlock && state.get(Properties.SLAB_TYPE) == SlabType.TOP;
+        return state.getBlock() instanceof SlabBlock && state.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.TOP;
     }
 	
     // Helper method to check if the block contains water
 	public static boolean isWater(BlockState state) {
-        return state.isOf(Blocks.WATER) || state.getFluidState().isOf(Fluids.WATER);
+        return state.is(Blocks.WATER) || state.getFluidState().is(Fluids.WATER);
     }
 	
     // Helper method to check if the block is flowing water
 	public static boolean isFlowingWater(BlockState state) {
-        return state.getFluidState().isOf(Fluids.FLOWING_WATER);
+        return state.getFluidState().is(Fluids.FLOWING_WATER);
     }
 	
 	// Helper method to check if the block is water. Either flowing or source
@@ -234,17 +234,17 @@ public class BlockStateChecker {
 
     // Helper method to check if the block is water logged
 	public static boolean isWaterLogged(BlockState state) {
-        return state.getProperties().contains(Properties.WATERLOGGED) && state.get(Properties.WATERLOGGED) == true;
+        return state.getProperties().contains(BlockStateProperties.WATERLOGGED) && state.getValue(BlockStateProperties.WATERLOGGED) == true;
     }
 
     // Helper method to check if the block is lava
 	static boolean isLava(BlockState state) {
-        return state.isOf(Blocks.LAVA) || state.getFluidState().isOf(Fluids.LAVA);
+        return state.is(Blocks.LAVA) || state.getFluidState().is(Fluids.LAVA);
     }
 
     // Helper method to check if the block is flowing lava
 	static boolean isFlowingLava(BlockState state) {
-        return state.getFluidState().isOf(Fluids.FLOWING_LAVA);
+        return state.getFluidState().is(Fluids.FLOWING_LAVA);
     }
 
 	// Helper method to check if the block is lava. Either flowing or source

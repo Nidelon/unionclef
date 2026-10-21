@@ -8,14 +8,14 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import kaptainwutax.tungsten.TungstenModDataContainer;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.GameRenderer;
-import net.minecraft.client.world.ClientWorld;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.multiplayer.ClientLevel;
 
-@Mixin(MinecraftClient.class)
+@Mixin(Minecraft.class)
 public class MixinMinecraftClient {
 
-	@Shadow @Nullable public ClientWorld world;
+	@Shadow @Nullable public ClientLevel world;
 	@Shadow @Nullable public GameRenderer gameRenderer;
 
 	@Inject(at = @At("HEAD"), method = "tick")
@@ -23,8 +23,8 @@ public class MixinMinecraftClient {
 		if (gameRenderer != TungstenModDataContainer.gameRenderer) {
 	        TungstenModDataContainer.gameRenderer = this.gameRenderer;
 		}
-		if (MinecraftClient.getInstance().player != TungstenModDataContainer.player) {
-	        TungstenModDataContainer.player = MinecraftClient.getInstance().player;
+		if (Minecraft.getInstance().player != TungstenModDataContainer.player) {
+	        TungstenModDataContainer.player = Minecraft.getInstance().player;
 		}
 	}
 	

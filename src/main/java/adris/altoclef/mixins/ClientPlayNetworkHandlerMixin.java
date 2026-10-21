@@ -8,17 +8,17 @@ import adris.altoclef.eventbus.events.multiplayer.ItemUseEvent;
 import adris.altoclef.eventbus.events.multiplayer.ProjectileEvent;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.s2c.play.EntityAnimationS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityTrackerUpdateS2CPacket;
-import net.minecraft.network.packet.s2c.play.InventoryS2CPacket;
-import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.network.protocol.game.ClientboundAnimatePacket;
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
+import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
+import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -28,28 +28,28 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.List;
 
 @Environment(EnvType.CLIENT)
-@Mixin(ClientPlayNetworkHandler.class)
+@Mixin(ClientPacketListener.class)
 public class ClientPlayNetworkHandlerMixin {
     @Shadow
-    private ClientWorld world;
+    private ClientLevel level;
 
-    @Inject(method = "onEntityTrackerUpdate", at = @At("TAIL"))
-    public void onEntityTrackerUpdate(EntityTrackerUpdateS2CPacket packet, CallbackInfo ci) {
+    @Inject(method = "handleSetEntityData", at = @At("TAIL"))
+    public void onEntityTrackerUpdate(ClientboundSetEntityDataPacket packet, CallbackInfo ci) {
         try {
-            Entity entity = world != null ? world.getEntityById(packet.id()) : null;
+            Entity entity = level != null ? level.getEntity(packet.id()) : null;
             if (entity != null) {
-                if ((entity instanceof PlayerEntity player && player.getName() != null) ||
-                        (entity instanceof ProjectileEntity)) {
-                    if (packet.trackedValues() != null &&
-                            packet.trackedValues().size() == 1 &&
-                            packet.trackedValues().getFirst() != null &&
-                            packet.trackedValues().getFirst().id() == 8 &&
-                            packet.trackedValues().getFirst().value() instanceof Byte byteVal) {
+                if ((entity instanceof Player player && player.getName() != null) ||
+                        (entity instanceof Projectile)) {
+                    if (packet.packedItems() != null &&
+                            packet.packedItems().size() == 1 &&
+                            packet.packedItems().getFirst() != null &&
+                            packet.packedItems().getFirst().id() == 8 &&
+                            packet.packedItems().getFirst().value() instanceof Byte byteVal) {
                         int value = (byte) byteVal & 1;
                         boolean released = value <= 0;
-                        if (entity instanceof PlayerEntity)
+                        if (entity instanceof Player)
                             EventBus.publish(new ItemUseEvent(entity, released));
-                        if (entity instanceof ProjectileEntity projectile && projectile.getPos() != null)
+                        if (entity instanceof Projectile projectile && projectile.position() != null)
                             EventBus.publish(new ProjectileEvent(projectile, released));
                     }
                 }
@@ -59,48 +59,48 @@ public class ClientPlayNetworkHandlerMixin {
         }
     }
 
-    @Inject(method = "onEntityDamage", at = @At("TAIL"))
-    private void onEntityDamage(EntityDamageS2CPacket packet, CallbackInfo ci) {
-        Entity entity = world != null ? world.getEntityById(packet.entityId()) : null;
+    @Inject(method = "handleDamageEvent", at = @At("TAIL"))
+    private void onEntityDamage(ClientboundDamageEventPacket packet, CallbackInfo ci) {
+        Entity entity = level != null ? level.getEntity(packet.entityId()) : null;
         if (entity != null) {
             EventBus.publish(new DamageEvent(entity));
         }
     }
 
-    @Inject(method = "onEntityAnimation", at = @At("TAIL"))
-    public void onEntityAnimation(EntityAnimationS2CPacket packet, CallbackInfo ci) {
-        Entity entity = world != null ? world.getEntityById(packet.getEntityId()) : null;
+    @Inject(method = "handleAnimate", at = @At("TAIL"))
+    public void onEntityAnimation(ClientboundAnimatePacket packet, CallbackInfo ci) {
+        Entity entity = level != null ? level.getEntity(packet.getId()) : null;
         if (entity != null) {
-            EventBus.publish(new AnimEvent(entity, packet.getAnimationId()));
+            EventBus.publish(new AnimEvent(entity, packet.getAction()));
         }
     }
 
-    @Inject(method = "onScreenHandlerSlotUpdate", at = @At("TAIL"))
-    private void onScreenHandlerSlotUpdate(ScreenHandlerSlotUpdateS2CPacket packet, CallbackInfo ci) {
+    @Inject(method = "handleContainerSetSlot", at = @At("TAIL"))
+    private void onScreenHandlerSlotUpdate(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         try {
             AltoClef mod = AltoClef.getInstance();
             if (mod != null && AltoClef.inGame()) {
-                mod.getSlotHandler().onServerSlotUpdate(packet.getSyncId(), packet.getSlot(), packet.getStack());
+                mod.getSlotHandler().onServerSlotUpdate(packet.getStateId(), packet.getSlot(), packet.getItem());
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    @Inject(method = "onInventory", at = @At("TAIL"))
-    private void onInventory(InventoryS2CPacket packet, CallbackInfo ci) {
+    @Inject(method = "handleContainerContent", at = @At("TAIL"))
+    private void onInventory(ClientboundContainerSetContentPacket packet, CallbackInfo ci) {
         try {
             AltoClef mod = AltoClef.getInstance();
             if (mod != null && AltoClef.inGame()) {
                 //#if MC >= 12111
-                //$$ List<ItemStack> contents = packet.contents();
+                //$$ List<ItemStack> contents = packet.items();
                 //$$ for (int i = 0; i < contents.size(); i++) {
-                //$$     mod.getSlotHandler().onServerSlotUpdate(packet.syncId(), i, contents.get(i));
+                //$$     mod.getSlotHandler().onServerSlotUpdate(packet.stateId(), i, contents.get(i));
                 //$$ }
                 //#else
-                List<ItemStack> contents = packet.getContents();
+                List<ItemStack> contents = packet.items();
                 for (int i = 0; i < contents.size(); i++) {
-                    mod.getSlotHandler().onServerSlotUpdate(packet.getSyncId(), i, contents.get(i));
+                    mod.getSlotHandler().onServerSlotUpdate(packet.stateId(), i, contents.get(i));
                 }
                 //#endif
             }

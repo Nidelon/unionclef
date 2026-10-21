@@ -1,8 +1,8 @@
 package kaptainwutax.tungsten.path;
 
 import kaptainwutax.tungsten.agent.Agent;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.world.WorldView;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.LevelReader;
 
 import java.util.List;
 
@@ -21,7 +21,7 @@ public final class ReplayFeasibility {
      * those current keys as well, rather than treating the search snapshot as a tick.
      * Neither the supplied root nor the planned nodes nor the real player is mutated.
      */
-    public static int firstMissedLanding(WorldView world, Agent root, List<Node> path,
+    public static int firstMissedLanding(LevelReader world, Agent root, List<Node> path,
                                          PathInput currentKeys, boolean nativeRotation,
                                          double sensitivity) {
         Agent simulated = root.copy();
@@ -31,7 +31,7 @@ public final class ReplayFeasibility {
             float yaw = input.yaw, pitch = input.pitch;
             if (nativeRotation && planned.input != null) {
                 yaw = nativeAngle(simulated.yaw, yaw, sensitivity);
-                pitch = MathHelper.clamp(nativeAngle(simulated.pitch, pitch, sensitivity), -90.0F, 90.0F);
+                pitch = Mth.clamp(nativeAngle(simulated.pitch, pitch, sensitivity), -90.0F, 90.0F);
             }
             PathInput replay = new PathInput(input.forward, input.back, input.right, input.left,
                     input.jump, input.sneak, input.sprint, pitch, yaw);

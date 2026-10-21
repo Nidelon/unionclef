@@ -6,10 +6,10 @@ import adris.altoclef.commandsystem.ArgParser;
 import adris.altoclef.commandsystem.Command;
 import adris.altoclef.commandsystem.exception.CommandException;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.core.BlockPos;
 
 /*
  * @mineblock
@@ -28,7 +28,7 @@ public class MineBlockCommand extends Command {
 
     @Override
     protected void call(AltoClef mod, ArgParser parser) throws CommandException {
-        HitResult hit = MinecraftClient.getInstance().crosshairTarget;
+        HitResult hit = Minecraft.getInstance().hitResult;
         if (!(hit instanceof BlockHitResult bhr) || hit.getType() != HitResult.Type.BLOCK) {
             mod.log("No block under crosshair. Look at a block first (lookAt / @goto), then @mineblock.");
             finish();

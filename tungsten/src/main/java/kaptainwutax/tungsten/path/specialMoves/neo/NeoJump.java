@@ -12,16 +12,16 @@ import kaptainwutax.tungsten.path.Node;
 import kaptainwutax.tungsten.path.PathInput;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode;
 import kaptainwutax.tungsten.render.Color;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.level.LevelReader;
 
 public class NeoJump {
 	
 	public static Node generateMove(Node parent, BlockNode nextBlockNode) {
-		WorldView world = TungstenModDataContainer.world;
+		LevelReader world = TungstenModDataContainer.world;
 		Agent agent = parent.agent;
 		
 		Direction jumpTowardsDirection = DirectionHelper.getHorizontalDirectionFromPos(nextBlockNode.previous.getPos(true), nextBlockNode.getPos(true));
@@ -44,7 +44,7 @@ public class NeoJump {
 	    	  desiredYaw = nudgeRotation(neoRotation, 35);
 
         while (limit < 40 && jump == false && newNode.agent.getPos().y > nextBlockNode.getBlockPos().getY()-1) {
-            Box adjustedBox = newNode.agent.box.offset(0, -0.5, 0).expand(-0.04, 0, -0.04);
+            AABB adjustedBox = newNode.agent.box.move(0, -0.5, 0).inflate(-0.04, 0, -0.04);
         	limit++;
         	// ⛔ FIXED 2026-09-05: same stale-`agent` bug found repeatedly this session (confirmed
         	// concrete effect in CornerJump.java: Agent.getBlockCollisions() builds an

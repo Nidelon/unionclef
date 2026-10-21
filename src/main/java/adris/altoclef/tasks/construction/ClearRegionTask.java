@@ -2,9 +2,9 @@ package adris.altoclef.tasks.construction;
 
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 
 
 /**
@@ -69,10 +69,10 @@ public class ClearRegionTask extends Task implements ITaskRequiresGrounded {
      * single-column region reported "finished" without checking a single block.
      */
     private BlockPos firstNonAir() {
-        World world = MinecraftClient.getInstance().world;
+        Level world = Minecraft.getInstance().level;
         if (world == null) return null;
-        for (BlockPos p : BlockPos.iterate(_from, _to)) {
-            if (!world.isAir(p)) return p.toImmutable();
+        for (BlockPos p : BlockPos.betweenClosed(_from, _to)) {
+            if (!world.isEmptyBlock(p)) return p.immutable();
         }
         return null;
     }

@@ -6,12 +6,12 @@ import kaptainwutax.tungsten.TungstenModRenderContainer;
 import kaptainwutax.tungsten.path.blockSpaceSearchAssist.BlockNode;
 import kaptainwutax.tungsten.render.Color;
 import kaptainwutax.tungsten.render.Cuboid;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.LadderBlock;
-import net.minecraft.state.property.Properties;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldView;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.LadderBlock;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.LevelReader;
 
 public class BlockPosShifter {
 	
@@ -21,10 +21,10 @@ public class BlockPosShifter {
      * @param blockNode node to be shifted
      * @return node's position shifted closer to the ladder.
      */
-	public static Vec3d getPosOnLadder(BlockNode blockNode, WorldView world) {
+	public static Vec3 getPosOnLadder(BlockNode blockNode, LevelReader world) {
 		BlockState blockState = world.getBlockState(blockNode.getBlockPos());
-		BlockState blockBelowState = world.getBlockState(blockNode.getBlockPos().down());
-		Vec3d currPos = blockNode.getPos().add(0.5, 0, 0.5);
+		BlockState blockBelowState = world.getBlockState(blockNode.getBlockPos().below());
+		Vec3 currPos = blockNode.getPos().add(0.5, 0, 0.5);
 		if (!(blockState.getBlock() instanceof LadderBlock) && !(blockBelowState.getBlock() instanceof LadderBlock)) {
 			return currPos;
 		}
@@ -32,16 +32,16 @@ public class BlockPosShifter {
 		double insetAmount = 0.4;
 		
 		if (blockBelowState.getBlock() instanceof LadderBlock && !(blockState.getBlock() instanceof LadderBlock)) {
-			Direction ladderFacingDir = blockBelowState.get(Properties.HORIZONTAL_FACING);
+			Direction ladderFacingDir = blockBelowState.getValue(BlockStateProperties.HORIZONTAL_FACING);
 			
-			currPos = currPos.offset(ladderFacingDir.getOpposite(), insetAmount).add(0, 0.3, 0);
+			currPos = currPos.relative(ladderFacingDir.getOpposite(), insetAmount).add(0, 0.3, 0);
 			
 			return currPos;
 		}
 		
-		Direction ladderFacingDir = blockState.get(Properties.HORIZONTAL_FACING);
+		Direction ladderFacingDir = blockState.getValue(BlockStateProperties.HORIZONTAL_FACING);
 		
-		currPos = currPos.offset(ladderFacingDir.getOpposite(), insetAmount).add(0, 0.6, 0);
+		currPos = currPos.relative(ladderFacingDir.getOpposite(), insetAmount).add(0, 0.6, 0);
 		
 		return currPos;
 	}
@@ -52,11 +52,11 @@ public class BlockPosShifter {
      * @param blockNode node to be shifted
      * @return node's position shifted for a NEO jump.
      */
-	public static Vec3d shiftForStraightNeo(BlockNode blockNode, Direction dir) {
+	public static Vec3 shiftForStraightNeo(BlockNode blockNode, Direction dir) {
 		if (dir == Direction.DOWN || dir == Direction.UP) {
 			throw new IllegalArgumentException("Only horizontal directions may be passed!");
 		}
-		Vec3d currPos = new Vec3d(blockNode.getBlockPos().getX() + 0.5, blockNode.getBlockPos().getY(), blockNode.getBlockPos().getZ() + 0.5).offset(dir, 0.55);
+		Vec3 currPos = new Vec3(blockNode.getBlockPos().getX() + 0.5, blockNode.getBlockPos().getY(), blockNode.getBlockPos().getZ() + 0.5).relative(dir, 0.55);
 		
 		return currPos;
 	}
