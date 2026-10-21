@@ -1,73 +1,59 @@
-# UnionClef — порт на Minecraft 26.2
+# Port state: Minecraft 26.2
 
-Ветка `26.2`. Порт мода с Java 21 / Minecraft 1.21.x на **Java 25 / Minecraft 26.2 / Fabric**.
+This fork is pinned to **Minecraft 26.2 / Java 25 / Fabric**. The 1.21.x
+versions were dropped: 26.x ships unobfuscated, so the source tree is mojmap
+and the old yarn-era machinery has no meaning here.
 
-## Что здесь есть
+## What changed to get here
 
-| путь | что это |
-|---|---|
-| `src/` | altoclef (adris) — правленые под 26.2 исходники |
-| `tungsten/src/` | tungsten (kaptainwutax) — без изменений |
-| `port26/` | проект сборки 26.2: свой `build.gradle.kts` и `settings.gradle.kts` |
-| `port26/src/` | **генерируемое** дерево (в git не попадает) |
-| `scripts/port/` | пайплайн портирования |
-| `PORT-STATE.md` | этот файл |
+Minecraft 26.x has no yarn and no intermediary. The tree was renamed
+`yarn -> intermediary -> official -> mojmap` and then hand-migrated, because a
+mapping table cannot express an API that was rewritten rather than renamed:
 
-`port26/` — отдельный проект, потому что Gradle 9 убрал флаг `-b`, а трогать
-`build.gradle` и `versions/*` ради одной версии не хотелось: сборка 1.21.x
-работает как раньше.
+- removed classes: `TieredItem`, `ArmorItem`, `Tiers`, `GuiGraphics`,
+  `FastColor`, `Tuple`
+- relocated: `ARGB`, `FuelValues`
+- changed signatures: `interact` now takes an `EntityHitResult`,
+  `Entity.getYaw()` became `getYRot(float)`
+- rewritten subsystems: recipes (`Recipe.getResult` is gone, output comes from
+  `Recipe.display()`), which is why `RecipeCompat` exists
 
-## Как собрать
-
-```bash
-bash scripts/port/rebuild.sh
-```
-
-Шаги: препроцессинг веток → переименование yarn→mojmap → карта версий
-mojmap→26.2 → детерминированные фиксы → итеративный автофиксер по структурной
-диагностике → проверка целей миксинов → сборка.
-
-Готовый jar: `port26/build/libs/unionclef-0.95.58-26.2-port.1.jar`
-
-### Первый запуск на чистой машине
-
-Пайплайну нужны таблицы маппингов; они не лежат в git:
+## Build
 
 ```bash
-python3 scripts/port/maps/fetch_sources.py 1.21.1
-python3 scripts/port/maps/fetch_sources.py 1.21.11
-# затем build_map.py / build_hierarchy.py / build_vermap.py / compose_map.py
-# для каждой версии; для vermap нужен client.jar 26.2 из кэша Loom
-# (появляется после первой сборки port26)
+./gradlew :26.2:build
 ```
 
-## Почему порт — это не «бамп версии»
+Artifact: `versions/26.2/build/libs/unionclef-26.2-0.95.58.jar`
 
-В 26.x Mojang убрал обфускацию: игра выходит с официальными именами, Yarn и
-intermediary для неё не существуют. Поэтому переименование идёт по цепочке
-`yarn → intermediary → official(obf) → mojmap`, а поверх — ручная миграция API,
-которую никакая карта не выразит: удалённые классы (`TieredItem`, `ArmorItem`,
-`Tiers`, `GuiGraphics`, `FastColor`, `Tuple`), переехавшие (`ARGB`,
-`FuelValues`), сменившие сигнатуры (`interact` получил `EntityHitResult`,
-`Entity.getYaw()` стал `getYRot(float)`), и целые подсистемы вроде рецептов.
+Two things about this build are not obvious and cost a day to find:
 
-## Состояние
+1. Loom must be applied as `net.fabricmc.fabric-loom`. The short id
+   `fabric-loom` resolves to `LoomGradlePlugin`, which insists on a mappings
+   dependency and dies with `Configuration 'mappings' has no dependencies` on an
+   unobfuscated version. The long id is `LoomNoRemapGradlePlugin`.
+2. The no-remap variant has no `modImplementation`, no `remapJar` and no
+   `include`. Dependencies are plain `implementation`, and the shadow jar is the
+   artifact.
 
-Проверено вживую:
+## Verified
 
-- сборка с нуля, 0 ошибок компиляции;
-- клиент стартует, мод грузится, миксины применяются;
-- инициализация доходит до конца: `Py4j gateway on 25333` и
-  `MCP server on 0.0.0.0:25350`;
-- агентский интерфейс отвечает: `tools/list` (60 инструментов),
-  `getGameState` отдаёт живое состояние бота.
+- clean build, 0 compile errors
+- jar contains 700 classes, `fabric.mod.json` with both entrypoints, mixin
+  configs, nested nether-pathfinder
+- client starts, mixins apply, initialisation completes: Py4j on 25333, MCP on
+  25350
+- `tools/list` returns the tool set, `getGameState` returns live bot state
 
-Открытый вопрос: **навигация не двигает бота**. Тик-хендлер tungsten
-(`MixinClientPlayerEntity.start`) выходит на первой строке
-`if (TungstenMod.runKeyBinding == null) return;`, то есть весь стек движения
-не запускается. Дальше копать отсюда.
+## Open
 
-Осознанно отключено (с причинами) — см. коммит про миксины: `WorldBlockModifiedMixin`,
-`GameOverlayMixin`, `MixinDebugRenderer`, `MixinClientCommandSource`,
-`AxeItemAccessor`, `MiningToolItemAccessor`, `DrawableHelperInvoker`,
-`ToolMaterialVer`; перечисление рецептов на клиенте в 26.2 недоступно.
+Navigation does not move the bot. `MixinClientPlayerEntity.start` returns on
+its first line because `TungstenMod.runKeyBinding` is null, so the movement
+stack never ticks. Registration itself looks correct, so the fault is upstream
+of the tick handler.
+
+Deliberately disabled, with reasons in the commit that touched them:
+`WorldBlockModifiedMixin`, `GameOverlayMixin`, `MixinDebugRenderer`,
+`MixinClientCommandSource`, `AxeItemAccessor`, `MiningToolItemAccessor`,
+`DrawableHelperInvoker`, `ToolMaterialVer`. Client-side recipe enumeration is
+not available in 26.2.
