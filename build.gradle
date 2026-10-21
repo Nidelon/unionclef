@@ -1,20 +1,27 @@
 buildscript {
     def (major, minor, patch) = project.name.split("-")[0].tokenize('.')
-    project.ext.mcVersion = "${major}${minor.padLeft(2, '0')}${(patch ?: '').padLeft(2, '0')}" as int
+    project.ext.mcVersion = "${major}${minor.padLeft(2, '0')}${patch ? patch.padLeft(2, '0') : '0'}" as int
 
     dependencies {
-        classpath 'fabric-loom:fabric-loom.gradle.plugin:1.15.5'
         classpath 'com.github.breadmoirai:github-release:2.5.2'
     }
 }
 
 plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17.14'
     id "maven-publish"
     id 'com.gradleup.shadow' version '9.4.0'
 }
 
-apply plugin: 'fabric-loom'
-apply plugin: 'com.replaymod.preprocess'
+// The version subproject lives in versions/<v>, but the sources are shared at
+// the repository root. The preprocessor used to point source sets here; with a
+// single version it is spelled out instead.
+sourceSets {
+    main {
+        java.srcDirs = [rootProject.file('src/main/java')]
+        resources.srcDirs = [rootProject.file('src/main/resources')]
+    }
+}
 
 loom {
     runs {
@@ -27,20 +34,17 @@ loom {
     }
 }
 
-preprocess {
-    patternAnnotation.set("adris.altoclef.multiversion.Pattern")
-}
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
 }
 
 // Tungsten is now a standalone mod (1.21.11-primary source, own build.gradle).
 // No longer compiled inline via srcDir — imported as dependency instead.
 
 tasks.withType(JavaCompile).configureEach {
-    options.release = 21
+    options.release = 25
     options.encoding = "UTF-8"
 }
 
@@ -52,22 +56,16 @@ group = project.maven_group
 
 // ── Per-version mappings ────────────────────────────────────────────────────
 
-def mappingsVersions = [
-        12100: "1.21+build.9",
-        12101: "1.21.1+build.3",
-        12111: "1.21.11+build.3",
-]
+// 26.x ships unobfuscated: there is no yarn artifact for it, so the tree is
+// mojmap and loom needs no mappings dependency.
+def mappingsVersions = [:]
 
 def fabricApiVersions = [
-        12100: "0.100.7+1.21",
-        12101: "0.116.9+1.21.1",
-        12111: "0.140.0+1.21.11",
+        26020: "0.154.2+26.2",
 ]
 
 def loaderVersions = [
-        12100: project.loader_version,
-        12101: project.loader_version,
-        12111: "0.18.3",
+        26020: "0.19.3",
 ]
 
 // ── Repositories ────────────────────────────────────────────────────────────
@@ -88,12 +86,12 @@ repositories {
 
 dependencies {
     minecraft("com.mojang:minecraft:${project.name}")
-    mappings("net.fabricmc:yarn:${mappingsVersions[mcVersion]}:v2")
-    modImplementation("net.fabricmc:fabric-loader:${loaderVersions[mcVersion] ?: project.loader_version}")
-    include(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.3.5")))
+    implementation("net.fabricmc:fabric-loader:${loaderVersions[mcVersion] ?: project.loader_version}")
+    annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.3.5")
+    implementation("io.github.llamalad7:mixinextras-fabric:0.3.5")
 
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${fabricApiVersions[mcVersion]}")
-    modRuntimeOnly("net.fabricmc:fabric-language-kotlin:1.13.2+kotlin.2.1.20")
+    implementation("net.fabricmc.fabric-api:fabric-api:${fabricApiVersions[mcVersion]}")
+    runtimeOnly("net.fabricmc:fabric-language-kotlin:1.13.2+kotlin.2.1.20")
 
     // Jackson JSON
     implementation 'com.fasterxml.jackson.core:jackson-core:2.17.2'
@@ -118,8 +116,7 @@ dependencies {
     // G-0: the shredder dependency is gone; altoclef imports no baritone type.
 
     // Tungsten — standalone mod (1.21.11 mappings, own mixins + entrypoint)
-    implementation project(path: ":tungsten", configuration: "namedElements")
-    include project(":tungsten")
+    implementation project(":tungsten")
 }
 
 // ── Build pipeline ──────────────────────────────────────────────────────────
@@ -128,10 +125,9 @@ shadowJar {
     configurations = [project.configurations.shadow]
 }
 
-remapJar {
-    dependsOn("shadowJar")
-    input.set(shadowJar.archiveFile)
-}
+// 26.x is unobfuscated, so the no-remap Loom variant is used and there is no
+// remapJar step: the shadow jar is the artifact.
+build.dependsOn("shadowJar")
 
 processResources {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -174,8 +170,8 @@ task testChatParser(type: JavaExec) {
 publishing {
     publications {
         mavenJava(MavenPublication) {
-            artifact(remapJar) { builtBy remapJar }
-            artifact(sourcesJar) { builtBy remapSourcesJar }
+            artifact(shadowJar) { builtBy shadowJar }
+            artifact(sourcesJar)
         }
     }
 }
@@ -196,7 +192,7 @@ if (project.name == "1.21.1" || project.name == "1.21.11") {
     }
 
     def releaseAssetFiles = files(
-        { remapJar.archiveFile.get().asFile },
+        { shadowJar.archiveFile.get().asFile },
         // G-0: shredder is no longer built or shipped.
         { new File(rootProject.projectDir, "tungsten/build/libs/tungsten-BETA-1.0.0.jar") },
     )
@@ -218,7 +214,7 @@ if (project.name == "1.21.1" || project.name == "1.21.11") {
     def isPreRelease = project.objects.property(Boolean).convention(false)
 
     tasks.named('githubRelease') {
-        dependsOn 'remapJar', ':tungsten:remapJar'
+        dependsOn 'shadowJar', ':tungsten:build'
     }
 
     githubRelease {
@@ -250,3 +246,5 @@ if (project.name == "1.21.1" || project.name == "1.21.11") {
         finalizedBy 'githubRelease'
     }
 }
+
+

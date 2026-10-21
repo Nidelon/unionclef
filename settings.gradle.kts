@@ -28,9 +28,7 @@ include(":tungsten")   // the only pathfinder now
 
 // ── MC version subprojects (altoclef + tungsten source, preprocessed) ────────
 listOf(
-    "1.21.11",
-    "1.21.1",
-    "1.21",
+    "26.2",
 ).forEach { version ->
     include(":$version")
     project(":$version").apply {
